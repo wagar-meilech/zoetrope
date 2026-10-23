@@ -65,6 +65,8 @@ pub(crate) struct Indexed {
     offset: u64,
     len: u64,
     modified: SystemTime,
+    #[cfg(feature = "native")]
+    pub work: super::work::WorkStream,
 }
 
 impl Indexed {
@@ -112,6 +114,10 @@ impl Indexed {
             });
         }
         let mut stream = provider.stream_for(&file);
+        #[cfg(feature = "native")]
+        let own_from = codex_meta
+            .as_ref()
+            .and_then(|meta| meta.subagent_history_start_ordinal);
         if let Some(meta) = codex_meta {
             metadata.cwd = meta.cwd.clone();
             metadata.internal = meta.is_internal();
@@ -135,6 +141,14 @@ impl Indexed {
                 }
             }
         }
+        #[cfg(feature = "native")]
+        let work = super::work::WorkStream::new(
+            file.provider,
+            file.session.clone(),
+            metadata.agent.clone(),
+            metadata.cwd.clone(),
+            own_from,
+        );
         let mut indexed = Self {
             file,
             metadata,
@@ -142,6 +156,8 @@ impl Indexed {
             offset: 0,
             len: stat.len(),
             modified: stat.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            #[cfg(feature = "native")]
+            work,
         };
         indexed.read_from(0, false);
         if indexed.len > PREVIEW_BYTES {
@@ -210,10 +226,12 @@ impl Indexed {
             return;
         }
         for line in bytes[begin..=end].split(|b| *b == b'\n') {
-            if let Ok(line) = std::str::from_utf8(line)
-                && let Some(statement) = self.stream.push(line)
-            {
-                self.metadata.apply(statement);
+            if let Ok(line) = std::str::from_utf8(line) {
+                #[cfg(feature = "native")]
+                self.work.push(line);
+                if let Some(statement) = self.stream.push(line) {
+                    self.metadata.apply(statement);
+                }
             }
         }
     }

@@ -311,6 +311,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    if std::env::args().nth(1).as_deref() == Some("state") {
+        return zoetrope::workstate::run_cli(std::env::args().skip(2));
+    }
+
     let cli = parse_cli(std::env::args())?;
     match cli {
         Cli::Inspect { target, provider } => run_inspect(target, provider).await,
