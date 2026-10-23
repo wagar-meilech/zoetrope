@@ -42,6 +42,8 @@ pub mod ui;
 #[cfg(feature = "native")]
 pub mod autopilot;
 #[cfg(feature = "native")]
+pub mod documents;
+#[cfg(feature = "native")]
 pub mod handler;
 #[cfg(feature = "native")]
 pub mod tui;
