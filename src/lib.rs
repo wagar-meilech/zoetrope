@@ -47,6 +47,8 @@ pub mod control;
 #[cfg(feature = "native")]
 pub mod documents;
 #[cfg(feature = "native")]
+pub mod fleet;
+#[cfg(feature = "native")]
 pub mod handler;
 #[cfg(feature = "native")]
 pub mod tui;
