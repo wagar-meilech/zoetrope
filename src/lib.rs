@@ -43,6 +43,8 @@ pub mod ui;
 #[cfg(feature = "native")]
 pub mod autopilot;
 #[cfg(feature = "native")]
+pub mod control;
+#[cfg(feature = "native")]
 pub mod documents;
 #[cfg(feature = "native")]
 pub mod handler;
