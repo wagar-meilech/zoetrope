@@ -13,6 +13,15 @@ The whole program solves one hard problem:
 
 Almost every design decision below is downstream of that one sentence.
 
+The native goal console adds a second layer above this replay engine: global
+inventory, Zoetrope-owned completion contracts and drafts, and explicit control
+of a compatible existing local Codex runtime. Verified goal progress comes from
+criteria and evidence, independently of replay position or inferred agent
+liveness. The approved boundaries and user behavior are described in
+[GOAL-CONSOLE-SPEC.md](GOAL-CONSOLE-SPEC.md) and
+[GOAL-CONSOLE.md](GOAL-CONSOLE.md). Native transcripts remain read-only; local
+records and IPC do not change the portable replay fold described below.
+
 ---
 
 ## 0. The provider boundary
