@@ -61,6 +61,8 @@ Goal progress comes from editable completion criteria with recorded evidence. Mi
 
 ## Implementation Decisions
 
+- Keep the console, discovery, persistence and Codex control in Rust. Limit JavaScript/TypeScript to the small VS Code extension required by the editor host; do not add a separate JavaScript service or heavy UI framework.
+- Treat speed and resource use as explicit acceptance criteria: bounded metadata reads, incremental cached history updates, lazy transcript/subagent loading, no disk/socket operations on the UI thread, bounded background work, and event-driven rendering when the display is idle. Measure representative large-history and idle behavior; language choice alone is not evidence of efficiency.
 - Introduce a fleet console module above the existing single-session application. Preserve the existing provider/fact/replay module contracts, and keep the portable core usable without native runtime features.
 - Reuse provider discovery. Add a local incremental inventory with stable provider/session/agent identities, archived-session discovery, lazy expansion, and change-based refresh. Historical entries do not become active merely because they are loaded into the graph.
 - Use `H` for the one-key current/history switch, `/` for search and visible keyboard hints. Search initially covers indexed names, goals, current descriptions and artifact paths. Full-text indexing of every tool output is outside this spec.
@@ -97,6 +99,8 @@ Tests assert externally visible behavior through these interfaces, rather than p
 Prior art includes the existing public input-handler tests, ratatui buffer rendering, provider fixture conformance and executable argument tests. Implement one vertical slice at a time: demonstrate a meaningful failing test, make that behavior pass, then take the next slice. Do not write an entire suite for imagined future internals before implementation.
 
 Run the existing repository checks appropriate to the final changes: formatting, warnings-as-errors clippy, locked tests, portable-core check, native release build, and browser/wasm compatibility checks when shared code changes. Validate local runtime coexistence on explicitly disposable sessions, and verify the installed binary and document preview on this Mac.
+
+Use the same approved public interfaces for resource checks: exercise large inventories and large transcript files without loading full history eagerly, compare cold and unchanged refreshes, and record representative process memory/idle CPU where practical. Do not add timing-fragile CI assertions or internal call-count tests to simulate performance evidence.
 
 Baseline before changes: 207 library tests and 9 binary tests passed with the locked dependencies; no product code was modified. Deterministic console/integration tests verify the viewer and control behavior, not the correctness of an agent's general reasoning. Live compatibility checks separately verify real Codex control and editor behavior without claiming to evaluate model intelligence.
 
