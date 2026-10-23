@@ -68,6 +68,7 @@ USAGE:
     zoe <file> --speed N    playback speed (default 8.0)
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
     zoe inspect <file|id>   headless: print the session tree + info
+    zoe control --help     explicit controls for the existing local Codex runtime
     zoe --version           print the version and exit
 
 Once open, scrub/follow/pause/go-live are available no matter how you launched.";
@@ -315,6 +316,10 @@ async fn main() -> Result<()> {
         return zoetrope::workstate::run_cli(std::env::args().skip(2));
     }
 
+    if let Some(result) = zoetrope::control::run_cli(&std::env::args().skip(1).collect::<Vec<_>>())
+    {
+        return result;
+    }
     let cli = parse_cli(std::env::args())?;
     match cli {
         Cli::Inspect { target, provider } => run_inspect(target, provider).await,
