@@ -103,27 +103,21 @@ fn guidance_is_accepted_by_the_selected_child_and_exact_active_turn() {
 
 #[test]
 fn queueing_is_distinct_from_guidance_and_keeps_a_stable_submission_id() {
-    for (case, args, expected) in [(
+    let peer = Peer::new("queue");
+    let result = peer.run(&[
         "queue",
-        vec![
-            "queue",
-            "child-thread",
-            "--message-id",
-            "zoe-item-17",
-            "Do the docs later",
-        ],
-        "Queued",
-    )] {
-        let peer = Peer::new(case);
-        let result = peer.run(&args);
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        assert!(String::from_utf8_lossy(&result.stdout).contains(expected));
-        peer.finish();
-    }
+        "child-thread",
+        "--message-id",
+        "zoe-item-17",
+        "Do the docs later",
+    ]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(String::from_utf8_lossy(&result.stdout).contains("Queued"));
+    peer.finish();
 }
 
 #[test]

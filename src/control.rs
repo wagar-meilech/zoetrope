@@ -1,5 +1,6 @@
-//! Explicit local Codex control. All calls perform blocking local IO: run them on
-//! an IO worker, never the terminal drawing thread. Passive reads invoke no model.
+//! Explicit local Codex control. Connection, observation and control perform
+//! blocking local IO: run them on an IO worker, never the terminal drawing thread.
+//! Cached metadata access performs no IO; passive reads invoke no model.
 
 use crate::console::AgentKey;
 use crate::provider::Provider;
