@@ -10,7 +10,7 @@ All implementation is integrated on one feature branch. Each ticket uses its own
 | [ZOE-2](https://github.com/wagar-meilech/zoetrope/issues/3) | Durable goals, questions, drafts and document records | ZOE-1 |
 | [ZOE-3](https://github.com/wagar-meilech/zoetrope/issues/4) | Local Codex control and coexistence | ZOE-1 |
 | [ZOE-4](https://github.com/wagar-meilech/zoetrope/issues/5) | Terminal fleet graph and interactive controls | ZOE-2, ZOE-3 |
-| [ZOE-5](https://github.com/wagar-meilech/zoetrope/issues/6) | VS Code MD Reader preview integration | ZOE-2 |
+| [ZOE-5](https://github.com/wagar-meilech/zoetrope/issues/6) | VS Code MD Reader preview integration | None; explicit document input is independent of storage |
 | [ZOE-6](https://github.com/wagar-meilech/zoetrope/issues/7) | End-to-end verification, docs and installed release | ZOE-4, ZOE-5 |
 
 ## ZOE-1 — Fleet inventory and console interface
