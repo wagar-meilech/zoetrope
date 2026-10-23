@@ -1,5 +1,9 @@
 # Using the goal console
 
+> Implementation is paused. The foundations below are integrated; the terminal
+> interface is unfinished and the installed `zoe` has not yet been rebuilt.
+> See [the saved checkpoint](PAUSED-CHECKPOINT.md) for exact status.
+
 Run `zoe` to see work across local projects. The native app groups projects,
 goals and agents into an expanding graph. `H` switches between Current and All
 history; `/` searches the same graph; `?` shows keyboard help. Selection stays
