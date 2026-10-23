@@ -75,6 +75,8 @@ pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod metadata;
 pub(crate) mod summary;
+#[cfg(feature = "native")]
+pub(crate) mod work;
 
 #[cfg(test)]
 pub(crate) mod harness;

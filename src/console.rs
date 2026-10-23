@@ -95,6 +95,22 @@ pub struct Console {
     search: String,
     titles: provider::metadata::Titles,
     graph: FleetGraph,
+    #[cfg(feature = "native")]
+    work_store: Option<crate::workstate::Store>,
+    #[cfg(feature = "native")]
+    work: BTreeMap<SessionKey, crate::workstate::WorkRecord>,
+    #[cfg(feature = "native")]
+    work_versions: BTreeMap<SessionKey, Option<(u64, SystemTime)>>,
+    #[cfg(feature = "native")]
+    work_errors: Vec<String>,
+    #[cfg(feature = "native")]
+    work_summaries: BTreeMap<SessionKey, crate::workstate::WorkSummary>,
+    #[cfg(feature = "native")]
+    work_order: std::collections::VecDeque<SessionKey>,
+    #[cfg(feature = "native")]
+    work_sizes: BTreeMap<SessionKey, u64>,
+    #[cfg(feature = "native")]
+    work_search_matches: BTreeSet<SessionKey>,
 }
 
 impl Console {
@@ -111,6 +127,219 @@ impl Console {
             search: String::new(),
             titles: Default::default(),
             graph: Default::default(),
+            #[cfg(feature = "native")]
+            work_store: None,
+            #[cfg(feature = "native")]
+            work: Default::default(),
+            #[cfg(feature = "native")]
+            work_versions: Default::default(),
+            #[cfg(feature = "native")]
+            work_errors: Default::default(),
+            #[cfg(feature = "native")]
+            work_summaries: Default::default(),
+            #[cfg(feature = "native")]
+            work_order: Default::default(),
+            #[cfg(feature = "native")]
+            work_sizes: Default::default(),
+            #[cfg(feature = "native")]
+            work_search_matches: Default::default(),
+        }
+    }
+
+    /// Enable durable state. Construction performs no IO; refresh/update run on
+    /// the caller's inventory worker. Native transcripts remain read-only.
+    #[cfg(feature = "native")]
+    pub fn with_state(roots: DiscoveryRoots, state_root: PathBuf) -> Self {
+        let mut console = Self::new(roots);
+        console.work_store = Some(crate::workstate::Store::new(state_root));
+        console
+    }
+
+    /// Cached full work, without filesystem access. Large inventories evict
+    /// older full records; use `load_work` on the worker before opening detail.
+    #[cfg(feature = "native")]
+    pub fn work(&self, key: &SessionKey) -> Option<&crate::workstate::WorkRecord> {
+        self.work.get(key)
+    }
+
+    /// Compact cached graph projection, always available after refresh.
+    #[cfg(feature = "native")]
+    pub fn work_summary(&self, key: &SessionKey) -> Option<&crate::workstate::WorkSummary> {
+        self.work_summaries.get(key)
+    }
+
+    /// Load selected work on an inventory worker. Full records use a bounded
+    /// cache: 8 MiB encoded bytes/32 entries, plus a pinned selected record.
+    #[cfg(feature = "native")]
+    pub fn load_work(&mut self, key: &SessionKey) -> anyhow::Result<&crate::workstate::WorkRecord> {
+        if !self.work.contains_key(key) {
+            let store = self
+                .work_store
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("local state is not enabled"))?;
+            let record = store.read(key)?;
+            let stamp = store.stamp(key);
+            self.cache_work(key.clone(), record, stamp);
+        }
+        Ok(&self.work[key])
+    }
+
+    #[cfg(feature = "native")]
+    fn cache_work(
+        &mut self,
+        key: SessionKey,
+        record: crate::workstate::WorkRecord,
+        stamp: Option<(u64, SystemTime)>,
+    ) {
+        let size = stamp.map_or(256, |stamp| stamp.0.max(256));
+        self.work_summaries.insert(key.clone(), record.summary());
+        if !self.search.is_empty() {
+            if record.matches(&self.search) {
+                self.work_search_matches.insert(key.clone());
+            } else {
+                self.work_search_matches.remove(&key);
+            }
+        }
+        self.work_versions.insert(key.clone(), stamp);
+        self.work_sizes.insert(key.clone(), size);
+        self.work_order.retain(|old| old != &key);
+        self.work_order.push_back(key.clone());
+        self.work.insert(key.clone(), record);
+        let pinned = match &self.selection {
+            Some(FleetNodeId::Session(key)) => Some(key.clone()),
+            Some(FleetNodeId::Agent(agent)) => Some(agent.session.clone()),
+            _ => None,
+        };
+        let mut attempts = self.work_order.len();
+        while attempts > 0
+            && (self.work.len() > 32 || self.work_sizes.values().sum::<u64>() > 8 * 1024 * 1024)
+        {
+            attempts -= 1;
+            let Some(old) = self.work_order.pop_front() else {
+                break;
+            };
+            if old == key || Some(&old) == pinned.as_ref() {
+                self.work_order.push_back(old);
+                continue;
+            }
+            self.work.remove(&old);
+            self.work_sizes.remove(&old);
+        }
+    }
+
+    #[cfg(feature = "native")]
+    fn search_work(&mut self) {
+        self.work_search_matches.clear();
+        if self.search.is_empty() {
+            return;
+        }
+        let Some(store) = self.work_store.clone() else {
+            return;
+        };
+        // Explicit searches run on the worker. Uncached records are read one
+        // at a time and immediately dropped; scope history never joins the index.
+        for key in self.work_summaries.keys() {
+            let cached = self.work.get(key);
+            let loaded;
+            let record = if let Some(record) = cached {
+                record
+            } else {
+                match store.read(key) {
+                    Ok(record) => {
+                        loaded = record;
+                        &loaded
+                    }
+                    Err(error) => {
+                        self.work_errors.push(error.to_string());
+                        continue;
+                    }
+                }
+            };
+            if record.matches(&self.search) {
+                self.work_search_matches.insert(key.clone());
+            }
+        }
+    }
+
+    #[cfg(feature = "native")]
+    pub fn work_errors(&self) -> &[String] {
+        &self.work_errors
+    }
+
+    /// Persist one explicit edit and update the cached projection. Blocking IO.
+    #[cfg(feature = "native")]
+    pub fn update_work(
+        &mut self,
+        key: &SessionKey,
+        update: crate::workstate::WorkUpdate,
+    ) -> anyhow::Result<&crate::workstate::WorkRecord> {
+        let store = self
+            .work_store
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("local state is not enabled"))?;
+        let record = store.apply(key, update)?;
+        let stamp = store.stamp(key);
+        self.cache_work(key.clone(), record, stamp);
+        self.graph = self.build_graph();
+        Ok(&self.work[key])
+    }
+
+    #[cfg(feature = "native")]
+    fn refresh_work(&mut self) {
+        let Some(store) = self.work_store.clone() else {
+            return;
+        };
+        self.work_errors.clear();
+        let keys: Vec<_> = self
+            .sessions
+            .iter()
+            .map(|session| SessionKey {
+                provider: session.provider,
+                session_id: session.id.clone(),
+            })
+            .collect();
+        for key in keys {
+            let stamp = store.stamp(&key);
+            if self.work_versions.get(&key) == Some(&stamp) {
+                continue;
+            }
+            match store.read(&key) {
+                Ok(record) => {
+                    self.cache_work(key, record, stamp);
+                }
+                Err(error) => self.work_errors.push(error.to_string()),
+            }
+        }
+    }
+
+    #[cfg(feature = "native")]
+    fn import_recorded_work(&mut self) {
+        let Some(store) = self.work_store.clone() else {
+            for indexed in self.metadata.values_mut() {
+                let _ = indexed.work.take();
+            }
+            return;
+        };
+        let mut updates: BTreeMap<SessionKey, Vec<crate::workstate::WorkUpdate>> = BTreeMap::new();
+        for indexed in self.metadata.values_mut() {
+            let observed = indexed.work.take();
+            if observed.is_empty() {
+                continue;
+            }
+            let key = SessionKey {
+                provider: indexed.file.provider,
+                session_id: indexed.file.session.clone(),
+            };
+            updates.entry(key).or_default().extend(observed);
+        }
+        for (key, updates) in updates {
+            match store.apply_many(&key, updates) {
+                Ok(record) => {
+                    let stamp = store.stamp(&key);
+                    self.cache_work(key, record, stamp);
+                }
+                Err(error) => self.work_errors.push(error.to_string()),
+            }
         }
     }
 
@@ -188,6 +417,10 @@ impl Console {
         }
         self.metadata.retain(|path, _| seen.contains(path));
         self.sessions = provider::assemble(files);
+        #[cfg(feature = "native")]
+        self.refresh_work();
+        #[cfg(feature = "native")]
+        self.import_recorded_work();
         self.graph = self.build_graph();
     }
 
@@ -195,7 +428,11 @@ impl Console {
         match command {
             ConsoleCommand::ToggleHistory => self.history = !self.history,
             ConsoleCommand::ToggleInternal => self.show_internal = !self.show_internal,
-            ConsoleCommand::Search(query) => self.search = query.trim().to_lowercase(),
+            ConsoleCommand::Search(query) => {
+                self.search = query.trim().to_lowercase();
+                #[cfg(feature = "native")]
+                self.search_work();
+            }
             ConsoleCommand::Select(id) => {
                 if self.graph().nodes.iter().any(|node| node.id == id) {
                     self.selection = Some(id);
@@ -236,6 +473,32 @@ impl Console {
         &self.graph
     }
 
+    fn work_title(&self, key: &SessionKey) -> Option<String> {
+        #[cfg(feature = "native")]
+        {
+            self.work_summary(key)
+                .and_then(|summary| summary.title.clone())
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            let _ = key;
+            None
+        }
+    }
+
+    fn work_matches(&self, key: &SessionKey, query: &str) -> bool {
+        #[cfg(feature = "native")]
+        {
+            let _ = query;
+            self.work_search_matches.contains(key)
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            let _ = (key, query);
+            false
+        }
+    }
+
     fn build_graph(&self) -> FleetGraph {
         let mut graph = FleetGraph::default();
         let mut projects = BTreeSet::new();
@@ -254,6 +517,10 @@ impl Console {
             if !self.history && (archived || !recent) {
                 continue;
             }
+            let key = SessionKey {
+                provider: session.provider,
+                session_id: session.id.clone(),
+            };
             let mut metadata = self.metadata[&session.root.path].metadata.clone();
             if session.provider == Provider::Codex
                 && let Some(name) = self.titles.names.get(&session.id)
@@ -275,6 +542,7 @@ impl Console {
                 && !session.id.to_lowercase().contains(&self.search)
                 && !metadata.matches(&self.search)
                 && !matching_child
+                && !self.work_matches(&key, &self.search)
             {
                 continue;
             }
@@ -289,15 +557,14 @@ impl Console {
                     expanded: true,
                 });
             }
-            let key = SessionKey {
-                provider: session.provider,
-                session_id: session.id.clone(),
-            };
             let expanded = self.expanded.contains(&key) || matching_child;
             graph.nodes.push(FleetNode {
                 id: FleetNodeId::Session(key.clone()),
                 parent: Some(FleetNodeId::Project(project)),
-                label: metadata.title.clone().unwrap_or_else(|| session.id.clone()),
+                label: self
+                    .work_title(&key)
+                    .or_else(|| metadata.title.clone())
+                    .unwrap_or_else(|| session.id.clone()),
                 description: metadata.description.clone(),
                 internal: false,
                 archived,
@@ -414,6 +681,25 @@ impl Console {
                 node.label,
                 if node.archived { " [archived]" } else { "" }
             ));
+        }
+        #[cfg(feature = "native")]
+        if let Some(id) = &self.selection {
+            let target = match id {
+                FleetNodeId::Session(key) => Some(AgentKey {
+                    session: key.clone(),
+                    agent_id: "main".into(),
+                }),
+                FleetNodeId::Agent(target) => Some(target.clone()),
+                FleetNodeId::Project(_) => None,
+            };
+            if let Some(target) = target
+                && let Some(work) = self.work(&target.session)
+            {
+                lines.push(work.progress().label);
+                if let Some(draft) = work.drafts.iter().find(|draft| draft.target == target) {
+                    lines.push(format!("Draft for {}: {}", target.agent_id, draft.text));
+                }
+            }
         }
         Text::from(lines.join("\n"))
     }

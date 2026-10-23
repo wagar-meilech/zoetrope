@@ -50,3 +50,6 @@ pub mod documents;
 pub mod handler;
 #[cfg(feature = "native")]
 pub mod tui;
+
+#[cfg(feature = "native")]
+pub mod workstate;

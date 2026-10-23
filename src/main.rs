@@ -312,6 +312,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    if std::env::args().nth(1).as_deref() == Some("state") {
+        return zoetrope::workstate::run_cli(std::env::args().skip(2));
+    }
+
     if let Some(result) = zoetrope::control::run_cli(&std::env::args().skip(1).collect::<Vec<_>>())
     {
         return result;
