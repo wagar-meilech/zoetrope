@@ -10,6 +10,8 @@ Use GitHub Issues in `wagar-meilech/zoetrope`; details are in `docs/agents/issue
 
 Follow vertical TDD at the approved public console and executable/external-launch seams. The baseline is 207 library tests and 9 binary tests. Record red/green commands in the ticket's implementation notes. Do not test private implementation details or duplicate an existing native Codex run to simulate control.
 
+The user explicitly requires fast, resource-light code. Keep the main implementation in Rust; JavaScript/TypeScript is limited to the small VS Code bridge. Use bounded metadata reads, incremental caches, lazy expansion and off-UI-thread local IO. Avoid heavy frameworks, background model summarizers, whole-history work on each frame and needless idle redraws. Verify representative resource behavior instead of assuming that a language guarantees efficiency.
+
 Transcript formats enter through one boundary: `src/provider/` turns records into the facts in `src/fact.rs`, and nothing past it knows the format. See `docs/ARCHITECTURE.md` §0 before adding to either side.
 
 See `docs/ARCHITECTURE.md` for the invariants and principles, `docs/DESIGN.md` for the module map and transcript format, `docs/HERDR-PLUGIN.md` for the Herdr bridge in `herdr-plugin/`, `TODO.md` for the roadmap, and `README.md` for usage.
