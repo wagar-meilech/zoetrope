@@ -1,0 +1,14 @@
+{
+  "name": "zoetrope-preview",
+  "displayName": "Zoetrope Document Preview",
+  "description": "Open an explicitly selected local Markdown document in MD Reader.",
+  "version": "0.1.0",
+  "publisher": "wagar",
+  "license": "MIT",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onUri"],
+  "extensionKind": ["ui"],
+  "main": "./extension.cjs",
+  "scripts": { "test": "node --test test/preview.test.cjs" }
+}
