@@ -73,6 +73,7 @@ use crate::fact::Statement;
 // browser frontend goes through `tailer::Bundle`.
 pub(crate) mod claude;
 pub(crate) mod codex;
+pub(crate) mod metadata;
 pub(crate) mod summary;
 
 #[cfg(test)]
@@ -81,7 +82,10 @@ pub(crate) mod harness;
 /// The transcript formats this build reads. An enum, not a trait: providers
 /// arrive by pull request, and an exhaustive `match` makes the compiler list
 /// every site a new one must touch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum Provider {
     Claude,
     Codex,
@@ -340,6 +344,15 @@ impl Provider {
         match self {
             Provider::Claude => claude::discovery::all_paths(scope),
             Provider::Codex => codex::discovery::all_paths(scope),
+        }
+    }
+
+    /// Discovery under an explicit provider storage root, without changing
+    /// process environment. Claude takes its `projects` directory; Codex its home.
+    pub fn all_paths_in(self, root: &Path, scope: &Scope) -> Vec<PathBuf> {
+        match self {
+            Provider::Claude => claude::discovery::all_paths_in(root, scope),
+            Provider::Codex => codex::discovery::all_paths_in(root, scope),
         }
     }
 

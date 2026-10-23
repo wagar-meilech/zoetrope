@@ -93,12 +93,25 @@ pub struct SessionMeta {
 
 impl SessionMeta {
     pub fn is_root(&self) -> bool {
+        // Explicit ancestry outranks frontend-specific source names. Internal
+        // guardian reviews are spawned threads too, not independent goals.
+        if self.parent().is_some()
+            || matches!(self.source, Source::Spawn { .. })
+            || matches!((&self.id, &self.session_id), (Some(id), Some(session)) if id != session)
+        {
+            return false;
+        }
         match self.thread_source.as_deref() {
-            Some("subagent") => false,
+            Some("subagent" | "guardian_review") => false,
             Some(_) => true,
             // Older shape: a string source is a root, an object is a spawn.
             None => !matches!(self.source, Source::Spawn { .. }),
         }
+    }
+
+    pub fn is_internal(&self) -> bool {
+        self.thread_source.as_deref() == Some("guardian_review")
+            || matches!(&self.source, Source::Spawn { subagent: SubagentSource::Kind(kind) } if kind == "review" || kind == "guardian")
     }
 
     /// The spawning thread, for a child. The spawn object states it when the
