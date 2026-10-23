@@ -165,7 +165,20 @@ pub fn all_paths(scope: &Scope) -> Vec<PathBuf> {
     let Some(home) = codex_home() else {
         return Vec::new();
     };
-    let mut out = all_rollouts(&sessions_dir(&home));
+    all_paths_in(&home, scope)
+}
+
+pub fn all_paths_in(home: &Path, scope: &Scope) -> Vec<PathBuf> {
+    let mut out = all_rollouts(&sessions_dir(home));
+    // Archived Codex rollouts use a flat directory, unlike current history.
+    if let Ok(entries) = std::fs::read_dir(home.join("archived_sessions")) {
+        out.extend(
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| is_rollout_file(p)),
+        );
+    }
     if let Some(since) = scope.since {
         let day_floor = day_dir_floor(since);
         out.retain(|p| day_of(p).and_then(day_key).is_none_or(|d| d >= day_floor));
@@ -220,7 +233,11 @@ pub fn classify_head(path: &Path, head: &str, modified: SystemTime) -> Option<Se
     }
 }
 
-fn from_meta(path: &Path, meta: &SessionMeta, modified: SystemTime) -> Option<SessionFile> {
+pub(crate) fn from_meta(
+    path: &Path,
+    meta: &SessionMeta,
+    modified: SystemTime,
+) -> Option<SessionFile> {
     let id = meta.id.clone()?;
     let (session, role) = if meta.is_root() {
         (id, FileRole::Root)
@@ -251,7 +268,28 @@ fn from_meta(path: &Path, meta: &SessionMeta, modified: SystemTime) -> Option<Se
 /// root runs and the root writes after every spawn. From a child: every
 /// rollout in the tree, since the root may be in an earlier day.
 pub fn related_paths(file: &SessionFile) -> Vec<PathBuf> {
-    let paths = match file.role {
+    let home = file
+        .path
+        .ancestors()
+        .find(|p| {
+            p.file_name()
+                .is_some_and(|n| n == "sessions" || n == "archived_sessions")
+        })
+        .and_then(Path::parent);
+    if file
+        .path
+        .parent()
+        .and_then(Path::file_name)
+        .is_some_and(|n| n == "archived_sessions")
+    {
+        return home
+            .map(|home| all_paths_in(home, &Scope::ALL))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| *p != file.path)
+            .collect();
+    }
+    let mut paths = match file.role {
         FileRole::Root => {
             let last = day_dir_floor(file.modified);
             rollouts_from(&file.path)
@@ -266,6 +304,18 @@ pub fn related_paths(file: &SessionFile) -> Vec<PathBuf> {
             .map(all_rollouts)
             .unwrap_or_default(),
     };
+    if let Some(home) = home {
+        if file.role != FileRole::Root {
+            paths = all_paths_in(home, &Scope::ALL);
+        } else if let Ok(entries) = std::fs::read_dir(home.join("archived_sessions")) {
+            paths.extend(
+                entries
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| is_rollout_file(p)),
+            );
+        }
+    }
     paths.into_iter().filter(|p| *p != file.path).collect()
 }
 
