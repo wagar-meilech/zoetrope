@@ -85,7 +85,10 @@ impl DocumentLauncher {
         }
     }
 
-    /// Request MD Reader for the exact selected file, without a shell or a model call.
+    /// Request MD Reader for the exact selected Markdown file, without a shell or a model call.
+    ///
+    /// Blocking native IO: call this off the UI thread, only for an explicit open action.
+    /// Checks metadata without reading document contents. Returns dispatch state, not render proof.
     pub fn open(&self, selected: impl AsRef<Path>) -> Result<DocumentLaunch, DocumentLaunchError> {
         let selected = selected.as_ref();
         let fail = |reason: String| DocumentLaunchError {
