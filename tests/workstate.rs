@@ -35,7 +35,7 @@ impl Home {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        serde_json::from_slice(&output.stdout).unwrap()
+        self.show()
     }
     fn show(&self) -> Value {
         let output = self.run(&["show", "codex", "goal"]);
@@ -467,4 +467,25 @@ fn reconnect_requires_fresh_pending_evidence_and_resolution_does_not_erase_the_a
         "Compact"
     );
     assert_eq!(restored["record"]["outbox"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn applying_updates_reports_compact_results_without_echoing_large_drafts_to_the_agent() {
+    let home = Home::new();
+    home.apply(json!({"op":"save_draft","target":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},"text":"Saved private draft ".repeat(2048)}));
+    let result = home.run(&[
+        "apply",
+        "codex",
+        "goal",
+        &json!({"op":"set_checkpoints","enabled":true}).to_string(),
+    ]);
+    assert!(result.status.success());
+    assert!(
+        result.stdout.len() < 1024,
+        "small state edits should not echo full scope history and drafts"
+    );
+    let response: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(response["saved"], true);
+    assert!(!String::from_utf8_lossy(&result.stdout).contains("Saved private draft"));
+    assert_eq!(home.show()["record"]["checkpoints"], true);
 }

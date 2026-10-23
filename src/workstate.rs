@@ -961,7 +961,42 @@ impl Store {
     }
 }
 
-const USAGE: &str = "zoe state [--root DIR] show PROVIDER SESSION\nzoe state [--root DIR] apply PROVIDER SESSION JSON\n\nLocal goal records only. PROVIDER is codex or claude. JSON is a WorkUpdate object; use op=set_goal with title, criteria [{id,label,weight?}], reason and provenance. State defaults to ZOETROPE_STATE_DIR, then XDG_STATE_HOME/zoetrope or ~/.local/state/zoetrope.";
+const USAGE: &str = r#"zoe state [--root DIR] show PROVIDER SESSION
+zoe state [--root DIR] apply PROVIDER SESSION JSON
+
+Local Zoetrope records only; PROVIDER is codex or claude. No runtime input is
+sent by these commands. apply returns a compact acknowledgment; show explicitly
+reads the full record. State uses ZOETROPE_STATE_DIR, XDG_STATE_HOME/zoetrope,
+or ~/.local/state/zoetrope.
+
+JSON updates (op is required):
+  set_goal: title, criteria [{id,label,weight?}], reason, provenance
+  verify: id, evidence [{kind:reference|user_attestation,detail,provenance}], revision?
+  set_criterion_status: id, status:pending|in_progress, reason, revision?
+  import_plan: proposal {id,producer,steps:[{step,status}],source}
+  adopt_plan: proposal_id, title, reason, provenance
+  request_criteria: target                         save a proposal-request draft
+  set_checkpoints: enabled                         per-goal preference
+  save_draft: target, text
+  create_feedback: id, target, text, mode:guidance|queue|stop|answer|criteria_request,
+                   expected_turn?, source_question?
+  record_delivery: id, state:draft|sending|queued|accepted|submitted|rejected|
+                   unavailable|unknown, message?, queue_id?
+  capture_question: question {id,target,request_id?,turn_id?,prompts,state,answers?}
+  save_answer: question_id, answers {prompt_id:[answer,...]}
+  resolve_question: question_id, state:expired|answered|answered_elsewhere|resolved|dismissed
+  expire_pending_questions: target?                invalidate stored native request IDs
+  answer_as_feedback: question_id, feedback_id, mode:guidance|queue
+  add_document: document {id,path,producer,source,change:created|changed|deleted,changed_at?}
+
+A target/producer is {"session":{"provider":"codex","session_id":"FULL_ID"},"agent_id":"main"}.
+Use the actual child ID for a child. A prompt is {id,question,header?,options?:[{label,description?}]}.
+Marking verified requires new evidence. Native plan completion alone earns no
+verified credit. Queue/accepted delivery does not prove requested work is done.
+Checkpoints do not change Codex policy: send the explicit proposal-request draft
+to ask the selected agent to pause at milestones. Questions/drafts never submit
+by themselves; expired answers can only become feedback by an explicit action.
+"#;
 
 /// Dispatch the public local command. Arguments begin after `state`.
 pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
@@ -1006,9 +1041,18 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
     } else {
         store.read(&session)?
     };
-    println!(
-        "{}",
-        serde_json::json!({"progress":record.progress(),"record":record})
-    );
+    if operation == "show" {
+        println!(
+            "{}",
+            serde_json::json!({"progress":record.progress(),"record":record})
+        );
+    } else {
+        // Agent-maintained criteria must not echo megabytes of saved drafts or
+        // old evidence into the model context after every small update.
+        println!(
+            "{}",
+            serde_json::json!({"saved":true,"session":session,"goal_revision":record.goal.as_ref().map(|goal|goal.revision),"summary":record.summary()})
+        );
+    }
     Ok(())
 }
