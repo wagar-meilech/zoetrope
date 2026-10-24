@@ -30,7 +30,7 @@ pub enum RuntimeStatus {
 }
 
 /// Bounded metadata for one exact native thread.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ThreadSnapshot {
     pub thread_id: String,
     pub name: Option<String>,

@@ -17,12 +17,15 @@ pub(crate) struct Metadata {
     pub parent: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
+    pub goal:Option<String>,
+    pub activity:super::activity::PublicActivity,
+    pub last_action:Option<String>,
     pub internal: bool,
 }
 
 impl Metadata {
     pub fn matches(&self, query: &str) -> bool {
-        [&self.title, &self.cwd, &self.name, &self.description]
+        [&self.title, &self.cwd, &self.name, &self.description,&self.goal,&self.activity.text]
             .into_iter()
             .flatten()
             .any(|text| text.to_lowercase().contains(query))
@@ -47,8 +50,10 @@ impl Metadata {
                     }
                 }
                 FactKind::Prompt(value) => {
+                    if self.goal.is_none(){self.goal=Some(super::summary::truncate_summary(&value));}
                     self.description = Some(super::summary::truncate_summary(&value))
                 }
+                FactKind::ToolStart{name,..}=>self.last_action=Some(super::activity::tool_label(&name).into()),
                 _ => {}
             }
         }
@@ -231,6 +236,7 @@ impl Indexed {
                 self.work.push(line);
                 if let Some(statement) = self.stream.push(line) {
                     self.metadata.apply(statement);
+                    self.metadata.activity.observe(self.file.provider,line);
                 }
             }
         }

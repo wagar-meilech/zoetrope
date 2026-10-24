@@ -5,7 +5,7 @@ use crate::console::{AgentKey, SessionKey};
 use crate::provider::Provider;
 use crate::workstate::{
     DocumentChange, DocumentRecord, PlanProposal, PlanStep, QuestionRecord, QuestionState,
-    WorkUpdate,
+    WorkUpdate,QuestionPrompt,QuestionOption,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -93,6 +93,17 @@ impl WorkStream {
                                 .into(),
                         },
                     });
+                }
+                Some("request_user_input_async" | "functions.request_user_input_async") => {
+                    let Some(questions)=arguments["questions"].as_array()else{return;};
+                    let mut prompts=Vec::new();
+                    for(at,question)in questions.iter().enumerate(){
+                        let Some(title)=question["title"].as_str().filter(|s|!s.trim().is_empty())else{return;};
+                        let options=match question.get("options"){None|Some(Value::Null)=>Vec::new(),Some(Value::Array(options))=>{let Some(options)=options.iter().map(|option|option.as_str().map(|label|QuestionOption{label:label.into(),description:String::new()})).collect::<Option<Vec<_>>>()else{return;};options},_=>return};
+                        prompts.push(QuestionPrompt{id:format!("async-prompt-{}",at+1),header:format!("Question {}",at+1),question:title.into(),options,is_other:true,is_secret:false});
+                    }
+                    if prompts.is_empty(){return;}
+                    self.pending.push(WorkUpdate::CaptureQuestion{question:QuestionRecord{id:format!("transcript:{}:{call}",self.producer.agent_id),target:self.producer.clone(),request_id:None,turn_id:None,prompts,state:QuestionState::Expired,answers:Default::default()}});
                 }
                 Some("request_user_input" | "functions.request_user_input") => {
                     let Some(prompts) = arguments

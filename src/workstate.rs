@@ -17,7 +17,7 @@ use crate::provider::Provider;
 const FORMAT_VERSION: u32 = 1;
 const MAX_RECORD_BYTES: u64 = 8 * 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CriterionInput {
     pub id: String,
     pub label: String,
@@ -28,14 +28,14 @@ fn equal_weight() -> f64 {
     1.0
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceKind {
     Reference,
     UserAttestation,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Evidence {
     pub kind: EvidenceKind,
     pub detail: String,
@@ -50,7 +50,7 @@ pub enum CriterionStatus {
     Verified,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Criterion {
     pub id: String,
     pub label: String,
@@ -59,7 +59,7 @@ pub struct Criterion {
     pub evidence: Vec<Evidence>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GoalContract {
     pub title: String,
     pub revision: u64,
@@ -67,27 +67,27 @@ pub struct GoalContract {
     pub provenance: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ScopeRevision {
     pub goal: GoalContract,
     pub reason: String,
     pub changed_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeedbackDraft {
     pub target: AgentKey,
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionOption {
     pub label: String,
     #[serde(default)]
     pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionPrompt {
     pub id: String,
     #[serde(default)]
@@ -112,7 +112,7 @@ pub enum QuestionState {
     Dismissed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionRecord {
     pub id: String,
     pub target: AgentKey,
@@ -149,7 +149,7 @@ pub enum DeliveryState {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeedbackRecord {
     pub id: String,
     pub target: AgentKey,
@@ -174,7 +174,7 @@ pub enum DocumentChange {
     Deleted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DocumentRecord {
     pub id: String,
     pub path: PathBuf,
@@ -185,14 +185,14 @@ pub struct DocumentRecord {
     pub changed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlanStep {
     pub step: String,
     #[serde(default)]
     pub status: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlanProposal {
     pub id: String,
     pub producer: AgentKey,
@@ -200,7 +200,7 @@ pub struct PlanProposal {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CriterionRevision {
     pub criterion: Criterion,
     pub goal_revision: u64,
@@ -208,7 +208,7 @@ pub struct CriterionRevision {
     pub changed_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkRecord {
     pub version: u32,
     pub session: SessionKey,
@@ -260,7 +260,7 @@ impl WorkRecord {
                     )
                 })
                 .count(),
-            unfinished_drafts: self.drafts.iter().any(|draft| !draft.text.is_empty()),
+            unfinished_drafts: self.drafts.iter().any(|draft| !draft.text.is_empty()&&!self.outbox.iter().any(|item|item.target==draft.target&&item.text==draft.text&&matches!(item.state,DeliveryState::Accepted|DeliveryState::Queued))),
         }
     }
     pub fn matches(&self, query: &str) -> bool {
@@ -306,18 +306,24 @@ impl WorkRecord {
         } else {
             (verified_weight / total_weight * 100.0).clamp(0.0, 100.0)
         };
+        // Floating point and whole-percent rounding cannot turn an unfinished
+        // contract into a completion claim. The count remains authoritative.
+        let percent = if verified < total { percent.min(100.0 - 100.0 * f64::EPSILON) } else { 100.0 };
+        let display = if verified < total && percent >= 99.5 { "<100%".into() }
+            else if percent > 0.0 && percent < 0.5 { "<1%".into() }
+            else { format!("{percent:.0}%") };
         Progress {
             verified,
             total,
             percent: Some(percent),
-            label: format!("{verified} of {total} verified · {percent:.0}%"),
+            label: format!("{verified} of {total} verified · {display}"),
         }
     }
 }
 
 /// Compact graph projection. Full histories, drafts and outbox stay in the
 /// bounded lazy cache, rather than being retained for every historical goal.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkSummary {
     pub title: Option<String>,
     pub progress: Progress,
@@ -325,7 +331,7 @@ pub struct WorkSummary {
     pub unfinished_drafts: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Progress {
     pub verified: usize,
     pub total: usize,
@@ -333,7 +339,7 @@ pub struct Progress {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum WorkUpdate {
     ExpirePendingQuestions {

@@ -73,6 +73,7 @@ use crate::fact::Statement;
 // browser frontend goes through `tailer::Bundle`.
 pub(crate) mod claude;
 pub(crate) mod codex;
+pub(crate) mod activity;
 pub(crate) mod metadata;
 pub(crate) mod summary;
 #[cfg(feature = "native")]
