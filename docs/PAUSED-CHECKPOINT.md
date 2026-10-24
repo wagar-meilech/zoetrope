@@ -1,8 +1,50 @@
-# Saved checkpoint — 23 October 2026
+# Saved checkpoint — 24 October 2026
 
-**Historical checkpoint. Work resumed on 24 October 2026 at the user's request.**
-The state below records the earlier pause. The complete customized terminal
-interface was not installed at that checkpoint.
+**Paused again at the user's request.** All implementation agents and known
+build/test/peer processes have stopped. The installed `zoe` is unchanged.
+
+## Latest saved state
+
+- Integration branch `feat/goal-console`: `f4dd6e2` before this checkpoint update.
+  The integrated foundation still has 258 passing tests; UI work is separate.
+- UI branch `feat/zoe-4-terminal`: **WIP `3f5426f`**, clean, retained at
+  `/Users/melikhov/Repos/zoetrope-worktrees/zoe-4` with its isolated build cache.
+  Do not merge or install this incomplete branch.
+- Eleven public UI slices passed individually: history/search, exact-target
+  draft restart, plain-text criteria and evidence/reopening, honest near-100%
+  progress, guidance/queue/stop through a protocol peer, persistent expired and
+  async questions, native question replay/submission, quiet waiting visibility,
+  exact document opening, and public activity without hidden reasoning.
+- **Current slice is red:** transcript/live question correlation creates
+  duplicate copies. Next use the native `itemId` (verified to equal recorded
+  `call_id`) to preserve one source identity/draft, allow explicit feedback from
+  resolved/expired questions, and recognize recorded historical answers.
+  Last test session 23836 completed; no tests were started after the pause.
+- No full regression, formatting or lint pass has been claimed for this WIP.
+  Remaining UI work also includes request-criteria/checkpoint wiring, final
+  lifecycle/default CLI/replay/help/narrow-terminal behavior and resource tuning.
+- Current exact API, files, keymap and stopping point are in
+  `/Users/melikhov/Documents/Research/zoe-4-implementation.md`. These latest notes
+  supersede the earlier WIP description below.
+- Root review observations and documentation corrections to finish are saved
+  in `/Users/melikhov/Documents/Research/zoetrope-root-review-2026-10-24.md`.
+  Review the final combined code before treating candidate observations as bugs.
+- The current task has its own local goal record for Codex session
+  `01a1691a-571a-7c03-bc87-946ac8a3d53d`: four of six criteria verified.
+  `terminal` and `handoff` remain pending. This is Zoetrope-owned state, not a
+  modification of native history.
+- Final check tools were prepared in `/private/tmp/zoetrope-check-tools/`:
+  committed 1.1.11 and typos 1.51.1, official release digests verified. Final
+  lint checks have not yet run; no global installation or PATH change was made.
+
+On resume, merge the latest integration into the retained UI branch, continue
+the current public-seam RED/GREEN slice, then finish the remaining UI and ZOE-6.
+The merger/final-review/install/PR-ready workflow below still applies. No new
+interview or approval is needed. Do not merge the PR into main.
+
+## Earlier checkpoint — 23 October 2026
+
+The following records the first pause, before the UI slices above were added.
 
 ## Saved code
 
