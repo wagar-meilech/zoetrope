@@ -16,6 +16,28 @@ history includes locally available archived Codex sessions. Search covers
 indexed names, goals, criteria and recorded document paths, rather than every
 tool output in every transcript.
 
+## Keyboard controls
+
+| Key | Action |
+| --- | --- |
+| `H` | Switch Current / All history. |
+| `/` | Search the graph. |
+| Arrows or `j` / `k` | Select work. |
+| Enter or Space | Expand or collapse the selected goal. |
+| `f` | Open the selected recipient's feedback. |
+| `Q` | Open persistent questions. |
+| `c` | Read completion criteria and evidence. |
+| `d` | View recorded documents. |
+| `e` | Edit the current pane. |
+| F2 / F3 / F4 | Send now / queue / stop. |
+| Esc | Save the draft and return. |
+| `R` | Open read-only session replay; `q` returns to the fleet. |
+| `?` | Show context and keyboard help. |
+
+Ordinary characters stay in the editor while you type; they do not trigger
+graph shortcuts. Question choices are saved without submission. Use F2 to
+submit deliberately after answering every prompt.
+
 ## Goal progress
 
 A goal's completion criteria define its progress. Each verified criterion needs
@@ -68,6 +90,7 @@ resolved elsewhere are retained with their drafts; expired requests can be
 deliberately converted to feedback. That conversion creates a draft and does
 not claim the original question was answered. No answer or default choice is
 submitted automatically. Native command and permission approvals stay in Codex.
+Dismissal is local: it does not answer or cancel the runtime's request.
 
 ## Documents and replay
 
