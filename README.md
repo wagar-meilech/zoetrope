@@ -5,7 +5,7 @@
 <h1 align="center">zoetrope</h1>
 
 <p align="center">
-  <em>Watch a Claude Code or Codex session as a live flow graph, in your terminal or your browser.</em>
+  <em>Watch goals and agents across projects, steer Codex from your terminal, and replay sessions.</em>
 </p>
 
 <p align="center">
@@ -28,7 +28,11 @@ Claude Code and Codex write a transcript for every session. zoetrope reads it an
 the session as a graph in your terminal: the main agent, the agents it spawns, and the
 tools each one runs, updating live as it goes. Point it at a finished run and it replays,
 paced by the session's own timestamps. Point it at a running one and it follows along.
-It's read-only, and nothing leaves your machine.
+Native transcripts stay read-only. This fork adds a global goal console,
+evidence-backed progress, persistent questions and drafts, and explicit local
+Codex controls. Passive monitoring uses no model calls or internet service.
+See the [goal console guide](docs/GOAL-CONSOLE.md) for steering, history,
+completion criteria and document preview. Browser replay remains available.
 
 Built on [ratatui](https://ratatui.rs) and [rataflow](https://github.com/furkankly/rataflow).
 
@@ -48,6 +52,20 @@ across both.
 ![zoetrope replaying a Codex CLI session as a flow graph](https://raw.githubusercontent.com/furkankly/zoetrope/main/assets/zoetrope-codex.gif)
 
 ## Installation
+
+**This customized fork** — Rust 1.88 or newer:
+
+```bash
+git clone https://github.com/wagar-meilech/zoetrope
+cd zoetrope
+cargo build --release --locked
+./target/release/zoe
+```
+
+The optional [VS Code bridge](editors/vscode/README.md) opens selected Markdown
+documents in MD Reader. The main app is Rust; no JavaScript service is required.
+
+The following installation methods install the **upstream release**:
 
 **Homebrew** — macOS and Linux:
 
@@ -69,7 +87,7 @@ macOS (Apple Silicon and Intel), Linux (`musl`, arm64 and x86_64) and Windows
 Whichever route you take, the command is `zoe`. Or build from source:
 
 ```bash
-git clone https://github.com/furkankly/zoetrope
+git clone https://github.com/wagar-meilech/zoetrope
 cd zoetrope
 cargo build --release
 ./target/release/zoe
@@ -103,7 +121,8 @@ covers both.
 ## Usage
 
 ```bash
-zoe                          # follow the current project's live session
+zoe                          # global goal and agent console
+zoe --project                # follow the current project's live session
 zoe <dir>                    # follow another project's session
 zoe <file.jsonl>             # replay a recording from the start (any file of a session)
 zoe <id>                     # replay a session by id, or a unique prefix of one
@@ -114,15 +133,25 @@ zoe inspect <file|id>        # print the session tree and exit (no TUI)
 ```
 
 Give it a file and it reads the whole transcript, then keeps watching for new lines.
-Give it a directory, or no argument at all, and it finds the newest session in that
-project and follows it live. Whichever way you start, the controls are the same:
-scrub, follow, pause, jump back to live.
+Give it a directory, or use `--project`, and it finds the newest session in that
+project and follows it live. File/ID/project views retain the replay controls:
+scrub, follow, pause and jump back to live. Bare `zoe` opens the fleet console:
+`H` switches current/history, `/` searches and `?` shows help.
 
 The same engine also runs [in the browser](https://zoetrope.furkankly.dev/app),
 compiled to WebAssembly via [ratzilla](https://github.com/ratatui/ratzilla). Open a
 session from disk, or drop a transcript on the page. It stays local there too.
 
 ## Features
+
+**Goal console**
+- One expanding graph across projects, goals and agents, with searchable history
+- Editable completion criteria, evidence and scope revisions; unknown progress
+  stays unknown
+- Persistent recipient-specific feedback and questions, with distinct guidance,
+  queue and stop actions
+- Recorded Markdown documents opened in the user's VS Code MD Reader
+- Local incremental indexing, bounded caches and no monitoring model
 
 **The graph**
 - A node per agent: the main session, its subagents, and workflow groups with their

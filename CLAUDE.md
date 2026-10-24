@@ -1,6 +1,6 @@
 # zoetrope
 
-Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph. The same core also runs in the browser, compiled to wasm. Read-only, zero network.
+Terminal UI for a global goal/agent graph, persistent local steering and Claude Code/Codex session replay. The replay core also runs in the browser, compiled to wasm. Native transcripts remain read-only; explicit native controls use local IPC only.
 
 ## Approved goal-console work
 
