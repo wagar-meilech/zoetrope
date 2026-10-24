@@ -1,7 +1,8 @@
 # Saved checkpoint — 23 October 2026
 
-**Paused at the user's request.** No implementation agents, builds or tests are
-running. The complete customized terminal interface is not installed yet.
+**Historical checkpoint. Work resumed on 24 October 2026 at the user's request.**
+The state below records the earlier pause. The complete customized terminal
+interface was not installed at that checkpoint.
 
 ## Saved code
 
