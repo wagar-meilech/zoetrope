@@ -3,6 +3,7 @@
 mod control_worker;
 mod document_worker;
 mod editor;
+mod presentation;
 pub mod runtime;
 mod state_worker;
 use crate::console::AgentKey;
@@ -167,6 +168,7 @@ struct Card {
     title: String,
     detail: String,
     progress: String,
+    bar: String,
     activity: String,
 }
 impl NodeContent for Card {
@@ -182,6 +184,9 @@ impl NodeContent for Card {
         }
         if !self.progress.is_empty() {
             lines.push(self.progress.clone());
+        }
+        if !self.bar.is_empty() {
+            lines.push(self.bar.clone());
         }
         if !self.activity.is_empty() {
             lines.extend(crate::ui::wrap(
@@ -255,6 +260,10 @@ pub struct FleetConsole {
     positions: BTreeMap<FleetNodeId, (f64, f64)>,
     history: bool,
     pending_center: bool,
+    show_help: bool,
+    help_scroll: u16,
+    canvas_area: Rect,
+    progress_area: Option<Rect>,
     requested_selection: Option<FleetNodeId>,
     expanding: Option<(SessionKey, bool)>,
     pub(crate) quit: bool,
@@ -299,6 +308,10 @@ impl FleetConsole {
             positions: BTreeMap::new(),
             history: false,
             pending_center: true,
+            show_help: false,
+            help_scroll: 0,
+            canvas_area: Rect::default(),
+            progress_area: None,
             requested_selection: None,
             expanding: None,
             quit: false,
@@ -539,6 +552,12 @@ impl FleetConsole {
         self.snapshots.get(id)
     }
     fn runtime_word(&self) -> &str {
+        if self
+            .selected_agent()
+            .is_some_and(|agent| agent.session.provider == crate::provider::Provider::Claude)
+        {
+            return "Transcript viewing only; live controls unavailable for this provider";
+        }
         self.runtime_snapshot()
             .map(|s| control_worker::status_word(&s.status))
             .unwrap_or(if self.control_connected {
@@ -873,11 +892,7 @@ impl FleetConsole {
         let Some(record) = &self.selected_work else {
             return "Loading selected goal…".into();
         };
-        let mut text = format!(
-            "Selected: {}\n{}\n\n",
-            self.selected_label(),
-            record.progress().label
-        );
+        let mut text = String::new();
         if let Some(goal) = &record.goal {
             for (at, c) in goal.criteria.iter().enumerate() {
                 text.push_str(&format!(
@@ -1343,7 +1358,6 @@ impl FleetConsole {
                 .find(|n| n.id == FleetNodeId::Session(key.clone()))
             {
                 self.expanding = Some((key.clone(), !node.expanded));
-                self.positions.clear();
                 self.status = "Loading this goal's agents…".into();
                 self.navigate(ConsoleCommand::ToggleExpanded(key));
             }
@@ -1449,7 +1463,25 @@ impl FleetConsole {
                         String::new()
                     }
                 });
+            let bar = if matches!(node.id, FleetNodeId::Session(_)) {
+                session_key(&node.id)
+                    .and_then(|key| self.view.summaries.get(key))
+                    .and_then(|summary| {
+                        summary.progress.percent.map(|percent| {
+                            let cells = if summary.progress.verified == summary.progress.total {
+                                20
+                            } else {
+                                ((percent / 100.0 * 20.0) as usize).min(19)
+                            };
+                            format!("[{}{}]", "#".repeat(cells), "-".repeat(20 - cells))
+                        })
+                    })
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             let card = Card {
+                bar,
                 title,
                 detail,
                 activity: node.activity.clone().unwrap_or_default(),
@@ -1500,6 +1532,30 @@ impl FleetConsole {
     }
     /// Handle one key/mouse event. Returns true only for an explicit quit.
     pub fn handle_event(&mut self, event: &Event) -> bool {
+        if let Event::Mouse(mouse) = event {
+            presentation::mouse(self, *mouse);
+            return false;
+        }
+        if let Event::Paste(text) = event {
+            if let Some(edit) = self.edit.as_mut() {
+                if edit.insert(text)
+                    && matches!(
+                        self.edit_kind,
+                        Some(EditKind::Feedback | EditKind::Answer { .. })
+                    )
+                {
+                    self.dirty_since = Some(Instant::now());
+                    self.status = "Saving draft…".into();
+                }
+            } else if self.searching {
+                for ch in text.chars().filter(|ch| !ch.is_control()) {
+                    if self.query.len() + ch.len_utf8() <= 512 {
+                        self.query.push(ch);
+                    }
+                }
+            }
+            return false;
+        }
         if let Event::Key(key) = event {
             if key.kind == KeyEventKind::Release {
                 return false;
@@ -1507,6 +1563,16 @@ impl FleetConsole {
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 self.quit = true;
                 return true;
+            }
+            if self.show_help {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('?') => self.show_help = false,
+                    KeyCode::PageDown => self.help_scroll = self.help_scroll.saturating_add(8),
+                    KeyCode::PageUp => self.help_scroll = self.help_scroll.saturating_sub(8),
+                    KeyCode::Char('q') => self.quit = true,
+                    _ => {}
+                }
+                return self.quit;
             }
             if !self.searching
                 && (matches!(self.edit_kind, Some(EditKind::Feedback))
@@ -1532,7 +1598,6 @@ impl FleetConsole {
                 match key.code {
                     KeyCode::Esc | KeyCode::Enter => {
                         self.searching = false;
-                        self.positions.clear();
                         self.navigate(ConsoleCommand::Search(self.query.clone()));
                     }
                     KeyCode::Backspace => {
@@ -1569,9 +1634,28 @@ impl FleetConsole {
             }
             match key.code {
                 KeyCode::Char('q') => self.quit = true,
+                KeyCode::Char('?') => {
+                    self.show_help = true;
+                    self.help_scroll = 0;
+                }
+                KeyCode::Char('+') | KeyCode::Char('=') => self.flow.zoom_in(),
+                KeyCode::Char('-') => self.flow.zoom_out(),
+                KeyCode::Char('o') => self.flow.request_fit_view(),
+                KeyCode::Char('r') => {
+                    self.flow.zoom_to(1.0);
+                    self.pending_center = true;
+                }
+                KeyCode::Left => {
+                    self.flow.pan(8.0, 0.0);
+                    self.pending_center = false;
+                }
+                KeyCode::Right => {
+                    self.flow.pan(-8.0, 0.0);
+                    self.pending_center = false;
+                }
+                KeyCode::Char('I') => self.navigate(ConsoleCommand::ToggleInternal),
                 KeyCode::Char('H' | 'h') => {
                     self.history = !self.history;
-                    self.positions.clear();
                     self.navigate(ConsoleCommand::ToggleHistory);
                 }
                 KeyCode::Char('/') => self.searching = true,
@@ -1675,119 +1759,7 @@ impl FleetConsole {
 
     /// Render cached state into a terminal frame.
     pub fn draw(&mut self, frame: &mut Frame) {
-        let [header, body, footer] = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Fill(1),
-            Constraint::Length(2),
-        ])
-        .areas(frame.area());
-        frame.render_widget(
-            Paragraph::new(format!(
-                "Zoetrope · {}\n{}",
-                if self.history {
-                    "All history"
-                } else {
-                    "Current work"
-                },
-                if self.query.is_empty() {
-                    "Goal progress, agents and guidance".into()
-                } else {
-                    format!(
-                        "{}: {}",
-                        if self.searching {
-                            "Find"
-                        } else if self.view.query == self.query {
-                            "Search"
-                        } else {
-                            "Searching"
-                        },
-                        self.query
-                    )
-                }
-            ))
-            .style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            header,
-        );
-        let [canvas, panel] =
-            Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)])
-                .areas(body);
-        frame.render_widget(&mut self.flow, canvas);
-        if self.view.ready && self.view.graph.nodes.is_empty() {
-            frame.render_widget(
-                Paragraph::new(if self.history {
-                    "No matching history. Clear search to see all work."
-                } else {
-                    "No current work. Press H to open history."
-                })
-                .wrap(Wrap { trim: true }),
-                canvas,
-            );
-        }
-        if self.pending_center {
-            self.flow.center_on_selected();
-            self.pending_center = false;
-            frame.render_widget(&mut self.flow, canvas);
-        }
-        let details = if self.edit.is_some() && !matches!(self.edit_kind, Some(EditKind::Feedback))
-        {
-            format!(
-                "{}\n\n{}\n\nF2 save · Esc cancel · Ctrl-U clear",
-                if matches!(self.edit_kind, Some(EditKind::Goal(_))) {
-                    "Goal title on the first line; one outcome per next line"
-                } else if matches!(self.edit_kind, Some(EditKind::Answer { .. })) {
-                    "Your answer draft · saving does not submit it"
-                } else {
-                    "Why is this outcome verified? Your explicit attestation is recorded."
-                },
-                self.edit.as_ref().unwrap().text
-            )
-        } else if self.pane == Pane::Documents {
-            self.documents_text()
-        } else if self.pane == Pane::Questions {
-            self.questions_text()
-        } else if self.pane == Pane::Criteria {
-            self.criteria_text()
-        } else if self.feedback_open {
-            format!(
-                "Selected: {}\nRecipient: {}\n{}\n\n{}\n\nF2 Send guidance · F3 Queue · F4 Stop\nEsc saves draft",
-                self.selected_label(),
-                self.recipient_label(),
-                self.runtime_word(),
-                self.edit.as_ref().map(|e| e.text.as_str()).unwrap_or("")
-            )
-        } else if let Some(record) = &self.selected_work {
-            format!(
-                "Selected: {}\nRecipient: {}\n{}\n{}",
-                self.selected_label(),
-                self.recipient_label(),
-                record.progress().label,
-                self.runtime_word()
-            ) + &self.activity_text()
-        } else {
-            "Select a goal to inspect it".into()
-        };
-        frame.render_widget(
-            Paragraph::new(details)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" Selected work "),
-                )
-                .wrap(Wrap { trim: true })
-                .scroll((self.scroll, 0)),
-            panel,
-        );
-        frame.render_widget(
-            Paragraph::new(format!(
-                "H history · / search · ↑↓ select · Enter expand · f feedback · q quit\n{}",
-                self.status
-            )),
-            footer,
-        );
+        presentation::draw(self, frame);
     }
     /// Flush and stop workers after an orderly exit. No native work is stopped.
     pub fn shutdown(&mut self) {

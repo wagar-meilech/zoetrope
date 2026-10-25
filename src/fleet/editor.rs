@@ -9,6 +9,68 @@ impl Editor {
         let cursor = text.len();
         Self { text, cursor }
     }
+    pub fn insert(&mut self, text: &str) -> bool {
+        let mut inserted = String::new();
+        let available = 65536usize.saturating_sub(self.text.len());
+        for ch in text
+            .chars()
+            .filter(|ch| !ch.is_control() || matches!(ch, '\n' | '\t'))
+        {
+            if inserted.len() + ch.len_utf8() > available {
+                break;
+            }
+            inserted.push(ch);
+        }
+        if inserted.is_empty() {
+            return false;
+        }
+        self.text.insert_str(self.cursor, &inserted);
+        self.cursor += inserted.len();
+        true
+    }
+    pub fn wrapped(&self, width: usize) -> (Vec<String>, usize, usize) {
+        use unicode_width::UnicodeWidthChar;
+        let width = width.max(1);
+        let mut lines = vec![String::new()];
+        let mut row = 0;
+        let mut column = 0;
+        let mut cursor = (0, 0);
+        for (offset, ch) in self.text.char_indices() {
+            if offset == self.cursor {
+                cursor = (row, column);
+            }
+            if ch == '\n' {
+                lines.push(String::new());
+                row += 1;
+                column = 0;
+                continue;
+            }
+            let text = if ch == '\t' {
+                "    ".into()
+            } else {
+                ch.to_string()
+            };
+            for symbol in text.chars() {
+                let cells = symbol.width().unwrap_or(0);
+                if column + cells > width {
+                    lines.push(String::new());
+                    row += 1;
+                    column = 0;
+                }
+                lines[row].push(symbol);
+                column += cells;
+                if column >= width {
+                    lines.push(String::new());
+                    row += 1;
+                    column = 0;
+                }
+            }
+        }
+        if self.cursor == self.text.len() {
+            cursor = (row, column);
+        }
+        (lines, cursor.0, cursor.1)
+    }
     pub fn key(&mut self, key: &KeyEvent) -> bool {
         match key.code {
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
