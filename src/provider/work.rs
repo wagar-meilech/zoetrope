@@ -4,8 +4,8 @@
 use crate::console::{AgentKey, SessionKey};
 use crate::provider::Provider;
 use crate::workstate::{
-    DocumentChange, DocumentRecord, PlanProposal, PlanStep, QuestionRecord, QuestionState,
-    WorkUpdate,QuestionPrompt,QuestionOption,
+    DocumentChange, DocumentRecord, PlanProposal, PlanStep, QuestionOption, QuestionPrompt,
+    QuestionRecord, QuestionState, WorkUpdate,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -49,6 +49,7 @@ impl WorkStream {
                 "request_user_input",
                 "FileChange",
                 "fileChange",
+                "function_call_output",
             ]
             .iter()
             .any(|needle| line.contains(needle))
@@ -95,15 +96,58 @@ impl WorkStream {
                     });
                 }
                 Some("request_user_input_async" | "functions.request_user_input_async") => {
-                    let Some(questions)=arguments["questions"].as_array()else{return;};
-                    let mut prompts=Vec::new();
-                    for(at,question)in questions.iter().enumerate(){
-                        let Some(title)=question["title"].as_str().filter(|s|!s.trim().is_empty())else{return;};
-                        let options=match question.get("options"){None|Some(Value::Null)=>Vec::new(),Some(Value::Array(options))=>{let Some(options)=options.iter().map(|option|option.as_str().map(|label|QuestionOption{label:label.into(),description:String::new()})).collect::<Option<Vec<_>>>()else{return;};options},_=>return};
-                        prompts.push(QuestionPrompt{id:format!("async-prompt-{}",at+1),header:format!("Question {}",at+1),question:title.into(),options,is_other:true,is_secret:false});
+                    let Some(questions) = arguments["questions"].as_array() else {
+                        return;
+                    };
+                    let mut prompts = Vec::new();
+                    for (at, question) in questions.iter().enumerate() {
+                        let Some(title) =
+                            question["title"].as_str().filter(|s| !s.trim().is_empty())
+                        else {
+                            return;
+                        };
+                        let options = match question.get("options") {
+                            None | Some(Value::Null) => Vec::new(),
+                            Some(Value::Array(options)) => {
+                                let Some(options) = options
+                                    .iter()
+                                    .map(|option| {
+                                        option.as_str().map(|label| QuestionOption {
+                                            label: label.into(),
+                                            description: String::new(),
+                                        })
+                                    })
+                                    .collect::<Option<Vec<_>>>()
+                                else {
+                                    return;
+                                };
+                                options
+                            }
+                            _ => return,
+                        };
+                        prompts.push(QuestionPrompt {
+                            id: format!("async-prompt-{}", at + 1),
+                            header: format!("Question {}", at + 1),
+                            question: title.into(),
+                            options,
+                            is_other: true,
+                            is_secret: false,
+                        });
                     }
-                    if prompts.is_empty(){return;}
-                    self.pending.push(WorkUpdate::CaptureQuestion{question:QuestionRecord{id:format!("transcript:{}:{call}",self.producer.agent_id),target:self.producer.clone(),request_id:None,turn_id:None,prompts,state:QuestionState::Expired,answers:Default::default()}});
+                    if prompts.is_empty() {
+                        return;
+                    }
+                    self.pending.push(WorkUpdate::CaptureQuestion {
+                        question: QuestionRecord {
+                            id: format!("transcript:{}:{call}", self.producer.agent_id),
+                            target: self.producer.clone(),
+                            request_id: None,
+                            turn_id: None,
+                            prompts,
+                            state: QuestionState::Expired,
+                            answers: Default::default(),
+                        },
+                    });
                 }
                 Some("request_user_input" | "functions.request_user_input") => {
                     let Some(prompts) = arguments
@@ -125,6 +169,26 @@ impl WorkStream {
                     });
                 }
                 _ => {}
+            }
+        }
+        if record["type"] == "response_item" && payload["type"] == "function_call_output" {
+            if let Some(call) = payload["call_id"].as_str() {
+                let output = payload["output"]
+                    .as_str()
+                    .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                    .unwrap_or_else(|| payload["output"].clone());
+                if let Some(answers) = output["answers"].as_object() {
+                    let answered = answers.values().any(|value| {
+                        value["answers"].as_array().is_some_and(|a| {
+                            a.iter()
+                                .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty()))
+                        })
+                    });
+                    self.pending.push(WorkUpdate::ObserveQuestionResolution {
+                        question_id: format!("transcript:{}:{call}", self.producer.agent_id),
+                        answered,
+                    });
+                }
             }
         }
         if record["type"] == "event_msg" && payload["type"] == "item_completed" {

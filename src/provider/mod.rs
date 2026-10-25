@@ -71,9 +71,9 @@ use crate::fact::Statement;
 // the vocabulary in `fact`, and how it finds its files is the primitives on
 // `Provider` below. Nothing outside needs the parsers themselves, and the
 // browser frontend goes through `tailer::Bundle`.
+pub(crate) mod activity;
 pub(crate) mod claude;
 pub(crate) mod codex;
-pub(crate) mod activity;
 pub(crate) mod metadata;
 pub(crate) mod summary;
 #[cfg(feature = "native")]

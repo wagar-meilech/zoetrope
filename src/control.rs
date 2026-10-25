@@ -144,6 +144,8 @@ pub struct NativeOption {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NativeQuestion {
+    #[serde(default)]
+    pub item_id: Option<String>,
     pub request_id: Value,
     pub thread_id: String,
     pub turn_id: String,
@@ -667,6 +669,7 @@ impl Controller {
                         serde_json::from_value::<Vec<NativePrompt>>(params["questions"].clone())
                     {
                         let question = NativeQuestion {
+                            item_id: params["itemId"].as_str().map(str::to_owned),
                             request_id: request_id.clone(),
                             thread_id: id.into(),
                             turn_id: turn.into(),
