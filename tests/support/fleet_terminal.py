@@ -92,7 +92,7 @@ try:
         observations = {"project": expect("Inspect runtime fixture goal"), "fleet": "Current work" in visible()}
     else:
         observations = {"fleet": expect("Current work")}
-    if scenario == "autosave" and observations["fleet"]:
+    if scenario in ("autosave", "paste") and observations["fleet"]:
         expect("Inspect runtime fixture goal", compact=True)
         os.write(terminal, b"f")
         if expect("Editing feedback", compact=True):
@@ -101,7 +101,13 @@ try:
             deadline = time.monotonic() + 0.3
             while time.monotonic() < deadline:
                 receive()
-            os.write(terminal, b"Save while I am thinking")
+            expected = "Save while I am thinking"
+            if scenario == "paste":
+                expected = "H?qR\nsecond line"
+                observations["paste_enabled"] = b"\x1b[?2004h" in data
+                os.write(terminal, b"\x1b[200~" + expected.encode() + b"\x1b[201~")
+            else:
+                os.write(terminal, expected.encode())
             deadline = time.monotonic() + 2
             observations["autosaved"] = False
             while time.monotonic() < deadline:
@@ -110,7 +116,7 @@ try:
                     "show", "codex", "root-goal",
                 ])
                 drafts = json.loads(output)["record"]["drafts"]
-                if drafts and drafts[0]["text"] == "Save while I am thinking":
+                if drafts and drafts[0]["text"] == expected:
                     observations["autosaved"] = True
                     break
                 receive(0.05)
@@ -154,7 +160,7 @@ try:
         else:
             observations["replay"] = False
     try:
-        if scenario != "autosave":
+        if scenario not in ("autosave", "paste"):
             os.write(terminal, b"q")
     except OSError:
         pass  # An invalid CLI invocation can exit before accepting input.
@@ -169,6 +175,11 @@ try:
         os.kill(pid, signal.SIGTERM)
         _, status = os.waitpid(pid, 0)
     observations["exit"] = os.waitstatus_to_exitcode(status)
+    if scenario == "paste":
+        while receive(0):
+            if not select.select([terminal], [], [], 0)[0]:
+                break
+        observations["paste_disabled"] = b"\x1b[?2004l" in data
     if peer is not None:
         try:
             _, errors = peer.communicate(timeout=3)

@@ -3,8 +3,8 @@
 use std::io::stdout;
 
 use crossterm::event::{
-    DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEventKind,
-    KeyModifiers,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
+    EventStream, KeyCode, KeyEventKind, KeyModifiers,
 };
 use crossterm::execute;
 use futures::StreamExt;
@@ -127,7 +127,7 @@ fn repaint(terminal: &mut ratatui::DefaultTerminal) -> std::io::Result<()> {
 
 impl Drop for RestoreTerminal {
     fn drop(&mut self) {
-        let _ = execute!(stdout(), DisableMouseCapture);
+        let _ = execute!(stdout(), DisableBracketedPaste, DisableMouseCapture);
         ratatui::restore();
     }
 }
@@ -136,7 +136,7 @@ impl Drop for RestoreTerminal {
 pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
     let mut terminal = ratatui::try_init()?;
     let restore = RestoreTerminal;
-    execute!(stdout(), EnableMouseCapture)?;
+    execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
     crate::tui::install_panic_hook();
 
     let mut app = FleetConsole::new(config);

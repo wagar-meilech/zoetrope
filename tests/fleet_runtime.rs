@@ -107,6 +107,15 @@ fn feedback_autosaves_without_another_keypress() {
 }
 
 #[test]
+fn terminal_paste_keeps_multiline_feedback_literal_and_restores_paste_mode() {
+    let observed = Fixture::new().run("paste");
+    assert_eq!(observed["paste_enabled"], true, "{observed}");
+    assert_eq!(observed["autosaved"], true, "{observed}");
+    assert_eq!(observed["paste_disabled"], true, "{observed}");
+    assert_eq!(observed["exit"], 0, "{observed}");
+}
+
+#[test]
 fn replay_returns_to_the_same_goal_and_draft_without_live_actions() {
     let fixture = Fixture::new();
     let observed = fixture.run("replay");
