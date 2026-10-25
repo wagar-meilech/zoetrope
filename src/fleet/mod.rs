@@ -212,6 +212,7 @@ enum Pane {
     Criteria,
     Questions,
     Documents,
+    Deliveries,
 }
 enum EditKind {
     Feedback,
@@ -241,6 +242,7 @@ pub struct FleetConsole {
     snapshots: BTreeMap<String, ThreadSnapshot>,
     control_connected: bool,
     control_pending: bool,
+    inflight_id: Option<String>,
     selected_work: Option<WorkRecord>,
     edit: Option<Editor>,
     feedback_target: Option<AgentKey>,
@@ -287,6 +289,7 @@ impl FleetConsole {
             snapshots: BTreeMap::new(),
             control_connected: false,
             control_pending: false,
+            inflight_id: None,
             selected_work: None,
             edit: None,
             feedback_target: None,
@@ -373,10 +376,7 @@ impl FleetConsole {
                 if selection_changed {
                     self.selected_work = None;
                     self.pending_center = true;
-                    let _ = self
-                        .control
-                        .tx
-                        .try_send(ControlCommand::Select(self.selected_agent()));
+                    self.control.select(self.selected_agent());
                 }
             }
             if changed {
@@ -398,10 +398,7 @@ impl FleetConsole {
                 if let Some(id) = self.pending_feedback.as_ref() {
                     if let Some(item) = record.outbox.iter().find(|item| &item.id == id) {
                         self.feedback_target = Some(item.target.clone());
-                        let _ = self
-                            .control
-                            .tx
-                            .try_send(ControlCommand::Select(Some(item.target.clone())));
+                        self.control.select(Some(item.target.clone()));
                         self.feedback_open = true;
                         self.pane = Pane::Feedback;
                         self.edit_kind = Some(EditKind::Feedback);
@@ -467,6 +464,10 @@ impl FleetConsole {
         let dirty = std::mem::take(&mut native.dirty);
         let notice = native.notice.take();
         let receipt = native.receipt.take();
+        if self.inflight_id != native.inflight_id {
+            self.inflight_id = native.inflight_id.clone();
+            changed = true;
+        }
         drop(native);
         if let Some(message) = notice {
             self.status = message;
@@ -482,6 +483,23 @@ impl FleetConsole {
         }
         if let Some(receipt) = receipt {
             self.control_pending = false;
+            if let Some(text) = receipt.cleared_text.as_ref() {
+                if self.feedback_target.as_ref() == Some(&receipt.target)
+                    && matches!(self.edit_kind, Some(EditKind::Feedback))
+                {
+                    if let Some(editor) = self.edit.as_mut().filter(|e| &e.text == text) {
+                        *editor = Editor::new(String::new());
+                        self.dirty_since = None;
+                    }
+                }
+                if let Some(work) = self.selected_work.as_mut() {
+                    for draft in &mut work.drafts {
+                        if draft.target == receipt.target && &draft.text == text {
+                            draft.text.clear();
+                        }
+                    }
+                }
+            }
             self.status = receipt.message;
             let _ = self
                 .state
@@ -501,6 +519,51 @@ impl FleetConsole {
             changed = true;
         }
         changed
+    }
+    fn deliveries_text(&self) -> String {
+        use crate::workstate::{DeliveryState as S, FeedbackMode as M};
+        let mut text = String::from(
+            "Saved deliveries\nDelivery records confirm receipt, not completed work.\n",
+        );
+        if let Some(work) = &self.selected_work {
+            for item in work.outbox.iter().rev().take(32) {
+                let mode = match item.mode {
+                    M::Guidance => "Guidance",
+                    M::Queue => "Queued instruction",
+                    M::Stop => "Stop request",
+                    M::Answer => "Answer",
+                    M::CriteriaRequest => "Criteria request",
+                };
+                let state = if self.inflight_id.as_ref() == Some(&item.id) {
+                    "Sending"
+                } else {
+                    match item.state {
+                        S::Draft => "Saved locally",
+                        S::Sending | S::Unknown => "Delivery unknown",
+                        S::Queued => "Queued by Codex",
+                        S::Accepted => "Accepted by Codex",
+                        S::Submitted => "Submitted; awaiting resolution",
+                        S::Rejected => "Rejected by Codex",
+                        S::Unavailable => "Unavailable",
+                    }
+                };
+                text.push_str(&format!(
+                    "\n{mode} to {} · {state}\n",
+                    self.producer_label(&item.target)
+                ));
+                if item.mode != M::Answer {
+                    text.push_str(&crate::ui::truncate(
+                        item.text.lines().next().unwrap_or_default(),
+                        160,
+                    ));
+                    text.push('\n');
+                }
+            }
+            if work.outbox.is_empty() {
+                text.push_str("\nNo deliveries yet. Write feedback with f.");
+            }
+        }
+        text
     }
     fn recipient_label(&self) -> String {
         if self.pane == Pane::Feedback {
@@ -594,25 +657,6 @@ impl FleetConsole {
             .unwrap_or_default();
         if mode != FeedbackMode::Stop && text.trim().is_empty() {
             self.status = "Write feedback before sending it".into();
-            return;
-        }
-        let duplicate = self.selected_work.as_ref().is_some_and(|r| {
-            r.outbox.iter().any(|item| {
-                item.target == target
-                    && item.text == text
-                    && item.mode == mode
-                    && matches!(
-                        item.state,
-                        crate::workstate::DeliveryState::Accepted
-                            | crate::workstate::DeliveryState::Queued
-                            | crate::workstate::DeliveryState::Unknown
-                            | crate::workstate::DeliveryState::Sending
-                    )
-            })
-        });
-        if duplicate {
-            self.status =
-                "This draft already has a delivery record. Inspect it before sending again.".into();
             return;
         }
         let expected_turn = self.runtime_snapshot().and_then(|s| s.active_turn.clone());
@@ -1338,10 +1382,7 @@ impl FleetConsole {
                 let _ = self.state.tx.try_send(StateCommand::Load(key));
             }
         }
-        let _ = self
-            .control
-            .tx
-            .try_send(ControlCommand::Select(self.selected_agent()));
+        self.control.select(self.selected_agent());
         self.navigate(ConsoleCommand::Select(id));
     }
 
@@ -1557,7 +1598,9 @@ impl FleetConsole {
             return false;
         }
         if let Event::Key(key) = event {
-            if key.kind == KeyEventKind::Release {
+            if key.kind == KeyEventKind::Release
+                || (key.kind == KeyEventKind::Repeat && matches!(key.code, KeyCode::F(_)))
+            {
                 return false;
             }
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -1698,6 +1741,10 @@ impl FleetConsole {
                     self.toggle_expansion()
                 }
                 KeyCode::Char('f') => self.open_feedback(),
+                KeyCode::Char('b') => {
+                    self.pane = Pane::Deliveries;
+                    self.scroll = 0;
+                }
                 KeyCode::Char('d') => {
                     self.pane = Pane::Documents;
                     self.item_index = 0;
