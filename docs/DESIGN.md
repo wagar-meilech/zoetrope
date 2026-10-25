@@ -19,7 +19,7 @@ remain separate from live control.
 
 ## CLI
 
-One TUI command over the unified timeline engine (see the **Timeline** section) plus the headless `inspect`. The launch only picks **defaults** — *what* to open and *where the playhead starts*; once open, scrub / follow / pause / go-live all work regardless.
+Bare launch opens the native fleet console. Explicit replay/follow targets use the unified timeline engine (see the **Timeline** section), alongside headless `inspect`. A replay launch picks defaults — what to open and where the playhead starts; once open, scrub / follow / pause / go-live all work regardless.
 
 ```
 zoe                      # global goal and agent console
@@ -33,7 +33,7 @@ zoe --provider codex ... # force the format instead of reading it off the conten
 zoe inspect <file|id>    # no TUI: print session info + parsed tree (smoke-test)
 ```
 
-Resolution goes through `provider::open` (see [DISCOVERY.md](DISCOVERY.md)): a **file** is `Target::Path` and bulk-loads + tails (replay feeder), the provider read off its first record; an **id** is `Target::Id`, looked up across every provider's roots; a **dir** (or none → cwd) is `Target::Here` and follows the newest session of that project, any provider. `--follow` only changes the start position (head vs beginning) via `Mode`. `Cli = View { target: Option<String>, follow: bool, speed: f64, provider: Option<Provider> } | Inspect { file, provider }`. Arg parsing: hand-rolled over `std::env::args` (no clap; keep deps lean).
+Replay/follow resolution goes through `provider::open` (see [DISCOVERY.md](DISCOVERY.md)): a **file** is `Target::Path` and bulk-loads + tails (replay feeder), the provider read off its first record; an **id** is `Target::Id`, looked up across every provider's roots; a **dir**, or `--project` for cwd, is `Target::Here` and follows the newest session of that project, any provider. `--follow` only changes the start position (head vs beginning) via `Mode`. Arg parsing is hand-rolled over `std::env::args` (no clap; keep dependencies lean).
 
 ## Workspace layout
 
