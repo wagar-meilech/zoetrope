@@ -84,14 +84,9 @@ cargo install zoetrope
 macOS (Apple Silicon and Intel), Linux (`musl`, arm64 and x86_64) and Windows
 (x86_64). Unpack one and put `zoe` on your `PATH`.
 
-Whichever route you take, the command is `zoe`. Or build from source:
-
-```bash
-git clone https://github.com/wagar-meilech/zoetrope
-cd zoetrope
-cargo build --release
-./target/release/zoe
-```
+Whichever route you take, the command is `zoe`. Build this customized fork with
+the source commands above; the upstream installers do not contain its goal
+console changes.
 
 No install at all: **[try it in your browser](https://zoetrope.furkankly.dev/app)**.
 Drop a transcript on the page and get the same graph.
