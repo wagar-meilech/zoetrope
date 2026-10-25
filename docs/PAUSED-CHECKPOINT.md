@@ -1,10 +1,14 @@
 # Saved checkpoint — 24 October 2026
 
 **Historical checkpoint. Work resumed on 25 October 2026 at the user's request.**
-The state below records the second pause. The installed `zoe` had not yet been
-rebuilt with these customizations.
+Implementation, final review and installed-release verification were completed
+on 25 October. See the [usage guide](GOAL-CONSOLE.md) and
+[validation results](GOAL-CONSOLE-VALIDATION.md) for the current app.
+The state below records the second pause, when the installed `zoe` had not yet
+been rebuilt with these customizations. Its WIP and resume instructions are
+historical.
 
-## Latest saved state
+## State at the second pause
 
 - Integration branch `feat/goal-console`: `f4dd6e2` before this checkpoint update.
   The integrated foundation still has 258 passing tests; UI work is separate.

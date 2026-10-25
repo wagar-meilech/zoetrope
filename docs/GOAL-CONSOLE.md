@@ -1,8 +1,5 @@
 # Using the goal console
 
-> The terminal implementation is integrated. Final review fixes and release
-> installation are being verified before handoff.
-
 Run `zoe` to see work across local projects. The native app groups projects,
 goals and agents into an expanding graph. `H` switches between Current and All
 history; `/` searches the same graph; `?` shows keyboard help. Selection stays
@@ -41,7 +38,8 @@ tool output in every transcript.
 Ordinary characters stay in the editor while you type; they do not trigger
 graph shortcuts. Question choices are saved without submission. Use F2 to
 submit deliberately after answering every prompt. In the answer editor, F2
-saves the partial answer; return to Questions to submit it. Tab moves between
+saves the partial answer and keeps editing; Esc returns to Questions after
+saving. Tab moves between
 prompts and number keys choose an option in Questions.
 
 ## Goal progress
@@ -68,7 +66,8 @@ evidence or your attestation, and `u` reopens the selected outcome. Use `[` / `]
 to select a recorded plan and `a` to adopt it as unverified criteria. `A`
 prepares the criteria-request draft for the selected recipient.
 
-Milestone checkpoints are off by default. Enabling the local preference affects
+Milestone checkpoints are off by default. Press `p` in Criteria to toggle the
+local preference. Enabling it affects
 the criteria-request draft; sending that guidance asks the agent to check in.
 The preference alone does not pause Codex or change its permission rules.
 
@@ -165,6 +164,10 @@ small and dependency-free. Passive monitoring uses no model calls, internet
 service or telemetry. History metadata uses bounded incremental reads; full
 local records are cached within a byte and entry limit. Full transcript replay
 remains an explicit operation.
+
+The installed release and representative history fixtures were measured on
+this Mac. See [validation results](GOAL-CONSOLE-VALIDATION.md) for test coverage,
+CPU, memory and large-history observations.
 
 The installed Codex 0.164 runtime has been checked for shared observation,
 exact-turn steering and interruption, queue operations, and question

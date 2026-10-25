@@ -5,9 +5,10 @@ Status: approved for implementation on 23 October 2026. These records are publis
 All implementation is integrated on one feature branch. Each ticket uses its own implementer worktree, starts at the integration tip, follows one-test/one-behavior TDD cycles at the agreed public seams, and merges the latest integration tip before handoff. A merger agent integrates each completed ticket. A final review covers the combined change.
 
 ZOE-4 is split between two isolated implementers: the fleet UI library and its
-native executable/replay lifecycle. The runtime branch merges the completed UI
-branch before the combined ticket handoff. ZOE-6 remains blocked until both
-parts are integrated and verified.
+native executable/replay lifecycle. The runtime branch merged the completed UI
+branch before the combined ticket handoff. Both parts and the final review
+fixes are integrated. ZOE-6 verification and the installed release were
+completed on 25 October 2026; see [validation results](GOAL-CONSOLE-VALIDATION.md).
 
 | Ticket | Deliverable | Blocked by |
 | --- | --- | --- |
