@@ -8,12 +8,31 @@ import re
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
 
 executable, fixture_root, scenario = sys.argv[1:]
 fixture = pathlib.Path(fixture_root)
+peer = None
+if scenario == "replay":
+    socket_path = fixture / "codex/app-server-control/app-server-control.sock"
+    socket_path.parent.mkdir(parents=True, exist_ok=True)
+    peer = subprocess.Popen(
+        [sys.executable, str(pathlib.Path(__file__).with_name("codex_fleet_peer.py")), str(socket_path), "observe"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    ready = pathlib.Path(str(socket_path) + ".ready")
+    deadline = time.monotonic() + 5
+    while not ready.exists() and time.monotonic() < deadline:
+        if peer.poll() is not None:
+            raise RuntimeError(peer.communicate()[1].decode())
+        time.sleep(0.01)
+    if not ready.exists():
+        peer.terminate()
+        peer.wait()
+        raise RuntimeError("protocol peer did not become ready")
 start_read, start_write = os.pipe()
 pid, terminal = pty.fork()
 if pid == 0:
@@ -53,10 +72,15 @@ def visible():
     return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
 
 
-def expect(text, seconds=5):
+def expect(text, seconds=5, since=0, compact=False):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if text in visible():
+        output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", data[since:].decode("utf-8", "replace"))
+        # Incremental redraws can skip unchanged blank cells by moving the
+        # cursor. UI layout is tested separately; here compare emitted words.
+        if compact:
+            output = re.sub(r"\s", "", output)
+        if (re.sub(r"\s", "", text) if compact else text) in output:
             return True
         if not receive():
             return False
@@ -68,6 +92,44 @@ try:
         observations = {"project": expect("Inspect runtime fixture goal"), "fleet": "Current work" in visible()}
     else:
         observations = {"fleet": expect("Current work")}
+    if scenario == "replay" and observations["fleet"]:
+        expect("Inspect runtime fixture goal")
+        os.write(terminal, b"H")
+        expect("All history")
+        opened = False
+        for _ in range(5):
+            os.write(terminal, b"f")
+            if expect("Editing feedback", seconds=0.5):
+                opened = True
+                break
+        if opened:
+            os.write(terminal, b"Keep H/q R draft\x1b")
+            expect("Draft saved")
+            entered = True
+            returned = True
+            for _ in range(2):
+                mark = len(data)
+                os.write(terminal, b"R")
+                if not expect("Read-only replay", since=mark):
+                    entered = False
+                    break
+                # These are controls only in the fleet; replay must ignore them.
+                os.write(terminal, b"\x1bOQ\x1bOR\x1bOS")
+                mark = len(data)
+                os.write(terminal, b"q")
+                if not expect("All history", since=mark):
+                    returned = False
+                    break
+            observations.update(replay=entered, returned=returned)
+            if entered and returned:
+                mark = len(data)
+                os.write(terminal, b"f")
+                observations["draft"] = expect("Keep H/q R draft", since=mark, compact=True)
+                mark = len(data)
+                os.write(terminal, b"\x1b")
+                expect("Draft saved", since=mark, compact=True)
+        else:
+            observations["replay"] = False
     try:
         os.write(terminal, b"q")
     except OSError:
@@ -83,7 +145,16 @@ try:
         os.kill(pid, signal.SIGTERM)
         _, status = os.waitpid(pid, 0)
     observations["exit"] = os.waitstatus_to_exitcode(status)
-    if not any(value is True for value in observations.values()):
+    if peer is not None:
+        try:
+            _, errors = peer.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            peer.terminate()
+            _, errors = peer.communicate()
+        observations["peer_exit"] = peer.returncode
+        if peer.returncode:
+            observations["peer_error"] = errors.decode()[-600:]
+    if observations["exit"] != 0 or not any(value is True for value in observations.values()) or observations.get("replay") is False:
         observations["tail"] = visible()[-1200:]
     print(json.dumps(observations))
 finally:
@@ -94,3 +165,6 @@ finally:
         except ProcessLookupError:
             pass
     os.close(terminal)
+    if peer is not None and peer.poll() is None:
+        peer.terminate()
+        peer.wait()

@@ -13,9 +13,10 @@ impl Fixture {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "zoe-runtime-{}-{nonce}-{}",
+        let root = PathBuf::from("/tmp").join(format!(
+            "zrt-{}-{:08x}-{}",
             std::process::id(),
+            nonce & 0xffff_ffff,
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let project = root.join("project");
@@ -23,12 +24,12 @@ impl Fixture {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::create_dir_all(&sessions).unwrap();
         let header = serde_json::json!({"type":"session_meta","payload":{
-            "id":"11111111-2222-3333-4444-555555555555",
-            "session_id":"11111111-2222-3333-4444-555555555555",
+            "id":"root-goal",
+            "session_id":"root-goal",
             "cwd":std::fs::canonicalize(&project).unwrap(),"thread_source":"user","source":"cli"
         }});
         let prompt = serde_json::json!({"timestamp":"2026-10-25T10:00:00Z","type":"event_msg","payload":{
-            "type":"item_completed","thread_id":"11111111-2222-3333-4444-555555555555",
+            "type":"item_completed","thread_id":"root-goal",
             "item":{"type":"UserMessage","content":[{"type":"input_text","text":"Inspect runtime fixture goal"}]}
         }});
         std::fs::write(
@@ -36,6 +37,24 @@ impl Fixture {
             format!("{header}\n{prompt}\n"),
         )
         .unwrap();
+        zoetrope::workstate::Store::new(root.join("state"))
+            .apply(
+                &zoetrope::console::SessionKey {
+                    provider: zoetrope::provider::Provider::Codex,
+                    session_id: "root-goal".into(),
+                },
+                zoetrope::workstate::WorkUpdate::SetGoal {
+                    title: "Inspect runtime fixture goal".into(),
+                    criteria: vec![zoetrope::workstate::CriterionInput {
+                        id: "recording".into(),
+                        label: "Recording remains readable".into(),
+                        weight: 1.0,
+                    }],
+                    reason: "Executable fixture".into(),
+                    provenance: "operator".into(),
+                },
+            )
+            .unwrap();
         Self(root)
     }
 
@@ -78,4 +97,26 @@ fn project_flag_preserves_the_current_project_session_view() {
     assert_eq!(observed["project"], true, "{observed}");
     assert_eq!(observed["fleet"], false, "{observed}");
     assert_eq!(observed["exit"], 0, "{observed}");
+}
+
+#[test]
+fn replay_returns_to_the_same_goal_and_draft_without_live_actions() {
+    let fixture = Fixture::new();
+    let observed = fixture.run("replay");
+    assert_eq!(observed["replay"], true, "{observed}");
+    assert_eq!(observed["returned"], true, "{observed}");
+    assert_eq!(observed["draft"], true, "{observed}");
+    assert_eq!(observed["peer_exit"], 0, "{observed}");
+    assert_eq!(observed["exit"], 0, "{observed}");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["state", "--root"])
+        .arg(fixture.0.join("state"))
+        .args(["show", "codex", "root-goal"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let saved: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(saved["record"]["drafts"][0]["text"], "Keep H/q R draft");
+    assert_eq!(saved["record"]["outbox"], serde_json::json!([]));
 }
