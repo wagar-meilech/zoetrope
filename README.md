@@ -56,7 +56,7 @@ across both.
 **This customized fork** — Rust 1.88 or newer:
 
 ```bash
-git clone https://github.com/wagar-meilech/zoetrope
+git clone --branch feat/goal-console https://github.com/wagar-meilech/zoetrope
 cd zoetrope
 cargo build --release --locked
 ./target/release/zoe
@@ -257,8 +257,8 @@ frontend (the `zoe` binary in this
 crate) and the browser frontend (the `zoetrope-web` crate under `web/wasm/`, which
 runs the hosted app) sit on top of it and differ only in their IO and event loop.
 
-See [`docs/DESIGN.md`](https://github.com/furkankly/zoetrope/blob/main/docs/DESIGN.md) for the module map and the transcript format,
-and [`docs/ARCHITECTURE.md`](https://github.com/furkankly/zoetrope/blob/main/docs/ARCHITECTURE.md) for the invariants above in full.
+See [`docs/DESIGN.md`](docs/DESIGN.md) for the module map and the transcript format,
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the invariants above in full.
 
 ## A note on the transcript format
 
