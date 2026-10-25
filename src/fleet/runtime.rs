@@ -147,6 +147,9 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
     let mut dirty = true;
     let result = loop {
         let fleet_changed = app.poll();
+        if app.quit {
+            break Ok(());
+        }
         dirty |= fleet_changed && replay.is_none();
         if dirty {
             if let Some(replay) = replay.as_mut() {
@@ -170,12 +173,15 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
             dirty = false;
         }
         let deadline = replay.as_ref().and_then(Replay::next_frame);
-        let save_at = app.dirty_since.map(|at| {
-            let due = Instant::from_std(at) + Duration::from_millis(500);
-            // A full worker queue keeps the draft dirty. Retry at a bounded
-            // rate instead of repeatedly selecting an expired deadline.
-            due.max(Instant::now() + Duration::from_millis(25))
-        });
+        let save_at = app
+            .dirty_since
+            .filter(|_| app.pending_save.is_none())
+            .map(|at| {
+                let due = Instant::from_std(at) + Duration::from_millis(500);
+                // A full worker queue keeps the draft dirty. Retry at a bounded
+                // rate instead of repeatedly selecting an expired deadline.
+                due.max(Instant::now() + Duration::from_millis(25))
+            });
         let wake = tokio::select! {
             _ = notify.notified() => Wake::Fleet,
             event = events.next() => Wake::Input(event),
@@ -207,9 +213,12 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
                 } else {
                     None
                 };
-                if key.is_some_and(|key| {
-                    key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
-                }) {
+                if replay.is_some()
+                    && key.is_some_and(|key| {
+                        key.code == KeyCode::Char('c')
+                            && key.modifiers.contains(KeyModifiers::CONTROL)
+                    })
+                {
                     break Ok(());
                 }
                 if let Some(detail) = replay.as_mut() {
@@ -262,6 +271,6 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
     if let Some(feeder) = retiring {
         let _ = feeder.await;
     }
-    tokio::task::spawn_blocking(move || app.shutdown()).await?;
+    tokio::task::spawn_blocking(move || app.try_shutdown()).await??;
     result
 }

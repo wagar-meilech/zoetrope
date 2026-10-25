@@ -3,13 +3,18 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub(super) struct Editor {
     pub text: String,
     pub cursor: usize,
+    pub secret: bool,
 }
 impl Editor {
     pub fn new(text: String) -> Self {
         let cursor = text.len();
-        Self { text, cursor }
+        Self {
+            text,
+            cursor,
+            secret: false,
+        }
     }
-    pub fn insert(&mut self, text: &str) -> bool {
+    pub fn insert(&mut self, text: &str) -> Result<bool, ()> {
         let mut inserted = String::new();
         let available = 65536usize.saturating_sub(self.text.len());
         for ch in text
@@ -17,16 +22,16 @@ impl Editor {
             .filter(|ch| !ch.is_control() || matches!(ch, '\n' | '\t'))
         {
             if inserted.len() + ch.len_utf8() > available {
-                break;
+                return Err(());
             }
             inserted.push(ch);
         }
         if inserted.is_empty() {
-            return false;
+            return Ok(false);
         }
         self.text.insert_str(self.cursor, &inserted);
         self.cursor += inserted.len();
-        true
+        Ok(true)
     }
     pub fn wrapped(&self, width: usize) -> (Vec<String>, usize, usize) {
         use unicode_width::UnicodeWidthChar;
@@ -35,7 +40,8 @@ impl Editor {
         let mut row = 0;
         let mut column = 0;
         let mut cursor = (0, 0);
-        for (offset, ch) in self.text.char_indices() {
+        for (offset, raw) in self.text.char_indices() {
+            let ch = if self.secret { '*' } else { raw };
             if offset == self.cursor {
                 cursor = (row, column);
             }
@@ -71,12 +77,12 @@ impl Editor {
         }
         (lines, cursor.0, cursor.1)
     }
-    pub fn key(&mut self, key: &KeyEvent) -> bool {
+    pub fn key(&mut self, key: &KeyEvent) -> Result<bool, ()> {
         match key.code {
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.text.clear();
                 self.cursor = 0;
-                return true;
+                return Ok(true);
             }
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => self.cursor = 0,
             KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -109,30 +115,23 @@ impl Editor {
                     .0;
                 self.text.drain(previous..self.cursor);
                 self.cursor = previous;
-                return true;
+                return Ok(true);
             }
             KeyCode::Delete if self.cursor < self.text.len() => {
                 let n = self.text[self.cursor..].chars().next().unwrap().len_utf8();
                 self.text.drain(self.cursor..self.cursor + n);
-                return true;
+                return Ok(true);
             }
-            KeyCode::Enter if self.text.len() < 65536 => {
-                self.text.insert(self.cursor, '\n');
-                self.cursor += 1;
-                return true;
-            }
+            KeyCode::Enter => return self.insert("\n"),
             KeyCode::Char(ch)
                 if !key
                     .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-                    && self.text.len() + ch.len_utf8() <= 65536 =>
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
-                self.text.insert(self.cursor, ch);
-                self.cursor += ch.len_utf8();
-                return true;
+                return self.insert(ch.encode_utf8(&mut [0; 4]));
             }
             _ => {}
         }
-        false
+        Ok(false)
     }
 }

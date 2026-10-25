@@ -192,6 +192,12 @@ impl Console {
         self.work_summaries.get(key)
     }
 
+    /// Compact record version for invalidating selected details off-thread.
+    #[cfg(feature = "native")]
+    pub(crate) fn work_versions(&self) -> &BTreeMap<SessionKey, Option<(u64, SystemTime)>> {
+        &self.work_versions
+    }
+
     /// Load selected work on an inventory worker. Full records use a bounded
     /// cache: 8 MiB encoded bytes/32 entries, plus a pinned selected record.
     #[cfg(feature = "native")]
@@ -201,8 +207,8 @@ impl Console {
                 .work_store
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("local state is not enabled"))?;
-            let record = store.read(key)?;
             let stamp = store.stamp(key);
+            let record = store.read(key)?;
             self.cache_work(key.clone(), record, stamp);
         }
         Ok(&self.work[key])
@@ -215,7 +221,22 @@ impl Console {
         record: crate::workstate::WorkRecord,
         stamp: Option<(u64, SystemTime)>,
     ) {
-        let size = stamp.map_or(256, |stamp| stamp.0.max(256));
+        // Account for the record we actually hold, independently of a stamp
+        // captured before a concurrent writer. Count bytes without allocating
+        // a second copy of the potentially large record.
+        struct EncodedSize(u64);
+        impl std::io::Write for EncodedSize {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 += bytes.len() as u64;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut encoded = EncodedSize(0);
+        let _ = serde_json::to_writer(&mut encoded, &record);
+        let size = encoded.0.max(256);
         self.work_summaries.insert(key.clone(), record.summary());
         if !self.search.is_empty() {
             if record.matches(&self.search) {
@@ -301,8 +322,10 @@ impl Console {
             .work_store
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("local state is not enabled"))?;
-        let record = store.apply(key, update)?;
+        // Capture before reading/writing: a concurrent replacement can only
+        // cause another refresh, never tag an older record with its new stamp.
         let stamp = store.stamp(key);
+        let record = store.apply(key, update)?;
         self.cache_work(key.clone(), record, stamp);
         self.graph = self.build_graph();
         Ok(&self.work[key])
@@ -357,9 +380,9 @@ impl Console {
             updates.entry(key).or_default().extend(observed);
         }
         for (key, updates) in updates {
+            let stamp = store.stamp(&key);
             match store.apply_many(&key, updates) {
                 Ok(record) => {
-                    let stamp = store.stamp(&key);
                     self.cache_work(key, record, stamp);
                 }
                 Err(error) => self.work_errors.push(error.to_string()),
