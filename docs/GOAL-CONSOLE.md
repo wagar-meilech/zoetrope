@@ -1,6 +1,6 @@
 # Using the goal console
 
-> Implementation is paused. The foundations below are integrated; the terminal
+> Implementation is in progress. The foundations below are integrated; the terminal
 > interface is unfinished and the installed `zoe` has not yet been rebuilt.
 > See [the saved checkpoint](PAUSED-CHECKPOINT.md) for exact status.
 

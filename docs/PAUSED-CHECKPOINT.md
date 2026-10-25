@@ -1,7 +1,8 @@
 # Saved checkpoint — 24 October 2026
 
-**Paused again at the user's request.** All implementation agents and known
-build/test/peer processes have stopped. The installed `zoe` is unchanged.
+**Historical checkpoint. Work resumed on 25 October 2026 at the user's request.**
+The state below records the second pause. The installed `zoe` had not yet been
+rebuilt with these customizations.
 
 ## Latest saved state
 
