@@ -762,3 +762,62 @@ fn plan_adoption_and_criteria_requests_stay_explicit_and_use_the_same_goal_recor
     assert!(!request.contains("Accepted by Codex"));
     ui.shutdown();
 }
+
+#[test]
+fn progress_is_clickable_and_narrow_terminals_keep_help_and_pasted_drafts_usable() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Narrow goal");
+    Store::new(home.0.join("state"))
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::Verify {
+                id: "build".into(),
+                evidence: vec![Evidence {
+                    kind: EvidenceKind::UserAttestation,
+                    detail: "Build passed".into(),
+                    provenance: "operator".into(),
+                }],
+                revision: Some(1),
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Narrow goal");
+    let rendered = text(&mut ui, 150, 42);
+    let (x, y) = rendered
+        .lines()
+        .enumerate()
+        .filter_map(|(y, line)| {
+            line.find("1 of 2 verified")
+                .filter(|x| *x > 80)
+                .map(|x| (x, y))
+        })
+        .next()
+        .unwrap();
+    ui.handle_event(&Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: x as u16,
+        row: y as u16,
+        modifiers: KeyModifiers::NONE,
+    }));
+    wait_text(&mut ui, "Build passes");
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('?'));
+    let help = text(&mut ui, 60, 28);
+    assert!(help.contains("Keyboard help"), "{help}");
+    assert!(help.contains("F2 Send guidance"), "{help}");
+    assert!(help.contains("Q saved questions"), "{help}");
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('f'));
+    ui.handle_event(&Event::Paste("H q stays text\n🙂 tail".into()));
+    let draft = text(&mut ui, 60, 28);
+    assert!(draft.contains("H q stays text"), "{draft}");
+    assert!(draft.contains("tail"), "{draft}");
+    assert!(draft.contains("F2 Send guidance"), "{draft}");
+    assert!(draft.contains("Current work"), "{draft}");
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    ui.shutdown();
+}
