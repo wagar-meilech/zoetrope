@@ -17,7 +17,7 @@ use crate::provider::Provider;
 const FORMAT_VERSION: u32 = 1;
 const MAX_RECORD_BYTES: u64 = 8 * 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CriterionInput {
     pub id: String,
     pub label: String,
@@ -28,14 +28,14 @@ fn equal_weight() -> f64 {
     1.0
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceKind {
     Reference,
     UserAttestation,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Evidence {
     pub kind: EvidenceKind,
     pub detail: String,
@@ -50,7 +50,7 @@ pub enum CriterionStatus {
     Verified,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Criterion {
     pub id: String,
     pub label: String,
@@ -59,7 +59,7 @@ pub struct Criterion {
     pub evidence: Vec<Evidence>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GoalContract {
     pub title: String,
     pub revision: u64,
@@ -67,27 +67,27 @@ pub struct GoalContract {
     pub provenance: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ScopeRevision {
     pub goal: GoalContract,
     pub reason: String,
     pub changed_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeedbackDraft {
     pub target: AgentKey,
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionOption {
     pub label: String,
     #[serde(default)]
     pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionPrompt {
     pub id: String,
     #[serde(default)]
@@ -112,7 +112,7 @@ pub enum QuestionState {
     Dismissed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestionRecord {
     pub id: String,
     pub target: AgentKey,
@@ -149,7 +149,7 @@ pub enum DeliveryState {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeedbackRecord {
     pub id: String,
     pub target: AgentKey,
@@ -174,7 +174,7 @@ pub enum DocumentChange {
     Deleted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DocumentRecord {
     pub id: String,
     pub path: PathBuf,
@@ -185,14 +185,14 @@ pub struct DocumentRecord {
     pub changed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlanStep {
     pub step: String,
     #[serde(default)]
     pub status: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlanProposal {
     pub id: String,
     pub producer: AgentKey,
@@ -200,7 +200,7 @@ pub struct PlanProposal {
     pub source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CriterionRevision {
     pub criterion: Criterion,
     pub goal_revision: u64,
@@ -208,7 +208,7 @@ pub struct CriterionRevision {
     pub changed_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkRecord {
     pub version: u32,
     pub session: SessionKey,
@@ -219,6 +219,8 @@ pub struct WorkRecord {
     pub drafts: Vec<FeedbackDraft>,
     #[serde(default)]
     pub questions: Vec<QuestionRecord>,
+    #[serde(default)]
+    pub observed_question_resolutions: BTreeMap<String, bool>,
     #[serde(default)]
     pub outbox: Vec<FeedbackRecord>,
     #[serde(default)]
@@ -239,6 +241,7 @@ impl WorkRecord {
             scope_history: Vec::new(),
             drafts: Vec::new(),
             questions: Vec::new(),
+            observed_question_resolutions: BTreeMap::new(),
             outbox: Vec::new(),
             documents: Vec::new(),
             plan_drafts: Vec::new(),
@@ -256,11 +259,18 @@ impl WorkRecord {
                 .filter(|question| {
                     matches!(
                         question.state,
-                        QuestionState::Pending | QuestionState::Expired
+                        QuestionState::Pending | QuestionState::Expired | QuestionState::Resolved
                     )
                 })
                 .count(),
-            unfinished_drafts: self.drafts.iter().any(|draft| !draft.text.is_empty()),
+            unfinished_drafts: self.drafts.iter().any(|draft| {
+                !draft.text.is_empty()
+                    && !self.outbox.iter().any(|item| {
+                        item.target == draft.target
+                            && item.text == draft.text
+                            && matches!(item.state, DeliveryState::Accepted | DeliveryState::Queued)
+                    })
+            }),
         }
     }
     pub fn matches(&self, query: &str) -> bool {
@@ -306,18 +316,32 @@ impl WorkRecord {
         } else {
             (verified_weight / total_weight * 100.0).clamp(0.0, 100.0)
         };
+        // Floating point and whole-percent rounding cannot turn an unfinished
+        // contract into a completion claim. The count remains authoritative.
+        let percent = if verified < total {
+            percent.min(100.0 - 100.0 * f64::EPSILON)
+        } else {
+            100.0
+        };
+        let display = if verified < total && percent >= 99.5 {
+            "<100%".into()
+        } else if percent > 0.0 && percent < 0.5 {
+            "<1%".into()
+        } else {
+            format!("{percent:.0}%")
+        };
         Progress {
             verified,
             total,
             percent: Some(percent),
-            label: format!("{verified} of {total} verified · {percent:.0}%"),
+            label: format!("{verified} of {total} verified · {display}"),
         }
     }
 }
 
 /// Compact graph projection. Full histories, drafts and outbox stay in the
 /// bounded lazy cache, rather than being retained for every historical goal.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkSummary {
     pub title: Option<String>,
     pub progress: Progress,
@@ -325,7 +349,7 @@ pub struct WorkSummary {
     pub unfinished_drafts: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Progress {
     pub verified: usize,
     pub total: usize,
@@ -333,7 +357,7 @@ pub struct Progress {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum WorkUpdate {
     ExpirePendingQuestions {
@@ -389,6 +413,10 @@ pub enum WorkUpdate {
     SaveAnswer {
         question_id: String,
         answers: BTreeMap<String, Vec<String>>,
+    },
+    ObserveQuestionResolution {
+        question_id: String,
+        answered: bool,
     },
     ResolveQuestion {
         question_id: String,
@@ -701,7 +729,14 @@ impl Store {
                     feedback.message = message;
                     feedback.queue_id = queue_id.or_else(|| feedback.queue_id.clone());
                 }
-                WorkUpdate::CaptureQuestion { question } => {
+                WorkUpdate::CaptureQuestion { mut question } => {
+                    if let Some(answered) = record.observed_question_resolutions.get(&question.id) {
+                        question.state = if *answered {
+                            QuestionState::Answered
+                        } else {
+                            QuestionState::Resolved
+                        };
+                    }
                     if question.target.session != *session {
                         bail!("question recipient does not belong to this session");
                     }
@@ -724,13 +759,26 @@ impl Store {
                         if existing.target != question.target {
                             bail!("question source identity cannot move to another recipient");
                         }
+                        if let Some(answered) =
+                            record.observed_question_resolutions.get(&question.id)
+                        {
+                            existing.state = if *answered {
+                                QuestionState::Answered
+                            } else {
+                                QuestionState::Resolved
+                            };
+                        }
                         if existing.state == QuestionState::Expired
                             && question.state == QuestionState::Pending
                         {
                             existing.state = QuestionState::Pending;
                         }
-                        existing.request_id = question.request_id;
-                        existing.turn_id = question.turn_id;
+                        if question.request_id.is_some() || existing.request_id.is_none() {
+                            existing.request_id = question.request_id;
+                        }
+                        if question.turn_id.is_some() || existing.turn_id.is_none() {
+                            existing.turn_id = question.turn_id;
+                        }
                         existing.prompts = question.prompts;
                     } else {
                         record.questions.push(question);
@@ -753,6 +801,30 @@ impl Store {
                     }
                     question.answers.extend(answers);
                 }
+                WorkUpdate::ObserveQuestionResolution {
+                    question_id,
+                    answered,
+                } => {
+                    if question_id.trim().is_empty() {
+                        bail!("recorded resolution needs a source identity");
+                    }
+                    let known = record
+                        .observed_question_resolutions
+                        .entry(question_id.clone())
+                        .or_default();
+                    *known |= answered;
+                    if let Some(question) =
+                        record.questions.iter_mut().find(|q| q.id == question_id)
+                    {
+                        if question.state != QuestionState::Dismissed {
+                            question.state = if *known {
+                                QuestionState::Answered
+                            } else {
+                                QuestionState::Resolved
+                            };
+                        }
+                    }
+                }
                 WorkUpdate::ResolveQuestion { question_id, state } => {
                     if state == QuestionState::Pending {
                         bail!("only a current runtime request can make a question pending");
@@ -774,8 +846,13 @@ impl Store {
                         .iter()
                         .find(|q| q.id == question_id)
                         .context("unknown question")?;
-                    if question.state != QuestionState::Expired {
-                        bail!("send-as-feedback is available for expired questions");
+                    if !matches!(
+                        question.state,
+                        QuestionState::Expired | QuestionState::Resolved
+                    ) {
+                        bail!(
+                            "copy-as-feedback is available when the original request is no longer pending"
+                        );
                     }
                     if !matches!(mode, FeedbackMode::Guidance | FeedbackMode::Queue) {
                         bail!("choose guidance or queue for answer feedback");
@@ -786,7 +863,7 @@ impl Store {
                         bail!("feedback requires a new stable identifier");
                     }
                     let mut text = String::from(
-                        "Answer to an earlier question (the original request expired):\n",
+                        "Answer to an earlier question (the original request is no longer pending):\n",
                     );
                     for prompt in &question.prompts {
                         if let Some(answers) = question.answers.get(&prompt.id)

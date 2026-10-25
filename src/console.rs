@@ -66,7 +66,7 @@ pub enum FleetNodeId {
 }
 
 /// A visible graph node. Parent links are graph edges; the list is in display order.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct FleetNode {
     pub id: FleetNodeId,
     pub parent: Option<FleetNodeId>,
@@ -75,11 +75,33 @@ pub struct FleetNode {
     pub internal: bool,
     pub archived: bool,
     pub expanded: bool,
+    #[serde(default)]
+    pub goal: Option<String>,
+    #[serde(default)]
+    pub activity: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct FleetGraph {
     pub nodes: Vec<FleetNode>,
+}
+
+/// An authoritative live observation, separate from transcript recency.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveActivity {
+    Working,
+    WaitingForAnswer,
+    WaitingForApproval,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveThread {
+    pub name: Option<String>,
+    pub project: Option<String>,
+    pub activity: LiveActivity,
 }
 
 /// A local fleet console. Discovery is explicit, so construction performs no IO.
@@ -95,6 +117,7 @@ pub struct Console {
     search: String,
     titles: provider::metadata::Titles,
     graph: FleetGraph,
+    live_threads: BTreeMap<String, LiveThread>,
     #[cfg(feature = "native")]
     work_store: Option<crate::workstate::Store>,
     #[cfg(feature = "native")]
@@ -127,6 +150,7 @@ impl Console {
             search: String::new(),
             titles: Default::default(),
             graph: Default::default(),
+            live_threads: Default::default(),
             #[cfg(feature = "native")]
             work_store: None,
             #[cfg(feature = "native")]
@@ -343,6 +367,83 @@ impl Console {
         }
     }
 
+    /// Apply cached authoritative status without filesystem or runtime IO.
+    pub fn set_live_threads(&mut self, threads: BTreeMap<String, LiveThread>) {
+        if self.live_threads != threads {
+            self.live_threads = threads;
+            self.graph = self.build_graph();
+        }
+    }
+    fn live_rank(&self, session: &Session) -> u8 {
+        if session.provider != Provider::Codex {
+            return 3;
+        }
+        let rank = |id: &str| {
+            self.live_threads
+                .get(id)
+                .map(|live| match live.activity {
+                    LiveActivity::Working => 1,
+                    _ => 0,
+                })
+                .unwrap_or(3)
+        };
+        session
+            .every_file()
+            .filter_map(|f| self.metadata.get(&f.path))
+            .fold(rank(&session.id), |best, indexed| {
+                best.min(rank(&indexed.metadata.agent))
+            })
+    }
+    fn needs_attention(&self, key: &SessionKey) -> bool {
+        #[cfg(feature = "native")]
+        {
+            self.work_summary(key)
+                .is_some_and(|s| s.pending_questions > 0 || s.unfinished_drafts)
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            let _ = key;
+            false
+        }
+    }
+
+    /// Cached provider-recorded names for producer/recipient labels, including
+    /// known children of collapsed goals. No transcript loading is performed.
+    pub fn agent_names(&self) -> BTreeMap<AgentKey, String> {
+        let mut names = BTreeMap::new();
+        for indexed in self.metadata.values() {
+            if let Some(name) = &indexed.metadata.name {
+                names.insert(
+                    AgentKey {
+                        session: SessionKey {
+                            provider: indexed.file.provider,
+                            session_id: indexed.file.session.clone(),
+                        },
+                        agent_id: indexed.metadata.agent.clone(),
+                    },
+                    name.clone(),
+                );
+            }
+        }
+        names
+    }
+
+    /// Cached transcript sources, independent of the current selection/filter.
+    pub fn session_sources(&self) -> BTreeMap<SessionKey, PathBuf> {
+        self.sessions
+            .iter()
+            .map(|session| {
+                (
+                    SessionKey {
+                        provider: session.provider,
+                        session_id: session.id.clone(),
+                    },
+                    session.root.path.clone(),
+                )
+            })
+            .collect()
+    }
+
     /// Refresh local inventory. Missing homes and malformed files are skipped.
     pub fn refresh(&mut self, now: SystemTime) {
         self.now = now;
@@ -502,7 +603,13 @@ impl Console {
     fn build_graph(&self) -> FleetGraph {
         let mut graph = FleetGraph::default();
         let mut projects = BTreeSet::new();
-        for session in &self.sessions {
+        let mut ordered: Vec<_> = self
+            .sessions
+            .iter()
+            .map(|session| (self.live_rank(session), session))
+            .collect();
+        ordered.sort_by_key(|(rank, _)| *rank);
+        for (live_rank, session) in ordered {
             let archived = session
                 .root
                 .path
@@ -514,13 +621,17 @@ impl Console {
                 .unwrap_or_default()
                 .as_secs()
                 < 120;
-            if !self.history && (archived || !recent) {
-                continue;
-            }
             let key = SessionKey {
                 provider: session.provider,
                 session_id: session.id.clone(),
             };
+            if !self.history
+                && (archived || !recent)
+                && live_rank > 1
+                && !self.needs_attention(&key)
+            {
+                continue;
+            }
             let mut metadata = self.metadata[&session.root.path].metadata.clone();
             if session.provider == Provider::Codex
                 && let Some(name) = self.titles.names.get(&session.id)
@@ -555,6 +666,10 @@ impl Console {
                     internal: false,
                     archived: false,
                     expanded: true,
+                    goal: None,
+                    activity: None,
+                    command: None,
+                    purpose: None,
                 });
             }
             let expanded = self.expanded.contains(&key) || matching_child;
@@ -569,6 +684,14 @@ impl Console {
                 internal: false,
                 archived,
                 expanded,
+                goal: metadata.goal.clone(),
+                activity: metadata
+                    .activity
+                    .text
+                    .clone()
+                    .or(metadata.last_action.clone()),
+                command: metadata.activity.command.clone(),
+                purpose: metadata.activity.purpose.clone(),
             });
             if expanded {
                 let sidecars: BTreeMap<_, _> = session
@@ -617,9 +740,79 @@ impl Console {
                         internal: metadata.internal,
                         archived,
                         expanded: false,
+                        goal: metadata.goal.clone(),
+                        activity: metadata
+                            .activity
+                            .text
+                            .clone()
+                            .or(metadata.last_action.clone()),
+                        command: metadata.activity.command.clone(),
+                        purpose: metadata.activity.purpose.clone(),
                     });
                 }
             }
+        }
+        let known: BTreeSet<_> =
+            self.sessions
+                .iter()
+                .filter(|s| s.provider == Provider::Codex)
+                .flat_map(|s| {
+                    std::iter::once(s.id.clone()).chain(s.every_file().filter_map(|f| {
+                        self.metadata.get(&f.path).map(|i| i.metadata.agent.clone())
+                    }))
+                })
+                .collect();
+        for (id, live) in &self.live_threads {
+            if known.contains(id) {
+                continue;
+            }
+            let project = live
+                .project
+                .clone()
+                .unwrap_or_else(|| "Live Codex work".into());
+            let key = SessionKey {
+                provider: Provider::Codex,
+                session_id: id.clone(),
+            };
+            let label = self
+                .work_title(&key)
+                .or_else(|| live.name.clone())
+                .unwrap_or_else(|| "Unlinked live agent".into());
+            if !self.search.is_empty()
+                && !project.to_lowercase().contains(&self.search)
+                && !label.to_lowercase().contains(&self.search)
+                && !id.to_lowercase().contains(&self.search)
+            {
+                continue;
+            }
+            if projects.insert(project.clone()) {
+                graph.nodes.push(FleetNode {
+                    id: FleetNodeId::Project(project.clone()),
+                    parent: None,
+                    label: project.clone(),
+                    description: None,
+                    internal: false,
+                    archived: false,
+                    expanded: true,
+                    goal: None,
+                    activity: None,
+                    command: None,
+                    purpose: None,
+                });
+            }
+            graph.nodes.push(FleetNode {
+                id: FleetNodeId::Session(key),
+                parent: Some(FleetNodeId::Project(project)),
+                label,
+                description: Some("Live work; local transcript unavailable".into()),
+                internal: false,
+                archived: false,
+                expanded: false,
+                goal: None,
+                activity: None,
+                command: None,
+                purpose: None,
+            });
         }
         // The inventory is newest-first. Traverse parent links to keep each
         // project's sessions and each agent's descendants together for display.
