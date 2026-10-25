@@ -722,10 +722,10 @@ impl FleetConsole {
                     .tx
                     .try_send(StateCommand::Update(
                         key.clone(),
-                        WorkUpdate::SaveAnswer {
+                        Box::new(WorkUpdate::SaveAnswer {
                             question_id: question.clone(),
                             answers,
-                        },
+                        }),
                         "Answer draft saved; not submitted".into(),
                     ))
                     .is_ok()
@@ -744,10 +744,10 @@ impl FleetConsole {
                 .tx
                 .try_send(StateCommand::Update(
                     target.session.clone(),
-                    WorkUpdate::SaveDraft {
+                    Box::new(WorkUpdate::SaveDraft {
                         target,
                         text: edit.text.clone(),
-                    },
+                    }),
                     "Draft saved".into(),
                 ))
                 .is_ok()
@@ -782,7 +782,7 @@ impl FleetConsole {
         if self
             .state
             .tx
-            .try_send(StateCommand::Update(key, update, message.into()))
+            .try_send(StateCommand::Update(key, Box::new(update), message.into()))
             .is_ok()
         {
             true
@@ -1663,14 +1663,14 @@ impl FleetConsole {
                     self.edit = None;
                     self.edit_kind = None;
                     self.feedback_open = false;
-                } else if edit.key(key) {
-                    if matches!(
+                } else if edit.key(key)
+                    && matches!(
                         self.edit_kind,
                         Some(EditKind::Feedback | EditKind::Answer { .. })
-                    ) {
-                        self.dirty_since = Some(Instant::now());
-                        self.status = "Saving draft…".into();
-                    }
+                    )
+                {
+                    self.dirty_since = Some(Instant::now());
+                    self.status = "Saving draft…".into();
                 }
                 return false;
             }
