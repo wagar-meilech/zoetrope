@@ -867,6 +867,16 @@ impl Store {
                     {
                         bail!("feedback requires a new stable identifier");
                     }
+                    if question.prompts.iter().any(|prompt| {
+                        prompt.is_secret
+                            && question.answers.get(&prompt.id).is_some_and(|answers| {
+                                answers.iter().any(|answer| !answer.trim().is_empty())
+                            })
+                    }) {
+                        bail!(
+                            "Secret answers cannot be copied. Write new non-secret feedback for the selected agent."
+                        );
+                    }
                     let mut text = String::from(
                         "Answer to an earlier question (the original request is no longer pending):\n",
                     );

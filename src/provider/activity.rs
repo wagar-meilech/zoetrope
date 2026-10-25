@@ -27,7 +27,10 @@ impl PublicActivity {
                 if record["type"] == "response_item"
                     && p["type"] == "message"
                     && p["role"] == "assistant"
-                    && matches!(p["channel"].as_str(), Some("commentary" | "final"))
+                    && match p["channel"].as_str() {
+                        Some(channel) => matches!(channel, "commentary" | "final" | "final_answer"),
+                        None => matches!(p["phase"].as_str(), Some("commentary" | "final_answer")),
+                    }
                 {
                     if let Some(parts) = p["content"].as_array() {
                         let text = parts

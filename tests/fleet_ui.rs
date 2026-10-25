@@ -399,7 +399,7 @@ fn an_expired_question_keeps_its_answer_draft_and_can_be_copied_to_feedback() {
     wait_text(&mut ui, "Selected: Compiler questions");
     key(&mut ui, KeyCode::Char('Q'));
     wait_text(&mut ui, "Use blue with readable contrast");
-    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::F(5));
     let copied = wait_text(&mut ui, "Answer to an earlier question");
     assert!(copied.contains("F2 Send guidance"));
     assert!(!copied.contains("Accepted by Codex"));
@@ -634,7 +634,7 @@ fn transcript_and_live_question_share_one_draft_and_resolved_answers_can_be_feed
     assert!(joined.contains("Answer draft: Beta"), "{joined}");
     key(&mut ui, KeyCode::F(2));
     wait_text(&mut ui, "Resolved in Codex");
-    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::F(5));
     wait_text(&mut ui, "Answer to an earlier question");
     ui.shutdown();
     peer.finish();
@@ -870,6 +870,7 @@ fn pending_deliveries_are_readable_and_acknowledgment_preserves_a_newer_draft() 
     key(&mut ui, KeyCode::F(2));
     wait_text(&mut ui, "Accepted by Codex");
     key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
     key(&mut ui, KeyCode::Char('b'));
     let delivered = wait_text(&mut ui, "Saved deliveries");
     assert!(!delivered.contains("turn/steer"));
@@ -902,6 +903,650 @@ fn background_observation_reaches_later_agents_without_resuming_them() {
     wait_text(&mut ui, "Waiting for your answer");
     let current = text(&mut ui, 150, 42);
     assert!(current.contains("Current work"), "{current}");
+    ui.shutdown();
+    peer.finish();
+}
+
+#[test]
+fn selected_goal_refreshes_external_progress_and_details_without_navigation() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{DocumentChange, DocumentRecord};
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "External updates");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "0 of 2 verified");
+    let store = Store::new(home.0.join("state"));
+    store
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::Verify {
+                id: "build".into(),
+                revision: Some(1),
+                evidence: vec![Evidence {
+                    kind: EvidenceKind::UserAttestation,
+                    detail: "External build passed".into(),
+                    provenance: "CLI".into(),
+                }],
+            },
+        )
+        .unwrap();
+    wait_text(&mut ui, "1 of 2 verified");
+    key(&mut ui, KeyCode::Char('d'));
+    store
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::AddDocument {
+                document: DocumentRecord {
+                    id: "external".into(),
+                    path: home.0.join("external-review.md"),
+                    producer: AgentKey {
+                        session: home.key("goal"),
+                        agent_id: "main".into(),
+                    },
+                    source: "CLI".into(),
+                    change: DocumentChange::Created,
+                    changed_at: None,
+                },
+            },
+        )
+        .unwrap();
+    wait_text(&mut ui, "external-review.md");
+    ui.shutdown();
+}
+
+#[test]
+fn secret_answers_stay_hidden_during_editing_and_cannot_be_exposed_as_feedback() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Private answer");
+    let store = Store::new(home.0.join("state"));
+    store
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::CaptureQuestion {
+                question: QuestionRecord {
+                    id: "secret".into(),
+                    target: AgentKey {
+                        session: home.key("goal"),
+                        agent_id: "main".into(),
+                    },
+                    request_id: None,
+                    turn_id: None,
+                    state: QuestionState::Expired,
+                    prompts: vec![QuestionPrompt {
+                        id: "token".into(),
+                        header: "Token".into(),
+                        question: "Provide token".into(),
+                        options: vec![],
+                        is_other: true,
+                        is_secret: true,
+                    }],
+                    answers: [("token".into(), vec!["PRIVATE_SENTINEL".into()])].into(),
+                },
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Private answer");
+    key(&mut ui, KeyCode::Char('Q'));
+    wait_text(&mut ui, "Saved (hidden)");
+    key(&mut ui, KeyCode::Char('e'));
+    assert!(!text(&mut ui, 150, 42).contains("PRIVATE_SENTINEL"));
+    ui.handle_event(&Event::Paste("MORE_PRIVATE".into()));
+    assert!(!text(&mut ui, 150, 42).contains("MORE_PRIVATE"));
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Answer draft saved");
+    key(&mut ui, KeyCode::F(5));
+    let shown = wait_text(&mut ui, "Secret answers cannot be copied");
+    assert!(!shown.contains("PRIVATE_SENTINEL"));
+    assert!(!shown.contains("MORE_PRIVATE"));
+    ui.shutdown();
+    let record = store.read(&home.key("goal")).unwrap();
+    assert!(record.outbox.is_empty());
+    assert!(record.drafts.is_empty());
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Private answer");
+    key(&mut ui, KeyCode::Char('Q'));
+    key(&mut ui, KeyCode::Char('e'));
+    assert!(!text(&mut ui, 150, 42).contains("PRIVATE_SENTINEL"));
+    ui.shutdown();
+}
+
+#[test]
+fn oversized_paste_is_rejected_whole_and_preserves_the_saved_utf8_draft() {
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Bounded feedback");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Bounded feedback");
+    key(&mut ui, KeyCode::Char('f'));
+    ui.handle_event(&Event::Paste("Keep this constraint".into()));
+    ui.handle_event(&Event::Paste(format!(
+        "{}TAIL_CONSTRAINT",
+        "é".repeat(32768)
+    )));
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("64 KiB"), "{shown}");
+    assert!(shown.contains("Keep this constraint"));
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    ui.shutdown();
+    let record = Store::new(home.0.join("state"))
+        .read(&home.key("goal"))
+        .unwrap();
+    assert_eq!(record.drafts[0].text, "Keep this constraint");
+}
+
+#[test]
+fn explicit_codex_public_phases_are_readable_but_unknown_and_analysis_are_hidden() {
+    use std::io::Write;
+    for phase in ["commentary", "final_answer"] {
+        let home = Home::new();
+        home.session("goal", "/projects/compiler", false);
+        home.goal("goal", "Public phases");
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+            .unwrap();
+        for (classification, message) in [
+            (Some(phase), "Readable public result"),
+            (Some("analysis"), "PRIVATE_PHASE"),
+            (None, "PRIVATE_UNKNOWN"),
+        ] {
+            writeln!(
+                file,
+                "{}",
+                serde_json::json!({"type":"response_item","payload":{
+                "type":"message","role":"assistant","phase":classification,
+                "content":[{"type":"output_text","text":message}]}})
+            )
+            .unwrap();
+        }
+        drop(file);
+        let mut ui = home.ui();
+        let shown = wait_text(&mut ui, "Readable public result");
+        assert!(!shown.contains("PRIVATE"));
+        ui.shutdown();
+    }
+}
+
+#[cfg(unix)]
+struct HeldLock(std::process::Child);
+#[cfg(unix)]
+impl HeldLock {
+    fn acquire(path: &std::path::Path) -> Self {
+        use std::io::BufRead;
+        let mut child = std::process::Command::new("python3")
+            .args(["-c", "import fcntl,sys; f=open(sys.argv[1], 'a'); fcntl.flock(f, fcntl.LOCK_EX); print('locked', flush=True); sys.stdin.read()"])
+            .arg(path).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).spawn().unwrap();
+        let mut ready = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut ready)
+            .unwrap();
+        assert_eq!(ready.trim(), "locked");
+        Self(child)
+    }
+    fn release(mut self) {
+        drop(self.0.stdin.take());
+        assert!(self.0.wait().unwrap().success());
+    }
+}
+#[cfg(unix)]
+impl Drop for HeldLock {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn feedback_stays_in_the_composer_when_the_save_queue_is_full_then_saves_on_exit() {
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Busy save");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Busy save");
+    key(&mut ui, KeyCode::Char('c'));
+    wait_text(&mut ui, "Build passes");
+    let lock_path = std::fs::read_dir(home.0.join("state"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|s| s == "lock"))
+        .unwrap();
+    let lock = HeldLock::acquire(&lock_path);
+    key(&mut ui, KeyCode::Char('c'));
+    for _ in 0..48 {
+        key(&mut ui, KeyCode::Char('p'));
+    }
+    key(&mut ui, KeyCode::Char('f'));
+    ui.handle_event(&Event::Paste("KEEP_UNTIL_DURABLE".into()));
+    key(&mut ui, KeyCode::Esc);
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("KEEP_UNTIL_DURABLE"), "{shown}");
+    assert!(shown.contains("queue"), "{shown}");
+    lock.release();
+    // An orderly exit must flush even the save that could not be enqueued.
+    ui.shutdown();
+    let record = Store::new(home.0.join("state"))
+        .read(&home.key("goal"))
+        .unwrap();
+    assert_eq!(record.drafts[0].text, "KEEP_UNTIL_DURABLE");
+}
+
+#[test]
+fn failed_storage_keeps_feedback_and_answer_editors_available_until_a_durable_retry() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};
+    for answer in [false, true] {
+        let home = Home::new();
+        home.session("goal", "/projects/compiler", false);
+        home.goal("goal", "Storage retry");
+        let store = Store::new(home.0.join("state"));
+        store
+            .apply(
+                &home.key("goal"),
+                WorkUpdate::CaptureQuestion {
+                    question: QuestionRecord {
+                        id: "earlier".into(),
+                        target: AgentKey {
+                            session: home.key("goal"),
+                            agent_id: "main".into(),
+                        },
+                        request_id: None,
+                        turn_id: None,
+                        state: QuestionState::Expired,
+                        prompts: vec![QuestionPrompt {
+                            id: "choice".into(),
+                            header: "Choice".into(),
+                            question: "Which approach?".into(),
+                            options: vec![],
+                            is_other: true,
+                            is_secret: false,
+                        }],
+                        answers: Default::default(),
+                    },
+                },
+            )
+            .unwrap();
+        let mut ui = home.ui();
+        wait_text(&mut ui, "Selected: Storage retry");
+        if answer {
+            key(&mut ui, KeyCode::Char('Q'));
+            key(&mut ui, KeyCode::Char('e'));
+        } else {
+            key(&mut ui, KeyCode::Char('f'));
+        }
+        ui.handle_event(&Event::Paste("RETAIN_ON_WRITE_ERROR".into()));
+        // Real filesystem failure, outside the UI: the configured directory is
+        // temporarily replaced by a regular file, then repaired for retry.
+        std::fs::rename(home.0.join("state"), home.0.join("state-backup")).unwrap();
+        std::fs::write(home.0.join("state"), "temporarily unavailable").unwrap();
+        key(&mut ui, if answer { KeyCode::F(2) } else { KeyCode::Esc });
+        let shown = wait_text(&mut ui, "Could not save draft");
+        assert!(shown.contains("RETAIN_ON_WRITE_ERROR"), "{shown}");
+        assert!(!shown.contains("Draft saved"));
+        assert!(
+            ui.try_shutdown().is_err(),
+            "failed shutdown must retain editable data"
+        );
+        assert!(text(&mut ui, 150, 42).contains("RETAIN_ON_WRITE_ERROR"));
+        std::fs::remove_file(home.0.join("state")).unwrap();
+        std::fs::rename(home.0.join("state-backup"), home.0.join("state")).unwrap();
+        key(&mut ui, KeyCode::Esc);
+        wait_text(
+            &mut ui,
+            if answer {
+                "Answer draft saved"
+            } else {
+                "Draft saved"
+            },
+        );
+        ui.try_shutdown().unwrap();
+        let record = store.read(&home.key("goal")).unwrap();
+        if answer {
+            assert_eq!(
+                record.questions[0].answers["choice"],
+                ["RETAIN_ON_WRITE_ERROR"]
+            );
+        } else {
+            assert_eq!(record.drafts[0].text, "RETAIN_ON_WRITE_ERROR");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_answer_stays_editable_under_save_backpressure_and_flushes_on_orderly_shutdown() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{QuestionOption, QuestionPrompt, QuestionRecord, QuestionState};
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Busy answer save");
+    let store = Store::new(home.0.join("state"));
+    store
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::CaptureQuestion {
+                question: QuestionRecord {
+                    id: "earlier".into(),
+                    target: AgentKey {
+                        session: home.key("goal"),
+                        agent_id: "main".into(),
+                    },
+                    request_id: None,
+                    turn_id: None,
+                    state: QuestionState::Expired,
+                    prompts: vec![QuestionPrompt {
+                        id: "choice".into(),
+                        header: "Choice".into(),
+                        question: "Which approach?".into(),
+                        options: vec![QuestionOption {
+                            label: "Rust".into(),
+                            description: "Fast".into(),
+                        }],
+                        is_other: true,
+                        is_secret: false,
+                    }],
+                    answers: Default::default(),
+                },
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Busy answer save");
+    key(&mut ui, KeyCode::Char('Q'));
+    let lock_path = std::fs::read_dir(home.0.join("state"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|s| s == "lock"))
+        .unwrap();
+    let lock = HeldLock::acquire(&lock_path);
+    for _ in 0..48 {
+        key(&mut ui, KeyCode::Char('1'));
+    }
+    key(&mut ui, KeyCode::Char('e'));
+    ui.handle_event(&Event::Paste("FINAL_ANSWER_CONSTRAINT".into()));
+    key(&mut ui, KeyCode::F(2));
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("FINAL_ANSWER_CONSTRAINT"), "{shown}");
+    assert!(shown.contains("queue"), "{shown}");
+    lock.release();
+    ui.try_shutdown().unwrap();
+    assert_eq!(
+        store.read(&home.key("goal")).unwrap().questions[0].answers["choice"],
+        ["FINAL_ANSWER_CONSTRAINT"]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn repeating_the_local_copy_key_after_completion_never_submits_to_codex() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Safe local copy");
+    Store::new(home.0.join("state"))
+        .apply(
+            &home.key("root-goal"),
+            WorkUpdate::CaptureQuestion {
+                question: QuestionRecord {
+                    id: "earlier".into(),
+                    target: AgentKey {
+                        session: home.key("root-goal"),
+                        agent_id: "main".into(),
+                    },
+                    request_id: None,
+                    turn_id: None,
+                    state: QuestionState::Expired,
+                    prompts: vec![QuestionPrompt {
+                        id: "choice".into(),
+                        header: "Choice".into(),
+                        question: "Which approach?".into(),
+                        options: vec![],
+                        is_other: true,
+                        is_secret: false,
+                    }],
+                    answers: [("choice".into(), vec!["LOCAL_COPY_ONLY".into()])].into(),
+                },
+            },
+        )
+        .unwrap();
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Safe local copy");
+    key(&mut ui, KeyCode::Char('Q'));
+    key(&mut ui, KeyCode::F(5));
+    wait_text(&mut ui, "Answer to an earlier question");
+    // Conventional terminals report held keys as ordinary Press events.
+    for _ in 0..12 {
+        key(&mut ui, KeyCode::F(5));
+        ui.poll();
+    }
+    let until = Instant::now() + Duration::from_millis(400);
+    while Instant::now() < until {
+        ui.poll();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(text(&mut ui, 150, 42).contains("LOCAL_COPY_ONLY"));
+    ui.shutdown();
+    peer.finish(); // observe peer rejects every native mutation
+}
+
+#[test]
+#[ignore = "manual public large-history resource probe; no timing threshold"]
+fn large_fleet_placement_resource_probe() {
+    for count in [1000, 4000] {
+        let home = Home::new();
+        for at in 0..count {
+            home.session(&format!("history-{at:05}"), "/projects/history", true);
+        }
+        let mut ui = home.ui();
+        key(&mut ui, KeyCode::Char('H'));
+        let started = Instant::now();
+        let mut peak_poll = Duration::ZERO;
+        loop {
+            let poll_at = Instant::now();
+            ui.poll();
+            peak_poll = peak_poll.max(poll_at.elapsed());
+            if text(&mut ui, 150, 42).contains("Selected: Untitled goal") {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(60),
+                "history did not load"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let first = text(&mut ui, 150, 42);
+        // A no-op refresh retains identity/positions and the rendered view.
+        let until = Instant::now() + Duration::from_millis(100);
+        while Instant::now() < until {
+            ui.poll();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(first, text(&mut ui, 150, 42));
+        eprintln!(
+            "history={count} startup_ms={} peak_ui_poll_us={}",
+            started.elapsed().as_millis(),
+            peak_poll.as_micros()
+        );
+        ui.shutdown();
+    }
+}
+
+#[test]
+fn criteria_edits_also_remain_available_when_storage_rejects_a_save() {
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Original scope");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Original scope");
+    key(&mut ui, KeyCode::Char('c'));
+    key(&mut ui, KeyCode::Char('e'));
+    ctrl(&mut ui, 'u');
+    ui.handle_event(&Event::Paste(
+        "RETAINED_SCOPE\nMeaningful behavior checked".into(),
+    ));
+    std::fs::rename(home.0.join("state"), home.0.join("state-backup")).unwrap();
+    std::fs::write(home.0.join("state"), "temporarily unavailable").unwrap();
+    key(&mut ui, KeyCode::F(2));
+    let shown = wait_text(&mut ui, "Could not save");
+    assert!(shown.contains("RETAINED_SCOPE"), "{shown}");
+    std::fs::remove_file(home.0.join("state")).unwrap();
+    std::fs::rename(home.0.join("state-backup"), home.0.join("state")).unwrap();
+    key(&mut ui, KeyCode::F(2));
+    wait_text(&mut ui, "Selected: RETAINED_SCOPE");
+    ui.shutdown();
+}
+
+#[test]
+fn an_orphan_agent_does_not_remove_the_connections_for_other_visible_work() {
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Connected work");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-orphan.jsonl"),
+        serde_json::json!({"type":"session_meta","payload":{"id":"orphan","session_id":"goal",
+            "thread_source":"subagent","parent_thread_id":"missing-parent","agent_nickname":"Unlinked helper"}}).to_string() + "\n").unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Connected work");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    let shown = text(&mut ui, 150, 50);
+    assert_eq!(
+        shown.chars().filter(|ch| *ch == '▶').count(),
+        2,
+        "Both project/goal and goal/coordinator edges must remain visible: {shown}"
+    );
+    // The unlinked agent stays searchable/visible with its real ancestry; it
+    // must not be silently adopted by the coordinator.
+    key(&mut ui, KeyCode::Char('/'));
+    type_text(&mut ui, "Unlinked helper");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Search: Unlinked helper");
+    let shown = text(&mut ui, 150, 50);
+    assert!(shown.contains("Unlinked helper"), "{shown}");
+    ui.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_delayed_answer_copy_preserves_a_newer_feedback_composer_and_its_target() {
+    use zoetrope::console::AgentKey;
+    use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};
+    let home = Home::new();
+    home.session("goal", "/projects/compiler", false);
+    home.goal("goal", "Copy acknowledgment");
+    let target = AgentKey {
+        session: home.key("goal"),
+        agent_id: "main".into(),
+    };
+    let store = Store::new(home.0.join("state"));
+    store
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::CaptureQuestion {
+                question: QuestionRecord {
+                    id: "earlier".into(),
+                    target: target.clone(),
+                    request_id: None,
+                    turn_id: None,
+                    state: QuestionState::Expired,
+                    prompts: vec![QuestionPrompt {
+                        id: "choice".into(),
+                        header: "Choice".into(),
+                        question: "Which approach?".into(),
+                        options: vec![],
+                        is_other: true,
+                        is_secret: false,
+                    }],
+                    answers: [("choice".into(), vec!["OLDER_COPIED_ANSWER".into()])].into(),
+                },
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Copy acknowledgment");
+    key(&mut ui, KeyCode::Char('Q'));
+    wait_text(&mut ui, "OLDER_COPIED_ANSWER");
+    let lock_path = std::fs::read_dir(home.0.join("state"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|s| s == "lock"))
+        .unwrap();
+    let lock = HeldLock::acquire(&lock_path);
+    key(&mut ui, KeyCode::F(5));
+    key(&mut ui, KeyCode::Char('f'));
+    ui.handle_event(&Event::Paste("KEEP_NEWER_DRAFT".into()));
+    assert!(text(&mut ui, 150, 42).contains("KEEP_NEWER_DRAFT"));
+    lock.release();
+    wait_text(&mut ui, "Answer copied");
+    assert!(text(&mut ui, 150, 42).contains("KEEP_NEWER_DRAFT"));
+    ui.try_shutdown().unwrap();
+    let record = store.read(&home.key("goal")).unwrap();
+    assert!(
+        record
+            .drafts
+            .iter()
+            .any(|d| d.target == target && d.text == "KEEP_NEWER_DRAFT")
+    );
+    assert!(
+        record
+            .outbox
+            .iter()
+            .any(|d| d.target == target && d.text.contains("OLDER_COPIED_ANSWER"))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn saving_an_answer_keeps_the_editor_open_so_held_save_cannot_become_submission() {
+    let peer = Peer::new("question");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Deliberate answer");
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Deliberate answer");
+    key(&mut ui, KeyCode::Char('Q'));
+    key(&mut ui, KeyCode::Char('L'));
+    wait_text(&mut ui, "Pending in the current Codex connection");
+    key(&mut ui, KeyCode::Char('e'));
+    type_text(&mut ui, "Beta");
+    key(&mut ui, KeyCode::F(2));
+    let shown = wait_text(&mut ui, "Answer draft saved");
+    assert!(shown.contains("F2 save draft"), "{shown}");
+    for _ in 0..8 {
+        key(&mut ui, KeyCode::F(2));
+        ui.poll();
+    }
+    assert!(text(&mut ui, 150, 42).contains("F2 save draft"));
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Answer draft saved");
+    key(&mut ui, KeyCode::F(2));
+    wait_text(&mut ui, "Resolved in Codex");
     ui.shutdown();
     peer.finish();
 }

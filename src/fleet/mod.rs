@@ -67,6 +67,7 @@ struct InventoryView {
     graph: FleetGraph,
     query: String,
     summaries: BTreeMap<SessionKey, WorkSummary>,
+    versions: BTreeMap<SessionKey, Option<(u64, SystemTime)>>,
     agent_names: BTreeMap<AgentKey, String>,
     sources: BTreeMap<SessionKey, PathBuf>,
     selection: Option<FleetNodeId>,
@@ -124,6 +125,7 @@ impl Inventory {
                     graph: console.graph().clone(),
                     query: query.clone(),
                     summaries,
+                    versions: console.work_versions().clone(),
                     sources: console.session_sources(),
                     selection: console.selection().cloned(),
                     errors: console.work_errors().to_vec(),
@@ -229,6 +231,11 @@ enum EditKind {
     },
 }
 
+struct PendingSave {
+    id: u64,
+    text: String,
+}
+
 /// Cached terminal state. All inputs are public crossterm events; `poll` applies
 /// worker results, `draw` does no filesystem/socket/editor work.
 pub struct FleetConsole {
@@ -244,9 +251,11 @@ pub struct FleetConsole {
     control_pending: bool,
     inflight_id: Option<String>,
     selected_work: Option<WorkRecord>,
+    work_reload: Option<SessionKey>,
     edit: Option<Editor>,
     feedback_target: Option<AgentKey>,
     feedback_open: bool,
+    feedback_requested: bool,
     pane: Pane,
     edit_kind: Option<EditKind>,
     item_index: usize,
@@ -256,6 +265,10 @@ pub struct FleetConsole {
     query: String,
     searching: bool,
     dirty_since: Option<Instant>,
+    pending_save: Option<PendingSave>,
+    save_sequence: u64,
+    close_after_save: bool,
+    quit_after_save: bool,
     notify: Arc<tokio::sync::Notify>,
     view: InventoryView,
     flow: Flow<Card, StepEdge>,
@@ -291,9 +304,11 @@ impl FleetConsole {
             control_pending: false,
             inflight_id: None,
             selected_work: None,
+            work_reload: None,
             edit: None,
             feedback_target: None,
             feedback_open: false,
+            feedback_requested: false,
             pane: Pane::Graph,
             edit_kind: None,
             item_index: 0,
@@ -303,6 +318,10 @@ impl FleetConsole {
             query: String::new(),
             searching: false,
             dirty_since: None,
+            pending_save: None,
+            save_sequence: 0,
+            close_after_save: false,
+            quit_after_save: false,
             notify,
             view: InventoryView::default(),
             flow: Flow::new()
@@ -345,10 +364,16 @@ impl FleetConsole {
                 }
             }
             let selection_changed = self.view.selection != view.selection;
+            let work_changed = view
+                .selection
+                .as_ref()
+                .and_then(session_key)
+                .is_some_and(|key| self.view.versions.get(key) != view.versions.get(key));
             changed = self.view.agent_names != view.agent_names
                 || self.view.ready != view.ready
                 || self.view.query != view.query
                 || self.view.graph != view.graph
+                || self.view.summaries != view.summaries
                 || selection_changed
                 || self.view.errors != view.errors;
             self.view = view;
@@ -369,9 +394,9 @@ impl FleetConsole {
                     changed = true;
                 }
             }
-            if selection_changed || self.selected_work.is_none() {
+            if selection_changed || work_changed || self.selected_work.is_none() {
                 if let Some(key) = self.view.selection.as_ref().and_then(session_key) {
-                    let _ = self.state.tx.try_send(StateCommand::Load(key.clone()));
+                    self.work_reload = Some(key.clone());
                 }
                 if selection_changed {
                     self.selected_work = None;
@@ -390,6 +415,7 @@ impl FleetConsole {
         }
         let output =
             std::mem::take(&mut *self.state.output.lock().unwrap_or_else(|e| e.into_inner()));
+        let mut kept_editor = false;
         if let Some((key, record)) = output.record {
             if self.view.selection.as_ref().and_then(session_key) == Some(&key) {
                 if self.selected_work.as_ref() != Some(&record) {
@@ -397,13 +423,20 @@ impl FleetConsole {
                 }
                 if let Some(id) = self.pending_feedback.as_ref() {
                     if let Some(item) = record.outbox.iter().find(|item| &item.id == id) {
-                        self.feedback_target = Some(item.target.clone());
-                        self.control.select(Some(item.target.clone()));
-                        self.feedback_open = true;
-                        self.pane = Pane::Feedback;
-                        self.edit_kind = Some(EditKind::Feedback);
-                        self.edit = Some(Editor::new(item.text.clone()));
-                        self.dirty_since = Some(Instant::now());
+                        // Copy is local and durable in the outbox. Its late
+                        // completion must never replace a composer opened or
+                        // edited while the disk worker was busy.
+                        if self.edit.is_none() {
+                            self.feedback_target = Some(item.target.clone());
+                            self.control.select(Some(item.target.clone()));
+                            self.feedback_open = true;
+                            self.pane = Pane::Feedback;
+                            self.edit_kind = Some(EditKind::Feedback);
+                            self.edit = Some(Editor::new(item.text.clone()));
+                            self.dirty_since = Some(Instant::now());
+                        } else {
+                            kept_editor = true;
+                        }
                         self.pending_feedback = None;
                     }
                 }
@@ -420,13 +453,52 @@ impl FleetConsole {
                     }
                 }
                 self.selected_work = Some(record);
+                if self.feedback_requested {
+                    self.open_feedback();
+                }
                 self.sync_graph();
             }
         }
         if let Some(status) = output.status {
-            self.status = status;
+            self.status = if kept_editor {
+                "Answer copied locally; your current draft was kept".into()
+            } else {
+                status
+            };
             changed = true;
             let _ = self.inventory.tx.try_send(InventoryCommand::Reload);
+        }
+        if let Some((id, result)) = output.saved {
+            if self.pending_save.as_ref().is_some_and(|save| save.id == id) {
+                let saved = self.pending_save.take().unwrap();
+                match result {
+                    Ok(()) => {
+                        let unchanged = self.edit.as_ref().is_some_and(|e| e.text == saved.text);
+                        if unchanged && self.close_after_save {
+                            self.close_editor();
+                            if self.quit_after_save {
+                                self.quit = true;
+                            }
+                        } else if !unchanged {
+                            if self.draft_update().is_some() {
+                                self.dirty_since = Some(Instant::now());
+                                if self.close_after_save {
+                                    self.save_feedback();
+                                }
+                            } else if self.close_after_save {
+                                self.commit_edit();
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        self.dirty_since = None;
+                        self.quit_after_save = false;
+                        self.status =
+                            format!("Could not save draft: {error}. Draft retained; Esc retries.");
+                    }
+                }
+                changed = true;
+            }
         }
         let mut native = self
             .control
@@ -475,7 +547,7 @@ impl FleetConsole {
         }
         if let Some(key) = self.view.selection.as_ref().and_then(session_key) {
             if dirty.contains(key) {
-                let _ = self.state.tx.try_send(StateCommand::Load(key.clone()));
+                self.work_reload = Some(key.clone());
             }
         }
         if changed {
@@ -501,11 +573,20 @@ impl FleetConsole {
                 }
             }
             self.status = receipt.message;
-            let _ = self
+            if self.view.selection.as_ref().and_then(session_key) == Some(&receipt.target.session) {
+                self.work_reload = Some(receipt.target.session);
+            }
+            changed = true;
+        }
+        if let Some(key) = self.work_reload.as_ref() {
+            if self
                 .state
                 .tx
-                .try_send(StateCommand::Load(receipt.target.session));
-            changed = true;
+                .try_send(StateCommand::Load(key.clone()))
+                .is_ok()
+            {
+                self.work_reload = None;
+            }
         }
         if let Some(message) = self
             .documents
@@ -703,14 +784,14 @@ impl FleetConsole {
             })
             .unwrap_or_else(|| "Select a goal".into())
     }
-    fn save_feedback(&mut self) {
-        if let Some(EditKind::Answer {
-            key,
-            question,
-            prompt,
-        }) = self.edit_kind.as_ref()
-        {
-            if let Some(edit) = self.edit.as_ref() {
+    fn draft_update(&self) -> Option<(SessionKey, WorkUpdate, &'static str)> {
+        let edit = self.edit.as_ref()?;
+        match self.edit_kind.as_ref()? {
+            EditKind::Answer {
+                key,
+                question,
+                prompt,
+            } => {
                 let mut answers = self
                     .selected_work
                     .as_ref()
@@ -718,53 +799,110 @@ impl FleetConsole {
                     .map(|q| q.answers.clone())
                     .unwrap_or_default();
                 answers.insert(prompt.clone(), vec![edit.text.clone()]);
-                if self
-                    .state
-                    .tx
-                    .try_send(StateCommand::Update(
-                        key.clone(),
-                        Box::new(WorkUpdate::SaveAnswer {
-                            question_id: question.clone(),
-                            answers,
-                        }),
-                        "Answer draft saved; not submitted".into(),
-                    ))
-                    .is_ok()
-                {
-                    self.dirty_since = None;
-                }
+                Some((
+                    key.clone(),
+                    WorkUpdate::SaveAnswer {
+                        question_id: question.clone(),
+                        answers,
+                    },
+                    "Answer draft saved; not submitted",
+                ))
             }
-            return;
-        }
-        if !matches!(self.edit_kind, Some(EditKind::Feedback)) {
-            return;
-        }
-        if let (Some(target), Some(edit)) = (self.feedback_target.clone(), self.edit.as_ref()) {
-            if self
-                .state
-                .tx
-                .try_send(StateCommand::Update(
+            EditKind::Feedback => {
+                let target = self.feedback_target.clone()?;
+                Some((
                     target.session.clone(),
-                    Box::new(WorkUpdate::SaveDraft {
+                    WorkUpdate::SaveDraft {
                         target,
                         text: edit.text.clone(),
-                    }),
-                    "Draft saved".into(),
+                    },
+                    "Draft saved",
                 ))
-                .is_ok()
-            {
-                self.dirty_since = None;
-            } else {
-                self.status = "Save queue busy; draft remains in the composer".into();
             }
+            _ => None,
+        }
+    }
+    fn save_feedback(&mut self) {
+        if self.pending_save.is_some() {
+            return;
+        }
+        let Some((key, update, message)) = self.draft_update() else {
+            return;
+        };
+        self.save_editor(key, update, message);
+    }
+    fn save_editor(&mut self, key: SessionKey, update: WorkUpdate, message: &str) -> bool {
+        if self.pending_save.is_some() {
+            return false;
+        }
+        self.save_sequence += 1;
+        let id = self.save_sequence;
+        if self
+            .state
+            .tx
+            .try_send(StateCommand::Update(
+                key,
+                Box::new(update),
+                message.into(),
+                Some(id),
+            ))
+            .is_ok()
+        {
+            self.pending_save = Some(PendingSave {
+                id,
+                text: self.edit.as_ref().unwrap().text.clone(),
+            });
+            self.dirty_since = None;
+            self.status = "Saving draft… waiting for local storage".into();
+            true
+        } else {
+            if self.draft_update().is_some() {
+                self.dirty_since = Some(Instant::now());
+            }
+            self.status = "Save queue busy; edit remains in the composer. Try saving again.".into();
+            false
+        }
+    }
+    fn close_editor(&mut self) {
+        let answer = matches!(self.edit_kind, Some(EditKind::Answer { .. }));
+        let criteria = matches!(
+            self.edit_kind,
+            Some(EditKind::Goal(_) | EditKind::Evidence { .. })
+        );
+        self.edit = None;
+        self.edit_kind = None;
+        self.feedback_open = false;
+        self.dirty_since = None;
+        self.close_after_save = false;
+        if answer {
+            self.pane = Pane::Questions;
+        } else if criteria {
+            self.pane = Pane::Criteria;
+        }
+    }
+    fn request_close_editor(&mut self) {
+        if self.pending_save.is_some() {
+            self.close_after_save = true;
+        } else if self.draft_update().is_some() {
+            self.close_after_save = true;
+            self.save_feedback();
+        } else {
+            self.close_editor();
         }
     }
     fn open_feedback(&mut self) {
         if self.selected_work.is_none() {
-            self.status = "Loading saved work; wait before editing its draft".into();
+            self.feedback_requested = true;
+            self.status = "Loading saved work; feedback will open shortly".into();
             return;
         }
-        if let Some(target) = self.selected_agent() {
+        self.feedback_requested = false;
+        let target = if self.pane == Pane::Questions {
+            self.current_question().map(|q| q.target.clone())
+        } else {
+            self.selected_agent()
+        };
+        if let Some(target) = target {
             let text = self
                 .selected_work
                 .as_ref()
@@ -783,7 +921,12 @@ impl FleetConsole {
         if self
             .state
             .tx
-            .try_send(StateCommand::Update(key, Box::new(update), message.into()))
+            .try_send(StateCommand::Update(
+                key,
+                Box::new(update),
+                message.into(),
+                None,
+            ))
             .is_ok()
         {
             true
@@ -824,10 +967,12 @@ impl FleetConsole {
             return;
         };
         let text = editor.text.clone();
-        let result = match self.edit_kind.as_ref() {
+        match self.edit_kind.as_ref() {
             Some(EditKind::Answer { .. }) => {
+                // F2 remains Save while editing. Closing explicitly with Esc
+                // keeps an ordinary held-key Press from becoming submission.
                 self.save_feedback();
-                true
+                return;
             }
             Some(EditKind::Goal(key)) => {
                 let mut lines = text.lines().map(str::trim).filter(|s| !s.is_empty());
@@ -867,7 +1012,7 @@ impl FleetConsole {
                     self.status = "Enter a goal title and at least one completion outcome".into();
                     return;
                 }
-                self.update_state(
+                self.save_editor(
                     key.clone(),
                     WorkUpdate::SetGoal {
                         title,
@@ -884,7 +1029,7 @@ impl FleetConsole {
                         "Explain the evidence or your attestation before verifying".into();
                     return;
                 }
-                self.update_state(
+                self.save_editor(
                     key.clone(),
                     WorkUpdate::Verify {
                         id: id.clone(),
@@ -898,19 +1043,9 @@ impl FleetConsole {
                     "Verification saved",
                 )
             }
-            _ => false,
+            _ => return,
         };
-        if result {
-            let answer = matches!(self.edit_kind, Some(EditKind::Answer { .. }));
-            self.edit = None;
-            self.edit_kind = None;
-            self.pane = if answer {
-                Pane::Questions
-            } else {
-                Pane::Criteria
-            };
-            self.dirty_since = None;
-        }
+        self.close_after_save = true;
     }
     fn reopen_criterion(&mut self) {
         let update = self.selected_work.as_ref().and_then(|record| {
@@ -1070,6 +1205,7 @@ impl FleetConsole {
                     q.target.session.clone(),
                     q.id.clone(),
                     p.id.clone(),
+                    p.is_secret,
                     q.answers
                         .get(&p.id)
                         .map(|a| a.join("\n"))
@@ -1077,13 +1213,15 @@ impl FleetConsole {
                 )
             })
         });
-        if let Some((key, question, prompt, text)) = item {
+        if let Some((key, question, prompt, secret, text)) = item {
             self.edit_kind = Some(EditKind::Answer {
                 key,
                 question,
                 prompt,
             });
-            self.edit = Some(Editor::new(text));
+            let mut editor = Editor::new(text);
+            editor.secret = secret;
+            self.edit = Some(editor);
         }
     }
     fn choose_answer(&mut self, number: usize) {
@@ -1125,6 +1263,21 @@ impl FleetConsole {
         }
     }
     fn copy_answer(&mut self) {
+        if self.pending_feedback.is_some() {
+            self.status = "Copy is being saved locally; nothing was sent".into();
+            return;
+        }
+        if self.current_question().is_some_and(|q| {
+            q.prompts.iter().any(|p| {
+                p.is_secret
+                    && q.answers
+                        .get(&p.id)
+                        .is_some_and(|a| a.iter().any(|s| !s.trim().is_empty()))
+            })
+        }) {
+            self.status = "Secret answers cannot be copied. Press f to write new non-secret feedback for this agent.".into();
+            return;
+        }
         let update = self
             .current_question()
             .map(|q| (q.target.session.clone(), q.id.clone()));
@@ -1202,7 +1355,7 @@ impl FleetConsole {
                 }
             }
         }
-        text.push_str("\n↑↓ question · Tab prompt · 1–9 choose · e write\nF2 submit answer · F3 copy closed request to feedback\nx dismiss locally · L listen · Esc back");
+        text.push_str("\n↑↓ question · Tab prompt · 1–9 choose · e write\nF2 submit answer · F5 copy closed request to feedback\nx dismiss locally · L listen · Esc back");
         text
     }
 
@@ -1370,6 +1523,7 @@ impl FleetConsole {
     }
 
     fn select(&mut self, id: FleetNodeId) {
+        self.feedback_requested = false;
         let new_key = session_key(&id).cloned();
         let same = self.view.selection.as_ref().and_then(session_key) == new_key.as_ref();
         self.requested_selection = Some(id.clone());
@@ -1379,7 +1533,7 @@ impl FleetConsole {
         if !same {
             self.selected_work = None;
             if let Some(key) = new_key {
-                let _ = self.state.tx.try_send(StateCommand::Load(key));
+                self.work_reload = Some(key);
             }
         }
         self.control.select(self.selected_agent());
@@ -1430,24 +1584,23 @@ impl FleetConsole {
     }
 
     fn sync_graph(&mut self) {
-        let ids: BTreeSet<_> = self
-            .view
-            .graph
-            .nodes
-            .iter()
-            .map(|n| flow_id(&n.id))
-            .collect();
-        let remove: Vec<_> = self
-            .flow
-            .nodes()
-            .filter(|n| !ids.contains(&n.id))
-            .map(|n| n.id.clone())
-            .collect();
-        for id in remove {
-            self.flow.remove_node(&id);
+        let mut nodes = Vec::with_capacity(self.view.graph.nodes.len());
+        let mut edges = Vec::with_capacity(self.view.graph.nodes.len());
+        let visible: BTreeSet<_> = self.view.graph.nodes.iter().map(|node| &node.id).collect();
+        // Stable positions include dragged and currently hidden nodes. Index
+        // their slots once instead of scanning the entire map for each card.
+        fn slot((x, y): (f64, f64)) -> (u64, u64) {
+            let bits = |n: f64| if n == 0.0 { 0 } else { n.to_bits() };
+            (bits(x), bits(y))
         }
+        let mut occupied: std::collections::HashSet<_> =
+            self.positions.values().copied().map(slot).collect();
         let mut depths = BTreeMap::new();
+        let mut seen = BTreeSet::new();
         for (at, node) in self.view.graph.nodes.iter().enumerate() {
+            if !seen.insert(&node.id) {
+                continue;
+            }
             let depth = node
                 .parent
                 .as_ref()
@@ -1461,7 +1614,7 @@ impl FleetConsole {
             } else {
                 let x = depth.min(8) as f64 * 36.0;
                 let mut y = at as f64 * 10.0;
-                while self.positions.values().any(|p| p.0 == x && p.1 == y) {
+                while !occupied.insert(slot((x, y))) {
                     y += 10.0;
                 }
                 self.positions.insert(node.id.clone(), (x, y));
@@ -1533,23 +1686,21 @@ impl FleetConsole {
                 },
             };
             let id = flow_id(&node.id);
-            if let Some(existing) = self.flow.node_content_mut(&id) {
-                if existing != &card {
-                    *existing = card;
-                }
-            } else {
-                let n = Node::new(id.clone(), pos, (34.0, 9.0), card)
+            nodes.push(
+                Node::new(id.clone(), pos, (34.0, 9.0), card)
                     .with_deletable(false)
                     .with_connectable(false)
                     .with_handles(vec![
                         Handle::source(HandlePosition::Right).with_hidden(true),
                         Handle::target(HandlePosition::Left).with_hidden(true),
-                    ]);
-                let _ = self.flow.add_node(n);
-            }
-            self.flow.set_node_position(&id, pos);
-            if let Some(parent) = &node.parent {
-                let _ = self.flow.add_edge(
+                    ]),
+            );
+            if let Some(parent) = node
+                .parent
+                .as_ref()
+                .filter(|parent| **parent != node.id && visible.contains(parent))
+            {
+                edges.push(
                     Edge::new(format!("edge-{id}"), flow_id(parent), id)
                         .with_selectable(false)
                         .with_deletable(false)
@@ -1557,6 +1708,10 @@ impl FleetConsole {
                 );
             }
         }
+        // Batch geometry resolution: the single-node APIs re-walk all prior
+        // nodes after every insertion/position update.
+        let _ = self.flow.set_nodes(nodes);
+        let _ = self.flow.set_edges(edges);
         if let Some(id) = &self.view.selection {
             self.flow.select_node(&flow_id(id));
         }
@@ -1579,7 +1734,10 @@ impl FleetConsole {
         }
         if let Event::Paste(text) = event {
             if let Some(edit) = self.edit.as_mut() {
-                if edit.insert(text)
+                let inserted = edit.insert(text);
+                if inserted.is_err() {
+                    self.status = "Input exceeds the 64 KiB draft limit; nothing was added".into();
+                } else if inserted == Ok(true)
                     && matches!(
                         self.edit_kind,
                         Some(EditKind::Feedback | EditKind::Answer { .. })
@@ -1604,6 +1762,18 @@ impl FleetConsole {
                 return false;
             }
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                if self.draft_update().is_some()
+                    || self.pending_save.is_some()
+                    || self.close_after_save
+                {
+                    self.quit_after_save = true;
+                    if self.draft_update().is_some() || self.pending_save.is_some() {
+                        self.request_close_editor();
+                    } else {
+                        self.commit_edit();
+                    }
+                    return false;
+                }
                 self.quit = true;
                 return true;
             }
@@ -1660,18 +1830,24 @@ impl FleetConsole {
                 {
                     self.commit_edit();
                 } else if key.code == KeyCode::Esc {
-                    self.save_feedback();
-                    self.edit = None;
-                    self.edit_kind = None;
-                    self.feedback_open = false;
-                } else if edit.key(key)
-                    && matches!(
-                        self.edit_kind,
-                        Some(EditKind::Feedback | EditKind::Answer { .. })
-                    )
-                {
-                    self.dirty_since = Some(Instant::now());
-                    self.status = "Saving draft…".into();
+                    self.request_close_editor();
+                } else {
+                    match edit.key(key) {
+                        Err(()) => {
+                            self.status =
+                                "Input exceeds the 64 KiB draft limit; nothing was added".into()
+                        }
+                        Ok(true)
+                            if matches!(
+                                self.edit_kind,
+                                Some(EditKind::Feedback | EditKind::Answer { .. })
+                            ) =>
+                        {
+                            self.dirty_since = Some(Instant::now());
+                            self.status = "Saving draft…".into();
+                        }
+                        _ => {}
+                    }
                 }
                 return false;
             }
@@ -1760,7 +1936,7 @@ impl FleetConsole {
                 KeyCode::Char('L') if self.pane == Pane::Questions => self.listen_questions(),
                 KeyCode::F(2) if self.pane == Pane::Questions => self.submit_question(),
                 KeyCode::Char('x') if self.pane == Pane::Questions => self.dismiss_question(),
-                KeyCode::F(3) if self.pane == Pane::Questions => self.copy_answer(),
+                KeyCode::F(5) if self.pane == Pane::Questions => self.copy_answer(),
                 KeyCode::Char(ch) if self.pane == Pane::Questions && ch.is_ascii_digit() => {
                     self.choose_answer(ch.to_digit(10).unwrap_or(0) as usize)
                 }
@@ -1810,13 +1986,46 @@ impl FleetConsole {
     }
     /// Flush and stop workers after an orderly exit. No native work is stopped.
     pub fn shutdown(&mut self) {
-        self.save_feedback();
+        if let Err(error) = self.try_shutdown() {
+            eprintln!("{error}");
+        }
+    }
+    /// Flush editable data before stopping. On failure it remains in the composer
+    /// and workers remain usable, so the caller can repair storage and retry.
+    pub fn try_shutdown(&mut self) -> anyhow::Result<()> {
+        if self.edit.is_some() && self.draft_update().is_none() && self.close_after_save {
+            anyhow::bail!(
+                "Criteria save is not confirmed; edit retained. F2 retries; Esc cancels after the pending write finishes."
+            );
+        }
+        if let Some((key, update, _)) = self.draft_update() {
+            let (reply, result) = mpsc::channel();
+            self.state
+                .tx
+                .send(StateCommand::Flush(key, Box::new(update), reply))
+                .map_err(|_| {
+                    anyhow::anyhow!("Local save worker stopped; draft remains in the composer")
+                })?;
+            if let Err(error) = result.recv().map_err(|_| {
+                anyhow::anyhow!("Local save worker stopped before confirming the draft")
+            })? {
+                self.status =
+                    format!("Could not save draft: {error}. Draft retained; Esc retries.");
+                self.quit = false;
+                self.quit_after_save = false;
+                self.dirty_since = None;
+                anyhow::bail!("{}", self.status);
+            }
+            self.close_editor();
+            self.pending_save = None;
+        }
         self.control.shutdown();
         self.state.shutdown();
         let _ = self.inventory.tx.send(InventoryCommand::Shutdown);
         if let Some(worker) = self.inventory.thread.take() {
             let _ = worker.join();
         }
+        Ok(())
     }
 }
 impl Drop for FleetConsole {
