@@ -4,9 +4,15 @@
 
 > **This is the v1 structural spec** (module map, transcript format, type shapes). For the *invariants and principles* the implementation now follows — order-independence, the content-vs-presentation clocks, ground-truth-over-heuristics, and the derived-state heuristics catalogue — see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+The native goal console extends this replay design with global discovery,
+Zoetrope-owned local state and explicit control of the existing local Codex
+runtime. See [the goal-console spec](GOAL-CONSOLE-SPEC.md) and
+[usage guide](GOAL-CONSOLE.md). The original replay model and browser frontend
+remain separate from live control.
+
 ## Hard constraints
 
-1. **No network IO, ever.** All IO is local filesystem. No reqwest/hyper/etc. in the dep tree (dev-deps included). "Your transcripts never leave your machine" goes in the README.
+1. **No Internet IO from the viewer.** Discovery and persistence use local files; explicit native controls use the existing Codex Unix socket, and document opening launches the local editor. The WebSocket library supplies framing/handshake over that socket with TLS disabled. Never open a remote/TCP transport, upload transcripts, add telemetry or run a hidden model. The existing Codex runtime retains its normal service behavior.
 2. **Defensive parsing.** The transcript format is undocumented/internal. Unknown entry types, missing fields, malformed lines: skip, never panic. Mirrors Claude Code's own resilience.
 3. **rwy's async architecture**, ported: single-task UI loop owns all state; background tokio tasks feed typed messages over bounded mpsc; no `Arc<Mutex>`.
 4. Dependencies live in `Cargo.toml`, with the reason for each beside it; the split that matters is the portable core versus the `native` feature (tokio, crossterm, the filesystem).
@@ -16,7 +22,8 @@
 One TUI command over the unified timeline engine (see the **Timeline** section) plus the headless `inspect`. The launch only picks **defaults** — *what* to open and *where the playhead starts*; once open, scrub / follow / pause / go-live all work regardless.
 
 ```
-zoe                      # follow the current project's live session
+zoe                      # global goal and agent console
+zoe --project            # follow the current project's live session
 zoe <file.jsonl>         # replay a recording, played from the start (any provider's file)
 zoe <id>                 # replay a session by id, or a unique prefix, across providers
 zoe <dir>                # follow another project's live session
@@ -81,7 +88,7 @@ critical-section = { features = ["std"] }                  # ratatui's layout-ca
 getrandom (0.3) + getrandom_v04 (0.4)                      # both, wasm_js backend (pulled via ratzilla)
 ```
 
-**One binary per crate:** `zoe` → `src/main.rs` (`required-features = ["native"]`), the only thing `cargo install zoetrope` puts on your PATH; `web` → `web/wasm/src/main.rs`, built by trunk (`web/scripts/build-wasm.sh`) into `web.js` / `web_bg.wasm`. No network deps anywhere (hard constraint #1).
+**One binary per crate:** `zoe` → `src/main.rs` (`required-features = ["native"]`), the only thing `cargo install zoetrope` puts on your PATH; `web` → `web/wasm/src/main.rs`, built by trunk (`web/scripts/build-wasm.sh`) into `web.js` / `web_bg.wasm`. Native control dependencies are feature-gated; the browser keeps the portable replay core (hard constraint #1).
 
 ## Module map
 
@@ -349,5 +356,5 @@ Worth testing: transcript line parsing against real-format fixture strings (ever
 - [ ] user content + tool_result content polymorphic string|array
 - [ ] Only `<uuid>.jsonl` in project dir + `subagents/**/agent-*.jsonl`; never skill-injections.jsonl/journal as transcript
 - [ ] camera modes per the Camera section (Overview auto-fit / Follow tracking / Manual); min_zoom raised
-- [ ] No network deps anywhere in the tree
+- [ ] No Internet transport, hidden model or telemetry; native control uses local IPC only
 - [ ] First render has zero canvas size — `request_fit_view` (deferred) not `fit_view`

@@ -118,6 +118,6 @@ Baseline before changes: 207 library tests and 9 binary tests passed with the lo
 
 The answered questionnaire remains the product source of truth. The installed fork is the source checkout used for development, and the `zoe` command points to its release build.
 
-Read-only investigation verified a working second-client connection to the current Codex shared runtime and real thread/goal/turn metadata. Mutating controls and multi-client approval coexistence still need disposable-session validation. The actual installed Markdown plugin is MD Reader 0.0.8; its public full-render command is known, but the external bridge has not been installed or exercised.
+Disposable-session investigation verified local shared-runtime observation, exact-turn steering/interruption, native queue operations and native question replay/resolution without policy overrides. Second-client answering and real command/permission approval arbitration remain compatibility limits; protocol-peer tests cover guarded submission without claiming those live cases were established. The installed MD Reader 0.0.8 and local bridge rendered the exact selected specification in a real VS Code webview. Final combined terminal verification and release installation are tracked separately from this approved spec.
 
 The approved tracker is the fork's own GitHub Issues, with a `ready-for-agent` label and one integration PR closing the approved spec and tickets. The user approved enabling Issues, publishing this spec and its tickets, and the integration PR workflow.
