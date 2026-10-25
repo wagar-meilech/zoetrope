@@ -2,7 +2,7 @@ use super::*;
 use crate::workstate::WorkUpdate;
 pub(super) enum StateCommand {
     Load(SessionKey),
-    Update(SessionKey, WorkUpdate, String),
+    Update(SessionKey, Box<WorkUpdate>, String),
     Shutdown,
 }
 #[derive(Default)]
@@ -42,7 +42,7 @@ impl StateWorker {
                         (key, result, None)
                     }
                     StateCommand::Update(key, update, message) => {
-                        let result = store.apply(&key, update);
+                        let result = store.apply(&key, *update);
                         (key, result, Some(message))
                     }
                 };

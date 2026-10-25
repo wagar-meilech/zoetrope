@@ -87,16 +87,26 @@ fn receipt_message(receipt: &DeliveryReceipt, mode: FeedbackMode) -> String {
         }
     }
 }
-fn persist_send(
-    store: &Store,
-    target: &AgentKey,
-    text: &str,
+struct SendIntent<'a> {
+    target: &'a AgentKey,
+    text: &'a str,
     mode: FeedbackMode,
     expected_turn: Option<String>,
-    answer: Option<&QuestionRecord>,
+    answer: Option<&'a QuestionRecord>,
+}
+fn persist_send(
+    store: &Store,
+    intent: SendIntent<'_>,
     started: impl FnOnce(&str),
     execute: impl FnOnce(ControlAction) -> DeliveryReceipt,
 ) -> (String, Option<String>) {
+    let SendIntent {
+        target,
+        text,
+        mode,
+        expected_turn,
+        answer,
+    } = intent;
     let id = format!(
         "zoe-{}-{}",
         std::process::id(),
@@ -194,14 +204,16 @@ fn persist_send(
             mode,
             FeedbackMode::Guidance | FeedbackMode::Queue | FeedbackMode::CriteriaRequest
         ) {
-        let _ = store.apply(
-            &target.session,
-            WorkUpdate::ClearDraftIfMatches {
-                target: target.clone(),
-                expected_text: text.into(),
-            },
-        );
-        Some(text.into())
+        store
+            .apply(
+                &target.session,
+                WorkUpdate::ClearDraftIfMatches {
+                    target: target.clone(),
+                    expected_text: text.into(),
+                },
+            )
+            .ok()
+            .map(|_| text.into())
     } else {
         None
     };
@@ -306,11 +318,13 @@ fn run(
                 };
                 let (message, cleared_text) = persist_send(
                     &store,
-                    &target,
-                    &text,
-                    FeedbackMode::Answer,
-                    question.turn_id.clone(),
-                    Some(&question),
+                    SendIntent {
+                        target: &target,
+                        text: &text,
+                        mode: FeedbackMode::Answer,
+                        expected_turn: question.turn_id.clone(),
+                        answer: Some(&question),
+                    },
                     |id| {
                         let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
                         out.inflight_id = Some(id.into());
@@ -352,11 +366,13 @@ fn run(
                 };
                 let (message, cleared_text) = persist_send(
                     &store,
-                    &target,
-                    &text,
-                    mode,
-                    expected_turn,
-                    None,
+                    SendIntent {
+                        target: &target,
+                        text: &text,
+                        mode,
+                        expected_turn,
+                        answer: None,
+                    },
                     |id| {
                         let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
                         out.inflight_id = Some(id.into());
@@ -651,11 +667,13 @@ fn run(
             } => {
                 let (message, cleared_text) = persist_send(
                     &store,
-                    &target,
-                    &text,
-                    mode,
-                    expected_turn,
-                    None,
+                    SendIntent {
+                        target: &target,
+                        text: &text,
+                        mode,
+                        expected_turn,
+                        answer: None,
+                    },
                     |_| {},
                     |_| DeliveryReceipt {
                         state: ReceiptState::Unavailable,
