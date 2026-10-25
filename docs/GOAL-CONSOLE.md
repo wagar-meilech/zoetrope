@@ -1,8 +1,7 @@
 # Using the goal console
 
-> Implementation is in progress. The foundations below are integrated; the terminal
-> interface is unfinished and the installed `zoe` has not yet been rebuilt.
-> See [the saved checkpoint](PAUSED-CHECKPOINT.md) for exact status.
+> The terminal implementation is integrated. Final review fixes and release
+> installation are being verified before handoff.
 
 Run `zoe` to see work across local projects. The native app groups projects,
 goals and agents into an expanding graph. `H` switches between Current and All
@@ -22,22 +21,28 @@ tool output in every transcript.
 | --- | --- |
 | `H` | Switch Current / All history. |
 | `/` | Search the graph. |
-| Arrows or `j` / `k` | Select work. |
+| Up / Down or `j` / `k` | Select work. |
 | Enter or Space | Expand or collapse the selected goal. |
+| Left / Right, `+` / `-`, `o`, `r` | Pan, zoom, fit the overview, restore readable size. |
 | `f` | Open the selected recipient's feedback. |
 | `Q` | Open persistent questions. |
 | `L` in Questions | Listen for current native questions on the selected live agent. |
 | `c` | Read completion criteria and evidence. |
 | `d` | View recorded documents. |
 | `e` | Edit a question answer or the completion criteria. |
+| F5 in Questions | Copy a closed request's answer into a feedback draft. |
 | F2 / F3 / F4 in Feedback | Send now / queue / stop. |
+| `b` | Read saved deliveries and their status. |
+| `I` | Reveal internal helpers under their owning work. |
 | Esc | Save feedback or a partial answer and return; cancel a criteria edit. |
 | `R` | Open read-only session replay; `q` returns to the fleet. |
 | `?` | Show context and keyboard help. |
 
 Ordinary characters stay in the editor while you type; they do not trigger
 graph shortcuts. Question choices are saved without submission. Use F2 to
-submit deliberately after answering every prompt.
+submit deliberately after answering every prompt. In the answer editor, F2
+saves the partial answer; return to Questions to submit it. Tab moves between
+prompts and number keys choose an option in Questions.
 
 ## Goal progress
 
@@ -58,6 +63,11 @@ into every agent or run a summarizing model. Editing scope keeps earlier
 revisions, and reopening a verified criterion removes its current credit while
 retaining the earlier evidence.
 
+In Criteria, `e` edits the goal title and one outcome per line, `v` records
+evidence or your attestation, and `u` reopens the selected outcome. Use `[` / `]`
+to select a recorded plan and `a` to adopt it as unverified criteria. `A`
+prepares the criteria-request draft for the selected recipient.
+
 Milestone checkpoints are off by default. Enabling the local preference affects
 the criteria-request draft; sending that guidance asks the agent to check in.
 The preference alone does not pause Codex or change its permission rules.
@@ -66,6 +76,10 @@ The preference alone does not pause Codex or change its permission rules.
 
 The composer belongs to the selected recipient. Drafts and partial answers stay
 available across navigation and restart. Check the recipient before sending.
+Closing a dirty composer waits for its local save to succeed. A storage error
+keeps the text open for retry. An insertion exceeding the 65,536-byte editor
+limit is rejected in full with a visible explanation; the earlier text stays
+intact.
 
 | Action | Meaning |
 | --- | --- |
@@ -88,10 +102,14 @@ live control currently targets the compatible local Codex runtime on Unix.
 Native questions require a current connection to confirm that the original
 request is still pending. A saved request ID alone is insufficient. Questions
 resolved elsewhere are retained with their drafts; expired requests can be
-deliberately converted to feedback. That conversion creates a draft and does
+deliberately converted to feedback with F5. That conversion creates a draft and does
 not claim the original question was answered. No answer or default choice is
 submitted automatically. Native command and permission approvals stay in Codex.
 Dismissal is local: it does not answer or cancel the runtime's request.
+
+Secret answers remain hidden while editing and reading saved questions. They
+cannot be copied into ordinary feedback; use `f` to write new non-secret
+feedback if needed. Local state files are private to your user account.
 
 ## Documents and replay
 
