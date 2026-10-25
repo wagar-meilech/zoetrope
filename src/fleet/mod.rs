@@ -3,6 +3,7 @@
 mod control_worker;
 mod document_worker;
 mod editor;
+pub mod runtime;
 mod state_worker;
 use crate::console::AgentKey;
 use crate::control::ThreadSnapshot;

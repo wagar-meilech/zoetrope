@@ -3,7 +3,8 @@
 //! CLI (hand-rolled over `std::env::args`, no clap):
 //!
 //! ```text
-//! zoe                       follow the current project's live session
+//! zoe                       open the global goal and agent console
+//! zoe --project             follow the current project's live session
 //! zoe <file.jsonl>          replay a recording, played from the start
 //! zoe <id>                  replay a session by id (or a unique prefix)
 //! zoe <dir>                 follow another project's live session
@@ -35,6 +36,8 @@ const CHANNEL_CAP: usize = 32;
 /// once running, regardless of how it launched.
 #[derive(Debug, Clone)]
 pub enum Cli {
+    /// Global goals and agents across local projects.
+    Fleet,
     /// View a session in the TUI. `target`: a session file (replay it from the
     /// start), a project dir (follow its live session), a session id, or
     /// `None` (the current project). `follow` starts at the live edge instead
@@ -60,7 +63,8 @@ const USAGE: &str = "\
 zoetrope — visualize coding-agent sessions as a flow graph
 
 USAGE:
-    zoe                     follow the current project's live session
+    zoe                     open the global goal and agent console
+    zoe --project           follow the current project's live session
     zoe <file.jsonl>        replay a recording, played from the start
     zoe <id>                replay a session by id, or a unique prefix of one
     zoe <dir>               follow another project's live session
@@ -68,6 +72,7 @@ USAGE:
     zoe <file> --speed N    playback speed (default 8.0)
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
     zoe inspect <file|id>   headless: print the session tree + info
+    zoe state --help       local goals, evidence, drafts and questions
     zoe control --help     explicit controls for the existing local Codex runtime
     zoe --version           print the version and exit
 
@@ -77,6 +82,9 @@ Once open, scrub/follow/pause/go-live are available no matter how you launched."
 fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     // Skip argv[0].
     let mut args = args.skip(1).peekable();
+    if args.peek().is_none() {
+        return Ok(Cli::Fleet);
+    }
 
     let provider_flag = |args: &mut std::iter::Peekable<_>| -> Result<Option<Provider>> {
         let v: String = args
@@ -115,6 +123,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     let mut follow = false;
     let mut speed = DEFAULT_REPLAY_SPEED;
     let mut provider = None;
+    let mut project = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => {
@@ -128,6 +137,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
                 std::process::exit(0);
             }
             "--follow" => follow = true,
+            "--project" => project = true,
             "--speed" => {
                 let v = args
                     .next()
@@ -152,6 +162,9 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
         }
     }
 
+    if project && target.is_some() {
+        bail!("--project follows the current directory; choose it or a target\n\n{USAGE}");
+    }
     Ok(Cli::View {
         target,
         follow,
@@ -322,6 +335,7 @@ async fn main() -> Result<()> {
     }
     let cli = parse_cli(std::env::args())?;
     match cli {
+        Cli::Fleet => zoetrope::fleet::runtime::run(zoetrope::fleet::FleetConfig::default()).await,
         Cli::Inspect { target, provider } => run_inspect(target, provider).await,
         other => run_tui(other).await,
     }
@@ -337,18 +351,6 @@ mod tests {
         let mut v = vec!["zoe".to_string()];
         v.extend(args.iter().map(|s| s.to_string()));
         parse_cli(v.into_iter())
-    }
-
-    #[test]
-    fn bare_invocation_is_live_for_cwd() {
-        match cli(&[]).unwrap() {
-            Cli::View {
-                target: None,
-                follow: false,
-                ..
-            } => {}
-            other => panic!("expected View{{target:None}}, got {other:?}"),
-        }
     }
 
     #[test]
