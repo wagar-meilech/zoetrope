@@ -92,8 +92,31 @@ try:
         observations = {"project": expect("Inspect runtime fixture goal"), "fleet": "Current work" in visible()}
     else:
         observations = {"fleet": expect("Current work")}
+    if scenario == "autosave" and observations["fleet"]:
+        expect("Inspect runtime fixture goal", compact=True)
+        os.write(terminal, b"f")
+        if expect("Editing feedback", compact=True):
+            # Let startup worker notifications settle before editing. Nothing
+            # else is sent to the terminal until persistence is observed.
+            deadline = time.monotonic() + 0.3
+            while time.monotonic() < deadline:
+                receive()
+            os.write(terminal, b"Save while I am thinking")
+            deadline = time.monotonic() + 2
+            observations["autosaved"] = False
+            while time.monotonic() < deadline:
+                output = subprocess.check_output([
+                    executable, "state", "--root", str(fixture / "state"),
+                    "show", "codex", "root-goal",
+                ])
+                drafts = json.loads(output)["record"]["drafts"]
+                if drafts and drafts[0]["text"] == "Save while I am thinking":
+                    observations["autosaved"] = True
+                    break
+                receive(0.05)
+        os.write(terminal, b"\x03")
     if scenario == "replay" and observations["fleet"]:
-        expect("Inspect runtime fixture goal")
+        expect("Inspect runtime fixture goal", compact=True)
         os.write(terminal, b"H")
         expect("All history")
         opened = False
@@ -104,7 +127,7 @@ try:
                 break
         if opened:
             os.write(terminal, b"Keep H/q R draft\x1b")
-            expect("Draft saved")
+            expect("Draft saved", compact=True)
             entered = True
             returned = True
             for _ in range(2):
@@ -131,7 +154,8 @@ try:
         else:
             observations["replay"] = False
     try:
-        os.write(terminal, b"q")
+        if scenario != "autosave":
+            os.write(terminal, b"q")
     except OSError:
         pass  # An invalid CLI invocation can exit before accepting input.
     deadline = time.monotonic() + 4

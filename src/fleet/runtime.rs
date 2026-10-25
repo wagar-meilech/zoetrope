@@ -87,6 +87,7 @@ enum Wake {
     Input(Option<std::io::Result<Event>>),
     Replay(Option<UiEvent>),
     Fleet,
+    Draft,
     Frame,
     Retired,
 }
@@ -169,15 +170,22 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
             dirty = false;
         }
         let deadline = replay.as_ref().and_then(Replay::next_frame);
+        let save_at = app.dirty_since.map(|at| {
+            let due = Instant::from_std(at) + Duration::from_millis(500);
+            // A full worker queue keeps the draft dirty. Retry at a bounded
+            // rate instead of repeatedly selecting an expired deadline.
+            due.max(Instant::now() + Duration::from_millis(25))
+        });
         let wake = tokio::select! {
             _ = notify.notified() => Wake::Fleet,
             event = events.next() => Wake::Input(event),
             update = replay_update(&mut replay) => Wake::Replay(update),
             _ = frame_due(deadline) => Wake::Frame,
+            _ = frame_due(save_at) => Wake::Draft,
             _ = retirement(&mut retiring) => Wake::Retired,
         };
         match wake {
-            Wake::Fleet => {}
+            Wake::Fleet | Wake::Draft => {}
             Wake::Frame => dirty = true,
             Wake::Retired => retiring = None,
             Wake::Replay(Some(event)) => {

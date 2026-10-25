@@ -100,6 +100,13 @@ fn project_flag_preserves_the_current_project_session_view() {
 }
 
 #[test]
+fn feedback_autosaves_without_another_keypress() {
+    let observed = Fixture::new().run("autosave");
+    assert_eq!(observed["autosaved"], true, "{observed}");
+    assert_eq!(observed["exit"], 0, "{observed}");
+}
+
+#[test]
 fn replay_returns_to_the_same_goal_and_draft_without_live_actions() {
     let fixture = Fixture::new();
     let observed = fixture.run("replay");
