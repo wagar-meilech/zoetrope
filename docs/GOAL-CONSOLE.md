@@ -26,11 +26,12 @@ tool output in every transcript.
 | Enter or Space | Expand or collapse the selected goal. |
 | `f` | Open the selected recipient's feedback. |
 | `Q` | Open persistent questions. |
+| `L` in Questions | Listen for current native questions on the selected live agent. |
 | `c` | Read completion criteria and evidence. |
 | `d` | View recorded documents. |
-| `e` | Edit the current pane. |
-| F2 / F3 / F4 | Send now / queue / stop. |
-| Esc | Save the draft and return. |
+| `e` | Edit a question answer or the completion criteria. |
+| F2 / F3 / F4 in Feedback | Send now / queue / stop. |
+| Esc | Save feedback or a partial answer and return; cancel a criteria edit. |
 | `R` | Open read-only session replay; `q` returns to the fleet. |
 | `?` | Show context and keyboard help. |
 

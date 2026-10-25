@@ -56,7 +56,7 @@ across both.
 **This customized fork** — Rust 1.88 or newer:
 
 ```bash
-git clone https://github.com/wagar-meilech/zoetrope
+git clone --branch feat/goal-console https://github.com/wagar-meilech/zoetrope
 cd zoetrope
 cargo build --release --locked
 ./target/release/zoe
@@ -178,7 +178,7 @@ session from disk, or drop a transcript on the page. It stays local there too.
   workflows with their own children, so the graph is the whole picture
 - Keeps going when an agent writes something it hasn't seen: unfamiliar records
   are skipped, never fatal
-- Read-only, and no network at all (see below)
+- Native history stays read-only; explicit controls use the existing local Codex runtime
 
 ## Keys
 
@@ -245,9 +245,11 @@ A few of the pieces that turn a log into a watchable session:
 - **You own the camera, not the history.** The recording is immutable and the graph
   never rearranges itself under you (`r` to relayout). The camera follows the action
   until you touch it, then stays where you put it.
-- **Zero network, provably.** There is no HTTP client anywhere in the dependency tree,
-  and `tokio` is pulled in without its `net` feature. `cargo tree` is the proof. This is
-  a property you can check, not a promise.
+- **Local monitoring and explicit controls.** Zoetrope makes no Internet requests.
+  The native controller uses WebSocket framing over Codex's existing Unix socket,
+  with TLS disabled; it never opens a TCP connection or starts a replacement daemon.
+  Explicit guidance is handed to that runtime, which continues its normal work.
+  Passive monitoring runs no model, uploads no transcripts and adds no telemetry.
 
 The model, the timeline and the rendering all live in the **portable core**, a
 library with no IO that compiles for any target, including WebAssembly. The native
@@ -255,8 +257,8 @@ frontend (the `zoe` binary in this
 crate) and the browser frontend (the `zoetrope-web` crate under `web/wasm/`, which
 runs the hosted app) sit on top of it and differ only in their IO and event loop.
 
-See [`docs/DESIGN.md`](https://github.com/furkankly/zoetrope/blob/main/docs/DESIGN.md) for the module map and the transcript format,
-and [`docs/ARCHITECTURE.md`](https://github.com/furkankly/zoetrope/blob/main/docs/ARCHITECTURE.md) for the invariants above in full.
+See [`docs/DESIGN.md`](docs/DESIGN.md) for the module map and the transcript format,
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the invariants above in full.
 
 ## A note on the transcript format
 
