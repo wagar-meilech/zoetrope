@@ -4,7 +4,6 @@ use crate::control::{
 };
 use crate::workstate::{DeliveryState, FeedbackMode, QuestionOption, QuestionPrompt};
 pub(super) enum ControlCommand {
-    Select(Option<AgentKey>),
     Join(AgentKey),
     Answer(QuestionRecord),
     Send {
@@ -33,18 +32,25 @@ pub(super) struct ControlWorker {
     pub tx: mpsc::SyncSender<ControlCommand>,
     pub output: Arc<Mutex<ControlOutput>>,
     thread: Option<thread::JoinHandle<()>>,
+    selection: Arc<Mutex<Option<Option<AgentKey>>>>,
 }
 impl ControlWorker {
     pub fn start(config: FleetConfig, notify: Arc<tokio::sync::Notify>) -> Self {
         let (tx, rx) = mpsc::sync_channel(32);
         let output = Arc::new(Mutex::new(ControlOutput::default()));
         let shared = output.clone();
-        let worker = thread::spawn(move || run(config, rx, shared, notify));
+        let selection = Arc::new(Mutex::new(None));
+        let selected = selection.clone();
+        let worker = thread::spawn(move || run(config, rx, shared, selected, notify));
         Self {
             tx,
             output,
             thread: Some(worker),
+            selection,
         }
+    }
+    pub fn select(&self, target: Option<AgentKey>) {
+        *self.selection.lock().unwrap_or_else(|e| e.into_inner()) = Some(target);
     }
     pub fn shutdown(&mut self) {
         if let Some(worker) = self.thread.take() {
@@ -206,6 +212,7 @@ fn run(
     config: FleetConfig,
     rx: mpsc::Receiver<ControlCommand>,
     output: Arc<Mutex<ControlOutput>>,
+    selection: Arc<Mutex<Option<Option<AgentKey>>>>,
     notify: Arc<tokio::sync::Notify>,
 ) {
     use crate::control::{Controller, RuntimeEvent};
@@ -217,7 +224,12 @@ fn run(
     let mut targets = BTreeMap::<String, AgentKey>::new();
     let mut discover = Instant::now();
     let mut observe = std::collections::VecDeque::<String>::new();
+    let mut deferred = None;
     loop {
+        if let Some(target) = selection.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            selected = target;
+            refresh = Instant::now();
+        }
         if controller.is_none() && Instant::now() >= reconnect {
             controller = Controller::connect(&config.socket).ok();
             reconnect = Instant::now() + Duration::from_secs(10);
@@ -233,52 +245,33 @@ fn run(
                         .unwrap_or_else(|e| e.into_inner())
                         .snapshots
                         .retain(|id, _| loaded.contains(id));
-                    observe = ids.into();
+                    observe.retain(|id| loaded.contains(id));
+                    let queued: BTreeSet<_> = observe.iter().cloned().collect();
+                    observe.extend(ids.into_iter().filter(|id| !queued.contains(id)));
                 }
             }
             discover = Instant::now() + Duration::from_secs(10);
         }
-        if let (Some(runtime), Some(id)) = (controller.as_mut(), observe.pop_front()) {
-            if let Ok(snapshot) = runtime.snapshot(&id) {
-                output
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .snapshots
-                    .insert(id, snapshot);
-                notify.notify_one();
-            }
-        }
-        if Instant::now() >= refresh {
-            if let (Some(runtime), Some(target)) = (controller.as_mut(), selected.as_ref()) {
-                if target.session.provider == crate::provider::Provider::Codex {
-                    if let Ok(snapshot) = runtime.snapshot(thread_id(target)) {
-                        let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
-                        let changed = out.snapshots.get(&snapshot.thread_id) != Some(&snapshot);
-                        if out.snapshots.len() >= 4096 {
-                            if let Some(key) = out.snapshots.keys().next().cloned() {
-                                out.snapshots.remove(&key);
-                            }
-                        }
-                        out.snapshots.insert(snapshot.thread_id.clone(), snapshot);
-                        drop(out);
-                        if changed {
-                            notify.notify_one();
-                        }
-                    }
-                }
-            }
-            refresh = Instant::now() + Duration::from_secs(2);
-        }
-        match rx.recv_timeout(Duration::from_millis(200)) {
+        let command = deferred.take().map(Ok).unwrap_or_else(|| {
+            rx.recv_timeout(if observe.is_empty() {
+                Duration::from_millis(200)
+            } else {
+                Duration::ZERO
+            })
+        });
+        match command {
             Ok(ControlCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            Ok(ControlCommand::Select(target)) => {
-                if let Some(target) = &target {
-                    targets.insert(thread_id(target).into(), target.clone());
-                }
-                selected = target;
-                refresh = Instant::now();
-            }
             Ok(ControlCommand::Join(target)) => {
+                if targets.len() >= 256 && !targets.contains_key(thread_id(&target)) {
+                    output.lock().unwrap_or_else(|e| e.into_inner()).receipt = Some(Receipt {
+                        target,
+                        message: "Already listening to 256 agents; restart to choose a new group"
+                            .into(),
+                        cleared_text: None,
+                    });
+                    notify.notify_one();
+                    continue;
+                }
                 targets.insert(thread_id(&target).into(), target.clone());
                 let message = match controller.as_mut() {
                     Some(runtime) => {
@@ -394,6 +387,63 @@ fn run(
                 refresh = Instant::now();
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        if Instant::now() >= refresh {
+            if let (Some(runtime), Some(target)) = (controller.as_mut(), selected.as_ref()) {
+                if target.session.provider == crate::provider::Provider::Codex {
+                    let id = thread_id(target);
+                    let snapshot = runtime.snapshot(id).unwrap_or_else(|_| ThreadSnapshot {
+                        thread_id: id.into(),
+                        name: None,
+                        cwd: None,
+                        status: RuntimeStatus::Unknown,
+                        active_turn: None,
+                        can_accept_direct_input: None,
+                    });
+                    {
+                        let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                        let changed = out.snapshots.get(&snapshot.thread_id) != Some(&snapshot);
+                        if out.snapshots.len() >= 4096 {
+                            if let Some(key) = out.snapshots.keys().next().cloned() {
+                                out.snapshots.remove(&key);
+                            }
+                        }
+                        out.snapshots.insert(snapshot.thread_id.clone(), snapshot);
+                        drop(out);
+                        if changed {
+                            notify.notify_one();
+                        }
+                    }
+                }
+            }
+            refresh = Instant::now() + Duration::from_secs(2);
+        }
+        // Query small bounded batches, yielding to explicit controls before each read.
+        let batch_started = Instant::now();
+        for _ in 0..8 {
+            match rx.try_recv() {
+                Ok(command) => {
+                    deferred = Some(command);
+                    break;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => return,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+            if batch_started.elapsed() >= Duration::from_millis(50) {
+                break;
+            }
+            let (Some(runtime), Some(id)) = (controller.as_mut(), observe.pop_front()) else {
+                break;
+            };
+            if let Ok(snapshot) = runtime.snapshot(&id) {
+                let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                let changed = out.snapshots.get(&id) != Some(&snapshot);
+                out.snapshots.insert(id, snapshot);
+                drop(out);
+                if changed {
+                    notify.notify_one();
+                }
+            }
         }
         let events = controller
             .as_mut()
@@ -570,13 +620,13 @@ fn run(
     config: FleetConfig,
     rx: mpsc::Receiver<ControlCommand>,
     output: Arc<Mutex<ControlOutput>>,
+    _selection: Arc<Mutex<Option<Option<AgentKey>>>>,
     notify: Arc<tokio::sync::Notify>,
 ) {
     let store = Store::new(config.state_root);
     while let Ok(command) = rx.recv() {
         match command {
             ControlCommand::Shutdown => break,
-            ControlCommand::Select(_) => {}
             ControlCommand::Join(target) => {
                 output.lock().unwrap_or_else(|e| e.into_inner()).receipt = Some(Receipt {
                     target,

@@ -63,9 +63,10 @@ seen=[]
 try:
  while True:
   obj=read();method=obj.get('method');params=obj.get('params',{})
-  if method=='thread/loaded/list': result={'data':['root-goal','child-thread'],'nextCursor':None}
+  if method=='thread/loaded/list': result={'data':([f'idle-{i}' for i in range(70)]+['root-goal'] if case=='many' else ['root-goal','child-thread']),'nextCursor':None}
   elif method=='thread/read':
-   tid=params['threadId'];assert tid in ('root-goal','child-thread');assert params=={'threadId':tid,'includeTurns':False};result={'thread':{'id':tid,'name':('Parser' if tid=='child-thread' else 'Parser goal'),'cwd':'/projects/parser','status':{'type':'active','activeFlags':(['waitingOnUserInput'] if case=='observe' else [])},'canAcceptDirectInput':True}}
+   tid=params['threadId'];assert tid in ('root-goal','child-thread') or (case=='many' and tid.startswith('idle-'));assert params=={'threadId':tid,'includeTurns':False};result={'thread':{'id':tid,'name':('Parser' if tid=='child-thread' else 'Parser goal'),'cwd':'/projects/parser','status':{'type':'active','activeFlags':(['waitingOnUserInput'] if case=='observe' or (case=='many' and tid=='root-goal') else [])},'canAcceptDirectInput':True}}
+   if case=='many' and tid!='root-goal': result['thread']['status']={'type':'idle'}
   elif method=='thread/turns/list':
    tid=params['threadId'];result={'data':[{'id':('child-turn' if tid=='child-thread' else 'root-turn'),'status':'inProgress'}],'nextCursor':None}
   elif method=='thread/resume' and case=='question':
@@ -97,5 +98,5 @@ try:
   send({'id':obj['id'],'result':result})
 except EOFError:
  pass
-assert seen==({'question':['join','answer'],'observe':[],'pending':['guide','guide']}.get(case,['guide','queue','stop'])),seen
+assert seen==({'question':['join','answer'],'observe':[],'many':[],'pending':['guide','guide']}.get(case,['guide','queue','stop'])),seen
 conn.close();s.close()

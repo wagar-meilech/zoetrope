@@ -881,3 +881,27 @@ fn pending_deliveries_are_readable_and_acknowledgment_preserves_a_newer_draft() 
     wait_text(&mut restored, "Guidance to Parser · Accepted by Codex");
     restored.shutdown();
 }
+
+#[cfg(unix)]
+#[test]
+fn background_observation_reaches_later_agents_without_resuming_them() {
+    let peer = Peer::new("many");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", true);
+    home.goal("root-goal", "Quiet later work");
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Quiet later work");
+    wait_text(&mut ui, "Waiting for your answer");
+    let current = text(&mut ui, 150, 42);
+    assert!(current.contains("Current work"), "{current}");
+    ui.shutdown();
+    peer.finish();
+}

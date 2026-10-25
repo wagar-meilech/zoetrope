@@ -375,10 +375,7 @@ impl FleetConsole {
                 if selection_changed {
                     self.selected_work = None;
                     self.pending_center = true;
-                    let _ = self
-                        .control
-                        .tx
-                        .try_send(ControlCommand::Select(self.selected_agent()));
+                    self.control.select(self.selected_agent());
                 }
             }
             if changed {
@@ -400,10 +397,7 @@ impl FleetConsole {
                 if let Some(id) = self.pending_feedback.as_ref() {
                     if let Some(item) = record.outbox.iter().find(|item| &item.id == id) {
                         self.feedback_target = Some(item.target.clone());
-                        let _ = self
-                            .control
-                            .tx
-                            .try_send(ControlCommand::Select(Some(item.target.clone())));
+                        self.control.select(Some(item.target.clone()));
                         self.feedback_open = true;
                         self.pane = Pane::Feedback;
                         self.edit_kind = Some(EditKind::Feedback);
@@ -1387,10 +1381,7 @@ impl FleetConsole {
                 let _ = self.state.tx.try_send(StateCommand::Load(key));
             }
         }
-        let _ = self
-            .control
-            .tx
-            .try_send(ControlCommand::Select(self.selected_agent()));
+        self.control.select(self.selected_agent());
         self.navigate(ConsoleCommand::Select(id));
     }
 
