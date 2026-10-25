@@ -78,7 +78,15 @@ try:
    seen.append('answer');send({'method':'serverRequest/resolved','params':{'threadId':'root-goal','requestId':7}});continue
   elif method=='turn/steer':
    assert params=={'threadId':'child-thread','expectedTurnId':'child-turn','input':[{'type':'text','text':'Keep the public interface'}]},obj
-   seen.append('guide');result={'turnId':'child-turn'}
+   seen.append('guide')
+   if case=='pending' and seen.count('guide')==1:
+    import time
+    pathlib.Path(path+'.sending').touch()
+    deadline=time.monotonic()+8
+    while not pathlib.Path(path+'.release').exists():
+     assert time.monotonic()<deadline,'operator did not release acknowledgment'
+     time.sleep(.01)
+   result={'turnId':'child-turn'}
   elif method=='thread/queue/add':
    assert params['threadId']=='child-thread' and params['input']==[{'type':'text','text':'Do docs later'}],obj
    assert params['clientUserMessageId'];seen.append('queue');result={'queuedSubmission':{'id':'queued-ui'}}
@@ -89,5 +97,5 @@ try:
   send({'id':obj['id'],'result':result})
 except EOFError:
  pass
-assert seen==({'question':['join','answer'],'observe':[]}.get(case,['guide','queue','stop'])),seen
+assert seen==({'question':['join','answer'],'observe':[],'pending':['guide','guide']}.get(case,['guide','queue','stop'])),seen
 conn.close();s.close()

@@ -92,6 +92,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         );
     }
     let block = Block::default().borders(Borders::ALL).title(match ui.pane {
+        Pane::Deliveries => " Saved deliveries ",
         Pane::Questions => " Saved questions ",
         Pane::Criteria => " Completion criteria ",
         Pane::Documents => " Documents ",
@@ -154,6 +155,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         draw_editor(ui, frame, content);
     } else {
         let details = match ui.pane {
+            Pane::Deliveries => ui.deliveries_text(),
             Pane::Documents => ui.documents_text(),
             Pane::Questions => ui.questions_text(),
             Pane::Criteria => ui.criteria_text(),
@@ -250,7 +252,7 @@ fn draw_help(ui: &FleetConsole, frame: &mut Frame) {
         area.height.saturating_sub(2),
     );
     frame.render_widget(Clear, popup);
-    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F3 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nd documents · Enter request MD Reader preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
+    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F3 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nb saved deliveries · d documents · Enter preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
     frame.render_widget(
         Paragraph::new(text)
             .block(

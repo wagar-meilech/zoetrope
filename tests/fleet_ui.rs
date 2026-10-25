@@ -821,3 +821,63 @@ fn progress_is_clickable_and_narrow_terminals_keep_help_and_pasted_drafts_usable
     wait_text(&mut ui, "Draft saved");
     ui.shutdown();
 }
+#[cfg(unix)]
+#[test]
+fn pending_deliveries_are_readable_and_acknowledgment_preserves_a_newer_draft() {
+    let peer = Peer::new("pending");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Delivery records");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"),"{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-thread\",\"session_id\":\"root-goal\",\"thread_source\":\"subagent\",\"parent_thread_id\":\"root-goal\",\"agent_nickname\":\"Parser\"}}\n").unwrap();
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Delivery records");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Parser");
+    wait_text(&mut ui, "Working");
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Keep the public interface");
+    key(&mut ui, KeyCode::F(2));
+    let until = Instant::now() + Duration::from_secs(3);
+    while !peer.dir.join("peer.sock.sending").exists() {
+        assert!(Instant::now() < until);
+        ui.poll();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    ctrl(&mut ui, 'u');
+    type_text(&mut ui, "New instruction draft");
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    key(&mut ui, KeyCode::Char('b'));
+    let pending = wait_text(&mut ui, "Guidance to Parser · Sending");
+    assert!(!pending.contains("Delivery unknown"), "{pending}");
+    std::fs::write(peer.dir.join("peer.sock.release"), "").unwrap();
+    wait_text(&mut ui, "Accepted by Codex");
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(&mut ui, "New instruction draft");
+    ctrl(&mut ui, 'u');
+    type_text(&mut ui, "Keep the public interface");
+    key(&mut ui, KeyCode::F(2));
+    wait_text(&mut ui, "Accepted by Codex");
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('b'));
+    let delivered = wait_text(&mut ui, "Saved deliveries");
+    assert!(!delivered.contains("turn/steer"));
+    ui.shutdown();
+    peer.finish();
+    let mut restored = home.ui();
+    wait_text(&mut restored, "Selected: Delivery records");
+    key(&mut restored, KeyCode::Char('b'));
+    wait_text(&mut restored, "Guidance to Parser · Accepted by Codex");
+    restored.shutdown();
+}

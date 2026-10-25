@@ -18,6 +18,7 @@ pub(super) enum ControlCommand {
 pub(super) struct Receipt {
     pub target: AgentKey,
     pub message: String,
+    pub cleared_text: Option<String>,
 }
 #[derive(Default)]
 pub(super) struct ControlOutput {
@@ -26,6 +27,7 @@ pub(super) struct ControlOutput {
     pub connected: bool,
     pub dirty: BTreeSet<SessionKey>,
     pub notice: Option<String>,
+    pub inflight_id: Option<String>,
 }
 pub(super) struct ControlWorker {
     pub tx: mpsc::SyncSender<ControlCommand>,
@@ -86,8 +88,9 @@ fn persist_send(
     mode: FeedbackMode,
     expected_turn: Option<String>,
     answer: Option<&QuestionRecord>,
+    started: impl FnOnce(&str),
     execute: impl FnOnce(ControlAction) -> DeliveryReceipt,
-) -> String {
+) -> (String, Option<String>) {
     let id = format!(
         "zoe-{}-{}",
         std::process::id(),
@@ -121,8 +124,12 @@ fn persist_send(
         ],
     );
     if saved.is_err() {
-        return "Could not save the delivery record; nothing was sent".into();
+        return (
+            "Could not save the delivery record; nothing was sent".into(),
+            None,
+        );
     }
+    started(&id);
     let action = if let Some(question) = answer {
         ControlAction::Answer {
             request_id: question
@@ -169,11 +176,30 @@ fn persist_send(
         )
         .is_err()
     {
-        return format!(
-            "{message}. Could not save the final delivery state; do not resend automatically."
+        return (
+            format!(
+                "{message}. Could not save the final delivery state; do not resend automatically."
+            ),
+            None,
         );
     }
-    message
+    let cleared_text = if matches!(receipt.state, ReceiptState::Accepted | ReceiptState::Queued)
+        && matches!(
+            mode,
+            FeedbackMode::Guidance | FeedbackMode::Queue | FeedbackMode::CriteriaRequest
+        ) {
+        let _ = store.apply(
+            &target.session,
+            WorkUpdate::ClearDraftIfMatches {
+                target: target.clone(),
+                expected_text: text.into(),
+            },
+        );
+        Some(text.into())
+    } else {
+        None
+    };
+    (message, cleared_text)
 }
 #[cfg(unix)]
 fn run(
@@ -271,8 +297,11 @@ fn run(
                     }
                     None => "Codex controls unavailable; saved questions remain accessible".into(),
                 };
-                output.lock().unwrap_or_else(|e| e.into_inner()).receipt =
-                    Some(Receipt { target, message });
+                output.lock().unwrap_or_else(|e| e.into_inner()).receipt = Some(Receipt {
+                    target,
+                    message,
+                    cleared_text: None,
+                });
                 notify.notify_one();
             }
             Ok(ControlCommand::Answer(question)) => {
@@ -282,13 +311,20 @@ fn run(
                     agent: target.clone(),
                     replay: false,
                 };
-                let message = persist_send(
+                let (message, cleared_text) = persist_send(
                     &store,
                     &target,
                     &text,
                     FeedbackMode::Answer,
                     question.turn_id.clone(),
                     Some(&question),
+                    |id| {
+                        let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                        out.inflight_id = Some(id.into());
+                        out.dirty.insert(target.session.clone());
+                        drop(out);
+                        notify.notify_one();
+                    },
                     |action| match controller.as_mut() {
                         Some(runtime) => runtime.execute(&native, action),
                         None => DeliveryReceipt {
@@ -302,7 +338,12 @@ fn run(
                 );
                 let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
                 out.dirty.insert(target.session.clone());
-                out.receipt = Some(Receipt { target, message });
+                out.inflight_id = None;
+                out.receipt = Some(Receipt {
+                    target,
+                    message,
+                    cleared_text,
+                });
                 drop(out);
                 notify.notify_one();
             }
@@ -316,13 +357,20 @@ fn run(
                     agent: target.clone(),
                     replay: false,
                 };
-                let message = persist_send(
+                let (message, cleared_text) = persist_send(
                     &store,
                     &target,
                     &text,
                     mode,
                     expected_turn,
                     None,
+                    |id| {
+                        let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                        out.inflight_id = Some(id.into());
+                        out.dirty.insert(target.session.clone());
+                        drop(out);
+                        notify.notify_one();
+                    },
                     |action| match controller.as_mut() {
                         Some(runtime) => runtime.execute(&native, action),
                         None => DeliveryReceipt {
@@ -334,8 +382,14 @@ fn run(
                         },
                     },
                 );
-                output.lock().unwrap_or_else(|e| e.into_inner()).receipt =
-                    Some(Receipt { target, message });
+                let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                out.inflight_id = None;
+                out.receipt = Some(Receipt {
+                    target,
+                    message,
+                    cleared_text,
+                });
+                drop(out);
                 notify.notify_one();
                 refresh = Instant::now();
             }
@@ -527,6 +581,7 @@ fn run(
                 output.lock().unwrap_or_else(|e| e.into_inner()).receipt = Some(Receipt {
                     target,
                     message: "Live Codex questions are unavailable on this platform".into(),
+                    cleared_text: None,
                 });
                 notify.notify_one();
             }
@@ -534,6 +589,7 @@ fn run(
                 output.lock().unwrap_or_else(|e| e.into_inner()).receipt = Some(Receipt {
                     target: question.target,
                     message: "Live answers are unavailable on this platform; draft kept".into(),
+                    cleared_text: None,
                 });
                 notify.notify_one();
             }
@@ -543,18 +599,30 @@ fn run(
                 mode,
                 expected_turn,
             } => {
-                let message =
-                    persist_send(&store, &target, &text, mode, expected_turn, None, |_| {
-                        DeliveryReceipt {
-                            state: ReceiptState::Unavailable,
-                            message: "Live Codex control is unavailable on this platform".into(),
-                            thread_id: None,
-                            turn_id: None,
-                            queue_id: None,
-                        }
-                    });
-                output.lock().unwrap_or_else(|e| e.into_inner()).receipt =
-                    Some(Receipt { target, message });
+                let (message, cleared_text) = persist_send(
+                    &store,
+                    &target,
+                    &text,
+                    mode,
+                    expected_turn,
+                    None,
+                    |_| {},
+                    |_| DeliveryReceipt {
+                        state: ReceiptState::Unavailable,
+                        message: "Live Codex control is unavailable on this platform".into(),
+                        thread_id: None,
+                        turn_id: None,
+                        queue_id: None,
+                    },
+                );
+                let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                out.inflight_id = None;
+                out.receipt = Some(Receipt {
+                    target,
+                    message,
+                    cleared_text,
+                });
+                drop(out);
                 notify.notify_one();
             }
         }

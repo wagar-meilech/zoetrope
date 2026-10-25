@@ -431,6 +431,11 @@ pub enum WorkUpdate {
         target: AgentKey,
         text: String,
     },
+    /// Clear an acknowledged draft only if no newer edit replaced it.
+    ClearDraftIfMatches {
+        target: AgentKey,
+        expected_text: String,
+    },
     Verify {
         id: String,
         evidence: Vec<Evidence>,
@@ -908,6 +913,21 @@ impl Store {
                         draft.text = text;
                     } else {
                         record.drafts.push(FeedbackDraft { target, text });
+                    }
+                }
+                WorkUpdate::ClearDraftIfMatches {
+                    target,
+                    expected_text,
+                } => {
+                    if target.session != *session {
+                        bail!("draft recipient must belong to the selected session");
+                    }
+                    if let Some(draft) = record
+                        .drafts
+                        .iter_mut()
+                        .find(|d| d.target == target && d.text == expected_text)
+                    {
+                        draft.text.clear();
                     }
                 }
                 WorkUpdate::Verify {
