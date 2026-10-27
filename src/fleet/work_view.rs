@@ -2,10 +2,11 @@
 use super::*;
 use crate::workstate::{PlanProposal, PlanStatus, WorkItem, WorkStatus};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) enum Selection {
     Report(String),
     Plan { proposal: String, step: usize },
+    Missing(String),
 }
 
 #[derive(Clone, Copy)]
@@ -141,6 +142,11 @@ impl FleetConsole {
         self.status = "Recorded commands and public messages for the selected owner".into();
     }
     pub(super) fn open_agents(&mut self) {
+        if !self.agents_mode {
+            self.remember_navigation();
+        }
+        self.agents_mode = true;
+        self.work_canvas = false;
         self.work_selection = None;
         self.work_mode = false;
         self.pane = Pane::Graph;
@@ -170,6 +176,23 @@ impl FleetConsole {
         current_entry(&entries, Some(selected)).map(|at| entries[at].owner().clone())
     }
     pub(super) fn focus_work(&mut self) {
+        if self.view.selection.as_ref().and_then(session_key).is_none() {
+            return;
+        }
+        if self.agents_mode
+            && self
+                .navigation
+                .last()
+                .is_some_and(|previous| previous.work_canvas)
+        {
+            self.back_to_fleet();
+            return;
+        }
+        if !self.work_canvas {
+            self.remember_navigation();
+        }
+        self.agents_mode = false;
+        self.work_canvas = true;
         self.work_mode = true;
         let entries = self.work_entries();
         let entry = current_entry(&entries, self.work_selection.as_ref())
@@ -178,6 +201,11 @@ impl FleetConsole {
         if let Some(entry) = entry {
             let selection = entry.selection();
             self.work_selection = Some(selection);
+            self.sync_work_graph();
+            self.work_graph.flow.select_node(&work_graph::selection_id(
+                self.work_selection.as_ref().unwrap(),
+            ));
+            self.work_graph.pending_center = true;
             self.pane = Pane::Graph;
             self.scroll = 0;
             self.select_recipient(self.selected_agent());
@@ -185,6 +213,91 @@ impl FleetConsole {
         } else {
             self.status = "No reported work; Enable tracking to request updates".into();
         }
+    }
+    fn remember_navigation(&mut self) {
+        if self.navigation.len() == 8 {
+            self.navigation.remove(0);
+        }
+        self.navigation.push(Navigation {
+            selection: self.view.selection.clone(),
+            work_selection: self.work_selection.clone(),
+            work_mode: self.work_mode,
+            work_canvas: self.work_canvas,
+            agents_mode: self.agents_mode,
+            viewport: if self.work_canvas {
+                self.work_graph.flow.viewport
+            } else {
+                self.flow.viewport
+            },
+        });
+    }
+    pub(super) fn back_to_fleet(&mut self) {
+        if let Some(previous) = self.navigation.pop() {
+            self.work_canvas = previous.work_canvas;
+            self.agents_mode = previous.agents_mode;
+            self.work_mode = previous.work_mode;
+            self.work_selection = previous.work_selection;
+            self.view.selection = previous.selection.clone();
+            self.requested_selection = previous.selection.clone();
+            if let Some(selection) = previous.selection {
+                self.navigate(ConsoleCommand::Select(selection));
+            }
+            if self.work_canvas {
+                self.work_graph.flow.viewport = previous.viewport;
+                if let Some(selected) = &self.work_selection {
+                    self.work_graph
+                        .flow
+                        .select_node(&work_graph::selection_id(selected));
+                }
+                self.work_graph.pending_center = false;
+            } else {
+                self.flow.viewport = previous.viewport;
+                if let Some(selected) = &self.view.selection {
+                    self.flow.select_node(&flow_id(selected));
+                }
+            }
+        } else {
+            self.work_canvas = false;
+            self.agents_mode = false;
+            self.work_selection = None;
+            self.work_mode = true;
+        }
+        self.pending_center = false;
+        self.select_recipient(self.selected_agent());
+        self.status = if self.work_canvas {
+            "Work graph · restored selection"
+        } else {
+            "Fleet · arrows select · Enter or w opens Work graph"
+        }
+        .into();
+    }
+    pub(super) fn sync_work_graph(&mut self) {
+        let tasks = self
+            .work_entries()
+            .iter()
+            .map(|entry| work_graph::Task {
+                id: work_graph::selection_id(&entry.selection()),
+                title: entry.label().into(),
+                status: entry.status_label().into(),
+                owner: self.work_owner_label(entry.owner()),
+                dependencies: match entry {
+                    Entry::Report(work) => work.report.depends_on.clone(),
+                    Entry::Plan(_, _) => None,
+                },
+                reference: match entry {
+                    Entry::Report(work) => Some(work.report.id.clone()),
+                    Entry::Plan(_, _) => None,
+                },
+                parent: match entry {
+                    Entry::Report(work) => work.report.parent_id.clone(),
+                    Entry::Plan(_, _) => None,
+                },
+            })
+            .collect();
+        self.work_graph.sync(
+            self.view.selection.as_ref().and_then(session_key).cloned(),
+            tasks,
+        );
     }
     pub(super) fn move_work(&mut self, delta: isize) {
         let entries = self.work_entries();
@@ -197,6 +310,10 @@ impl FleetConsole {
         });
         if let Some(entry) = entries.get(next) {
             self.work_selection = Some(entry.selection());
+            self.work_graph.flow.select_node(&work_graph::selection_id(
+                self.work_selection.as_ref().unwrap(),
+            ));
+            self.work_graph.pending_center = true;
             self.scroll = 0;
             self.select_recipient(self.selected_agent());
         }
@@ -267,6 +384,11 @@ impl FleetConsole {
         let Some(record) = &self.selected_work else {
             return String::new();
         };
+        if let Some(Selection::Missing(reference)) = &self.work_selection {
+            return format!(
+                "Unresolved prerequisite: {reference}\nNo matching task is recorded. Ownership is unavailable; no recipient is selected.\nChoose a task with arrows or w."
+            );
+        }
         let entries = self.work_entries();
         let mut text = String::from("Work toward goal\n");
         if entries.is_empty() {
@@ -316,7 +438,10 @@ impl FleetConsole {
             Entry::Report(work) => {
                 let report = &work.report;
                 if let Some(parent) = &report.parent_id {
-                    text.push_str(&format!("Parent: {}\n", self.work_reference(parent)));
+                    text.push_str(&format!(
+                        "Parent: {} · grouping only\n",
+                        self.work_reference(parent)
+                    ));
                 }
                 text.push_str("Dependencies: ");
                 match &report.depends_on {

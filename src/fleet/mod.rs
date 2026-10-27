@@ -6,6 +6,7 @@ mod editor;
 mod presentation;
 pub mod runtime;
 mod state_worker;
+mod work_graph;
 mod work_view;
 use crate::console::AgentKey;
 use crate::control::ThreadSnapshot;
@@ -255,6 +256,15 @@ enum EditKind {
     },
 }
 
+struct Navigation {
+    selection: Option<FleetNodeId>,
+    work_selection: Option<work_view::Selection>,
+    work_mode: bool,
+    work_canvas: bool,
+    agents_mode: bool,
+    viewport: rataflow::Viewport,
+}
+
 struct PendingSave {
     id: u64,
     text: String,
@@ -278,6 +288,10 @@ pub struct FleetConsole {
     selected_work: Option<WorkRecord>,
     work_selection: Option<work_view::Selection>,
     work_mode: bool,
+    work_canvas: bool,
+    agents_mode: bool,
+    navigation: Vec<Navigation>,
+    work_graph: work_graph::WorkGraph,
     activity_request: Option<AgentKey>,
     replay_requested: bool,
     work_reload: Option<SessionKey>,
@@ -348,6 +362,10 @@ impl FleetConsole {
             selected_work: None,
             work_selection: None,
             work_mode: true,
+            work_canvas: false,
+            agents_mode: false,
+            navigation: Vec::new(),
+            work_graph: work_graph::WorkGraph::new(),
             activity_request: None,
             replay_requested: false,
             work_reload: None,
@@ -1797,6 +1815,7 @@ impl FleetConsole {
     }
 
     fn select(&mut self, id: FleetNodeId) {
+        self.work_canvas = false;
         self.work_mode = matches!(id, FleetNodeId::Session(_));
         self.work_selection = None;
         self.feedback_requested = false;
@@ -1843,7 +1862,21 @@ impl FleetConsole {
     }
 
     fn move_selection(&mut self, delta: isize) {
-        let nodes = &self.view.graph.nodes;
+        let scoped = self
+            .agents_mode
+            .then(|| self.view.selection.as_ref().and_then(session_key).cloned())
+            .flatten();
+        let nodes: Vec<_> = self
+            .view
+            .graph
+            .nodes
+            .iter()
+            .filter(|node| {
+                scoped
+                    .as_ref()
+                    .is_none_or(|key| session_key(&node.id) == Some(key))
+            })
+            .collect();
         let current = self
             .view
             .selection
@@ -1991,12 +2024,20 @@ impl FleetConsole {
                 );
             }
         }
+        self.sync_work_graph();
         // Batch geometry resolution: the single-node APIs re-walk all prior
         // nodes after every insertion/position update.
         let _ = self.flow.set_nodes(nodes);
         let _ = self.flow.set_edges(edges);
         if let Some(id) = &self.view.selection {
             self.flow.select_node(&flow_id(id));
+        }
+    }
+    fn active_flow(&mut self) -> &mut Flow<Card, StepEdge> {
+        if self.work_canvas {
+            &mut self.work_graph.flow
+        } else {
+            &mut self.flow
         }
     }
     fn navigate(&mut self, command: ConsoleCommand) {
@@ -2152,19 +2193,23 @@ impl FleetConsole {
                     self.show_help = true;
                     self.help_scroll = 0;
                 }
-                KeyCode::Char('+') | KeyCode::Char('=') => self.flow.zoom_in(),
-                KeyCode::Char('-') => self.flow.zoom_out(),
-                KeyCode::Char('o') => self.flow.request_fit_view(),
+                KeyCode::Char('+') | KeyCode::Char('=') => self.active_flow().zoom_in(),
+                KeyCode::Char('-') => self.active_flow().zoom_out(),
+                KeyCode::Char('o') => {
+                    self.active_flow().request_fit_view();
+                    self.pending_center = false;
+                    self.work_graph.pending_center = false;
+                }
                 KeyCode::Char('r') => {
-                    self.flow.zoom_to(1.0);
+                    self.active_flow().zoom_to(1.0);
                     self.pending_center = true;
                 }
                 KeyCode::Left => {
-                    self.flow.pan(8.0, 0.0);
+                    self.active_flow().pan(8.0, 0.0);
                     self.pending_center = false;
                 }
                 KeyCode::Right => {
-                    self.flow.pan(-8.0, 0.0);
+                    self.active_flow().pan(-8.0, 0.0);
                     self.pending_center = false;
                 }
                 KeyCode::Char('I') => self.navigate(ConsoleCommand::ToggleInternal),
@@ -2212,7 +2257,8 @@ impl FleetConsole {
                     }
                 }
                 KeyCode::Enter if self.pane == Pane::Documents => self.open_document(),
-                KeyCode::Enter | KeyCode::Char(' ') if self.pane == Pane::Graph => {
+                KeyCode::Enter if self.pane == Pane::Graph => self.focus_work(),
+                KeyCode::Char(' ') if self.pane == Pane::Graph && !self.work_canvas => {
                     self.toggle_expansion()
                 }
                 KeyCode::Char('w') if matches!(self.pane, Pane::Graph | Pane::Feedback) => {
@@ -2284,6 +2330,9 @@ impl FleetConsole {
                 KeyCode::PageDown => self.scroll = self.scroll.saturating_add(8),
                 KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(8),
                 KeyCode::Esc => {
+                    if self.pane == Pane::Graph && (self.work_canvas || self.agents_mode) {
+                        self.back_to_fleet();
+                    }
                     self.pane = Pane::Graph;
                     self.scroll = 0;
                 }

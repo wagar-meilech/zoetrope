@@ -332,7 +332,7 @@ fn guidance_queue_and_stop_reach_the_selected_child_without_parent_routing() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     wait_text(&mut ui, "Recipient: Coordinator");
@@ -361,7 +361,7 @@ fn explicitly_selecting_coordinator_keeps_the_child_draft_with_its_owner() {
 "#).unwrap();
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -553,7 +553,7 @@ fn tracking_is_an_editable_coordinator_draft_and_keeps_existing_feedback() {
     }
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -629,7 +629,7 @@ fn visible_steering_actions_and_control_shortcuts_keep_text_literal() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -699,7 +699,7 @@ fn restricted_child_explains_input_before_sending_and_keeps_stop_available() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -1118,7 +1118,7 @@ fn plan_adoption_and_criteria_requests_stay_explicit_and_use_the_same_goal_recor
     key(&mut ui, KeyCode::Char('p'));
     wait_text(&mut ui, "Checkpoint preference saved");
     key(&mut ui, KeyCode::Esc);
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     wait_text(&mut ui, "Recipient: Coordinator");
@@ -1211,7 +1211,7 @@ fn pending_deliveries_are_readable_and_acknowledgment_preserves_a_newer_draft() 
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Delivery records");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -1796,7 +1796,7 @@ fn an_orphan_agent_does_not_remove_the_connections_for_other_visible_work() {
             "thread_source":"subagent","parent_thread_id":"missing-parent","agent_nickname":"Unlinked helper"}}).to_string() + "\n").unwrap();
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Connected work");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     let shown = text(&mut ui, 150, 50);
     assert_eq!(
@@ -2460,5 +2460,343 @@ fn work_scope_links_go_stale_and_unknown_dependencies_stay_distinct_from_none() 
     );
     let done = wait_text(&mut ui, "reported done");
     assert!(done.contains("0 of 3 verified"), "{done}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_opens_task_canvas_and_back_restores_the_fleet_view() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Ship navigation");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"inspect","label":"Inspect work graph", "status":"active", "source":"task report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "depends_on":[]
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect work graph");
+    let fleet = text(&mut ui, 150, 42);
+    let canvas = |screen: &str| {
+        screen
+            .lines()
+            .skip(2)
+            .take(38)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert!(!canvas(&fleet).contains("Inspect work graph"), "{fleet}");
+    key(&mut ui, KeyCode::Char('w'));
+    let work = text(&mut ui, 150, 42);
+    assert!(work.contains("Work graph"), "{work}");
+    assert!(
+        work.contains("Fleet / steering / Ship navigation"),
+        "{work}"
+    );
+    assert!(canvas(&work).contains("Inspect work graph"), "{work}");
+    key(&mut ui, KeyCode::Esc);
+    let back = text(&mut ui, 150, 42);
+    assert_eq!(
+        canvas(&back),
+        canvas(&fleet),
+        "back must retain Fleet placement/camera"
+    );
+    key(&mut ui, KeyCode::Enter);
+    assert!(text(&mut ui, 150, 42).contains("Work graph"));
+    ui.shutdown();
+}
+
+#[test]
+fn work_canvas_draws_declared_prerequisites_and_keeps_parent_grouping_separate() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Declared work");
+    for (id, label, depends, parent) in [
+        ("ready", "Ready prerequisite", serde_json::json!([]), None),
+        (
+            "build",
+            "Build dependent",
+            serde_json::json!(["ready"]),
+            Some("group"),
+        ),
+        ("group", "Parent grouping", serde_json::Value::Null, None),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+                "depends_on":depends,"parent_id":parent
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Ready prerequisite");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Char('o'));
+    let shown = text(&mut ui, 200, 60);
+    let canvas = shown
+        .lines()
+        .skip(2)
+        .take(56)
+        .map(|row| row.chars().take(120).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(canvas.contains("Ready prerequisite"), "{shown}");
+    assert!(canvas.contains("Build dependent"), "{shown}");
+    assert!(canvas.contains("Parent grouping"), "{shown}");
+    assert!(
+        canvas.contains("requires"),
+        "dependency must be drawn as an edge: {shown}"
+    );
+    assert!(shown.contains("1 prerequisite edge"), "{shown}");
+    key(&mut ui, KeyCode::Down);
+    let selected = text(&mut ui, 200, 60);
+    assert!(
+        selected.contains("Parent: Parent grouping (group)"),
+        "{selected}"
+    );
+    assert!(selected.contains("grouping only"), "{selected}");
+    ui.shutdown();
+}
+
+#[test]
+fn cyclic_missing_and_disconnected_work_remain_visible_and_selectable() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Imperfect declarations");
+    for (id, label, deps) in [
+        ("a", "Cycle first", serde_json::json!(["b"])),
+        (
+            "b",
+            "Cycle second",
+            serde_json::json!(["a", "missing-input"]),
+        ),
+        ("c", "Independent work", serde_json::Value::Null),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},"depends_on":deps
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Cycle first");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Char('o'));
+    let shown = text(&mut ui, 200, 60);
+    assert!(shown.contains("2 cyclic tasks"), "{shown}");
+    assert!(shown.contains("Unresolved: missing-input"), "{shown}");
+    assert!(shown.contains("Independent work"), "{shown}");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    let independent = text(&mut ui, 200, 60);
+    assert!(
+        independent.contains("Selected work: Independent work"),
+        "{independent}"
+    );
+    assert!(
+        independent.contains("Dependencies: not declared"),
+        "{independent}"
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn task_mouse_selection_and_dragged_camera_survive_status_refresh() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Stable graph");
+    for (id, label, owner) in [
+        ("a", "First task", "main"),
+        ("b", "Second task", "worker-two"),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":owner},"depends_on":[]
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "First task");
+    key(&mut ui, KeyCode::Char('w'));
+    let locate = |screen: &str, needle: &str| {
+        screen
+            .lines()
+            .enumerate()
+            .skip(2)
+            .find_map(|(row, line)| {
+                let line: String = line.chars().take(90).collect();
+                line.find(needle).map(|column| {
+                    (
+                        unicode_width::UnicodeWidthStr::width(&line[..column]) as u16,
+                        row as u16,
+                    )
+                })
+            })
+            .unwrap_or_else(|| panic!("missing canvas label {needle}: {screen}"))
+    };
+    let (x, y) = locate(&text(&mut ui, 150, 42), "Second task");
+    let pointer = |ui: &mut FleetConsole, kind, x, y| {
+        ui.handle_event(&Event::Mouse(MouseEvent {
+            kind,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }));
+    };
+    pointer(&mut ui, MouseEventKind::Down(MouseButton::Left), x, y);
+    pointer(&mut ui, MouseEventKind::Up(MouseButton::Left), x, y);
+    let selected = text(&mut ui, 150, 42);
+    assert!(
+        selected.contains("Selected work: Second task"),
+        "{selected}"
+    );
+    assert!(
+        selected.contains("Recipient: Agent worker-two"),
+        "{selected}"
+    );
+    pointer(&mut ui, MouseEventKind::Down(MouseButton::Left), x, y);
+    pointer(
+        &mut ui,
+        MouseEventKind::Drag(MouseButton::Left),
+        x + 6,
+        y + 2,
+    );
+    pointer(&mut ui, MouseEventKind::Up(MouseButton::Left), x + 6, y + 2);
+    let dragged = text(&mut ui, 150, 42);
+    let moved = locate(&dragged, "Second task");
+    assert_ne!(moved, (x, y), "drag should move the task");
+    key(&mut ui, KeyCode::Right);
+    let panned = locate(&text(&mut ui, 150, 42), "Second task");
+    save_work_report(
+        &home,
+        "goal",
+        1,
+        serde_json::json!({"id":"b","status":"blocked","next":"Keep inspecting"}),
+    );
+    let refreshed = wait_text(&mut ui, "Keep inspecting");
+    assert!(
+        refreshed.contains("Selected work: Second task"),
+        "{refreshed}"
+    );
+    assert_eq!(
+        locate(&refreshed, "Second task"),
+        panned,
+        "refresh must preserve dragged position and camera"
+    );
+    key(&mut ui, KeyCode::Char('x'));
+    assert!(text(&mut ui, 150, 42).contains("Commands and public activity"));
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('R'));
+    assert!(text(&mut ui, 150, 42).contains("Read-only replay requested"));
+    ui.shutdown();
+}
+
+#[test]
+fn agents_back_returns_to_the_selected_work_and_its_camera() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Route navigation");
+    for id in ["first", "second"] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":format!("Task {id}"),"status":"active","source":"report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    let fleet = wait_text(&mut ui, "Task first");
+    assert!(fleet.contains("Zoetrope · Fleet"), "{fleet}");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Down);
+    text(&mut ui, 150, 42);
+    key(&mut ui, KeyCode::Right);
+    let work = text(&mut ui, 150, 42);
+    let canvas = |screen: &str| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    key(&mut ui, KeyCode::Char('a'));
+    let agents = wait_text(&mut ui, "Agents expanded");
+    assert!(agents.contains("Zoetrope · Agents"), "{agents}");
+    key(&mut ui, KeyCode::Esc);
+    let restored = text(&mut ui, 150, 42);
+    assert!(
+        restored.contains("Selected work: Task second"),
+        "{restored}"
+    );
+    assert_eq!(
+        canvas(&restored),
+        canvas(&work),
+        "Back restores the preceding Work camera and selection"
+    );
+    click_console_action(&mut ui, "[Back Esc]");
+    assert!(text(&mut ui, 150, 42).contains("Zoetrope · Fleet"));
+    ui.shutdown();
+}
+
+#[test]
+fn dense_work_graph_reports_omissions_and_navigation_stays_bounded() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Bounded declarations");
+    for at in 0..80 {
+        let dependencies: Vec<_> = (0..64)
+            .filter(|dependency| *dependency != at)
+            .map(|dependency| format!("task-{dependency}"))
+            .collect();
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"),"label":format!("Bounded task {at}"),"status":"active","source":"report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}, "depends_on":dependencies
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Bounded task 0");
+    let started = Instant::now();
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("references omitted"), "{shown}");
+    assert!(shown.contains("2048 prerequisite edges"), "{shown}");
+    for _ in 0..79 {
+        key(&mut ui, KeyCode::Down);
+    }
+    let last = text(&mut ui, 150, 42);
+    assert!(last.contains("Selected work: Bounded task 79"), "{last}");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "bounded interaction took {:?}",
+        started.elapsed()
+    );
     ui.shutdown();
 }

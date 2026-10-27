@@ -1,0 +1,49 @@
+# WG-1 implementation — 27 October 2026
+
+Approved seams: console input/render/runtime messages and executable/external
+files. No private parser, graph, or layout helpers are tested. Base: `dd7c744`,
+branch `feat/work-canvas`, isolated worktree `/tmp/zoetrope-wg1`. Uses the TDD
+skill and its tests/mocking references. No live project or native input changed.
+
+## Vertical RED / GREEN evidence
+
+Every command below used `CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/canvas` and
+`cargo test --locked --test fleet_ui <test-name> -- --exact`.
+
+1. `work_opens_task_canvas_and_back_restores_the_fleet_view`: RED confirmed
+   `w` retained Fleet nodes. GREEN creates a separate cached rataflow canvas,
+   visible project/goal breadcrumb and back action; Enter opens Work, Esc restores
+   Fleet's camera and selection.
+2. `work_canvas_draws_declared_prerequisites_and_keeps_parent_grouping_separate`:
+   RED had no drawn dependency. GREEN draws labeled prerequisite-to-task edges,
+   places disconnected tasks, and identifies parent links as grouping only.
+3. `cyclic_missing_and_disconnected_work_remain_visible_and_selectable`: RED
+   lacked cycle explanation. GREEN identifies strongly connected components,
+   displays unresolved prerequisite cards, and keeps independent work selectable.
+4. `task_mouse_selection_and_dragged_camera_survive_status_refresh`: RED exposed
+   stale pre-centering pixels and reset dragged positions on status refresh.
+   GREEN clears the intermediate frame and retains placement, selected task,
+   exact reported owner and pan across refresh. Commands and Replay routes remain
+   reachable. Native control regressions use the explicit Agents route (`a`)
+   because Enter now opens Work.
+5. `agents_back_returns_to_the_selected_work_and_its_camera`: RED lacked distinct
+   view labeling and return history. GREEN labels Fleet/Work/Agents and restores
+   the preceding task selection and camera via keyboard or visible back action.
+6. `dense_work_graph_reports_omissions_and_navigation_stays_bounded`: RED hid
+   reference omissions beyond the canvas width. GREEN prioritizes the limit
+   notice and caps rendering at 512 task nodes, 64 unresolved placeholders and
+   2,048 prerequisite edges. SCC analysis considers declared links, including
+   those omitted from drawing. A public 80-task/5,056-reference fixture navigates
+   to its last task within the conservative three-second interaction budget.
+
+The graph uses cached WorkRecord projections and bounded O(V+E) layering/SCC
+work only for topology changes. Ordinary status/context updates preserve task
+placement. Parent links never create prerequisites; native plan order never
+creates prerequisites. Separate Fleet and Work flows retain independent cameras.
+
+## Checks
+
+- Existing public fleet tests passed after the first five slices: 49 passed,
+  1 existing manual resource probe ignored.
+- Strict `cargo clippy --locked --all-targets -- -D warnings` passed.
+- Further source integration and final checks are recorded below.

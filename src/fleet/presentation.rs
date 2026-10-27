@@ -8,6 +8,7 @@ use ratatui::{
 
 #[derive(Clone, Copy)]
 pub(super) enum Action {
+    Back,
     Steer,
     Work,
     Agents,
@@ -25,6 +26,8 @@ fn activate(ui: &mut FleetConsole, action: Action) {
         return;
     }
     match action {
+        Action::Back if ui.edit.is_none() => ui.back_to_fleet(),
+        Action::Back => {}
         Action::Steer if ui.edit.is_none() => ui.open_feedback(),
         Action::Steer => {}
         Action::Work if ui.edit.is_none() => ui.focus_work(),
@@ -145,9 +148,46 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             ui.query
         )
     };
+    let breadcrumb = if ui.work_canvas {
+        let project = ui
+            .view
+            .selection
+            .as_ref()
+            .and_then(session_key)
+            .and_then(|key| {
+                ui.view
+                    .graph
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == FleetNodeId::Session(key.clone()))
+            })
+            .and_then(|node| node.parent.as_ref())
+            .and_then(|id| match id {
+                FleetNodeId::Project(path) => PathBuf::from(path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        format!(
+            "[Back Esc] Fleet / {project} / {} · Work graph",
+            ui.selected_label()
+        )
+    } else if ui.agents_mode {
+        format!("[Back Esc] Agents / {}", ui.selected_label())
+    } else {
+        description.clone()
+    };
     frame.render_widget(
         Paragraph::new(format!(
-            "Zoetrope · {}\n{description}",
+            "Zoetrope · {} · {}\n{breadcrumb}",
+            if ui.work_canvas {
+                "Work graph"
+            } else if ui.agents_mode {
+                "Agents"
+            } else {
+                "Fleet"
+            },
             if ui.history {
                 "All history"
             } else {
@@ -175,11 +215,26 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             .areas(body);
         (a, b)
     };
+    let canvas = if ui.work_canvas {
+        let [legend, graph] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(canvas);
+        frame.render_widget(Paragraph::new(ui.work_graph.summary.as_str()), legend);
+        graph
+    } else {
+        canvas
+    };
     ui.canvas_area = canvas;
-    frame.render_widget(&mut ui.flow, canvas);
-    if ui.pending_center {
+    frame.render_widget(ui.active_flow(), canvas);
+    if ui.work_canvas && ui.work_graph.pending_center {
+        ui.work_graph.flow.center_on_selected();
+        ui.work_graph.pending_center = false;
+        frame.render_widget(Clear, canvas);
+        frame.render_widget(&mut ui.work_graph.flow, canvas);
+    }
+    if !ui.work_canvas && ui.pending_center {
         ui.flow.center_on_selected();
         ui.pending_center = false;
+        frame.render_widget(Clear, canvas);
         frame.render_widget(&mut ui.flow, canvas);
     }
     if ui.view.ready && ui.view.graph.nodes.is_empty() {
@@ -206,6 +261,10 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     frame.render_widget(block, panel);
     ui.progress_area = None;
     ui.action_areas.clear();
+    if ui.work_canvas || ui.agents_mode {
+        ui.action_areas
+            .push((Rect::new(header.x, header.y + 1, 10, 1), Action::Back));
+    }
     let mut content = inner;
     if let Some(record) = &ui.selected_work {
         let [summary, gauge, rest] = Layout::vertical([
@@ -413,6 +472,34 @@ pub(super) fn mouse(ui: &mut FleetConsole, event: MouseEvent) {
             MouseEventKind::ScrollDown => ui.scroll = ui.scroll.saturating_add(3),
             MouseEventKind::ScrollUp => ui.scroll = ui.scroll.saturating_sub(3),
             _ => {}
+        }
+        return;
+    }
+    if ui.work_canvas {
+        let events: Vec<_> = ui
+            .work_graph
+            .flow
+            .handle_mouse_event(event)
+            .into_events()
+            .collect();
+        for event in events {
+            match event {
+                rataflow::FlowEvent::SelectionChanged { node_ids, .. } => {
+                    if let Some(selected) = node_ids
+                        .first()
+                        .and_then(|id| work_graph::parse_selection(id))
+                    {
+                        ui.work_selection = Some(selected);
+                        ui.scroll = 0;
+                        ui.select_recipient(ui.selected_agent());
+                    }
+                }
+                rataflow::FlowEvent::NodeDragged { node_id }
+                | rataflow::FlowEvent::NodeDragEnded { node_id } => {
+                    ui.work_graph.remember_drag(&node_id)
+                }
+                _ => {}
+            }
         }
         return;
     }
