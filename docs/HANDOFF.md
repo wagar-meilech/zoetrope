@@ -9,6 +9,16 @@ publication, push and the PR update on the same date. The semantic spec/tickets
 are published as issues #9–13; installation and updates are issue #14. Merging
 into main still requires a user request.
 
+## Current iteration
+
+The user approved the [visual work graph and persistent tracking specification](WORK-GRAPH-SPEC.md)
+and [six-ticket frontier](WORK-GRAPH-PLAN.md). Native sub-issues #16–21 belong to
+spec #15. WG-1/2/3 implement graph navigation, exact owner resolution and local
+source tracking independently; skill activation and visual polish follow their
+prerequisites. Continue through TDD, merger integration, independent reviews and
+installation without another design-approval request. The table in the plan is
+the current coordinator-reported status source.
+
 ## Read first
 
 1. [CLAUDE.md](../CLAUDE.md): contributor constraints and commands.

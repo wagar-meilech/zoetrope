@@ -332,7 +332,7 @@ fn guidance_queue_and_stop_reach_the_selected_child_without_parent_routing() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     wait_text(&mut ui, "Recipient: Coordinator");
@@ -361,7 +361,7 @@ fn explicitly_selecting_coordinator_keeps_the_child_draft_with_its_owner() {
 "#).unwrap();
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -553,7 +553,7 @@ fn tracking_is_an_editable_coordinator_draft_and_keeps_existing_feedback() {
     }
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -629,7 +629,7 @@ fn visible_steering_actions_and_control_shortcuts_keep_text_literal() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -699,7 +699,7 @@ fn restricted_child_explains_input_before_sending_and_keeps_stop_available() {
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Parser goal");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -1118,7 +1118,7 @@ fn plan_adoption_and_criteria_requests_stay_explicit_and_use_the_same_goal_recor
     key(&mut ui, KeyCode::Char('p'));
     wait_text(&mut ui, "Checkpoint preference saved");
     key(&mut ui, KeyCode::Esc);
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     wait_text(&mut ui, "Recipient: Coordinator");
@@ -1211,7 +1211,7 @@ fn pending_deliveries_are_readable_and_acknowledgment_preserves_a_newer_draft() 
         ..FleetConfig::default()
     });
     wait_text(&mut ui, "Selected: Delivery records");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Down);
@@ -1796,7 +1796,7 @@ fn an_orphan_agent_does_not_remove_the_connections_for_other_visible_work() {
             "thread_source":"subagent","parent_thread_id":"missing-parent","agent_nickname":"Unlinked helper"}}).to_string() + "\n").unwrap();
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Connected work");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::Char('a'));
     wait_text(&mut ui, "Agents expanded");
     let shown = text(&mut ui, 150, 50);
     assert_eq!(
@@ -2057,14 +2057,14 @@ fn explicit_work_is_default_and_explains_its_context_dependencies_and_outcomes()
 
 #[cfg(unix)]
 #[test]
-fn selected_work_keeps_its_identity_and_open_feedback_keeps_its_recipient() {
+fn logical_work_owner_targets_its_native_thread_and_pins_an_open_draft() {
     let peer = Peer::new("control");
     let home = Home::new();
     home.session("root-goal", "/projects/parser", false);
     home.goal("root-goal", "Parser work");
-    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root-goal","agent_path":"/root/parser","agent_nickname":"Parser"}}}}}
 "#).unwrap();
-    let owner = serde_json::json!({"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"child-thread"});
+    let owner = serde_json::json!({"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/parser"});
     save_work_report(
         &home,
         "root-goal",
@@ -2099,6 +2099,10 @@ fn selected_work_keeps_its_identity_and_open_feedback_keeps_its_recipient() {
     assert!(refreshed.contains("Recipient: Parser"), "{refreshed}");
     key(&mut ui, KeyCode::Char('f'));
     type_text(&mut ui, "Keep the public interface");
+    // A refreshed duplicate makes the reported alias ambiguous while the
+    // already-open draft keeps the exact recipient chosen before that change.
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-conflict.jsonl"), r#"{"type":"session_meta","payload":{"id":"conflicting-child","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_path":"/root/parser"}}
+"#).unwrap();
     save_work_report(
         &home,
         "root-goal",
@@ -2222,7 +2226,7 @@ fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration()
     home.session("goal", "/projects/steering", false);
     home.goal("goal", "Understand steering");
     let child = home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl");
-    std::fs::write(&child, r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
+    std::fs::write(&child, r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser","agent_path":"/root/parser"}}
 "#).unwrap();
     let message = serde_json::json!({"timestamp":"2026-10-27T10:00:00Z","type":"response_item","payload":{"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":"Checking child input"}]}});
     let command = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"child-command","arguments":serde_json::json!({"cmd":"cargo test --parser","description":"Check child delivery"}).to_string()}});
@@ -2245,7 +2249,7 @@ fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration()
         "goal",
         0,
         serde_json::json!({"id":"steering","label":"Inspect child command",
-        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"/root/parser"},
         "status":"active","source":"worker"}),
     );
     let mut ui = home.ui();
@@ -2460,5 +2464,722 @@ fn work_scope_links_go_stale_and_unknown_dependencies_stay_distinct_from_none() 
     );
     let done = wait_text(&mut ui, "reported done");
     assert!(done.contains("0 of 3 verified"), "{done}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_opens_task_canvas_and_back_restores_the_fleet_view() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Ship navigation");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"inspect","label":"Inspect work graph", "status":"active", "source":"task report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "depends_on":[]
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect work graph");
+    let fleet = text(&mut ui, 150, 42);
+    let canvas = |screen: &str| {
+        screen
+            .lines()
+            .skip(2)
+            .take(38)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert!(!canvas(&fleet).contains("Inspect work graph"), "{fleet}");
+    key(&mut ui, KeyCode::Char('w'));
+    let work = text(&mut ui, 150, 42);
+    assert!(work.contains("Work graph"), "{work}");
+    assert!(
+        work.contains("Fleet / steering / Ship navigation"),
+        "{work}"
+    );
+    assert!(canvas(&work).contains("Inspect work graph"), "{work}");
+    key(&mut ui, KeyCode::Esc);
+    let back = text(&mut ui, 150, 42);
+    assert_eq!(
+        canvas(&back),
+        canvas(&fleet),
+        "back must retain Fleet placement/camera"
+    );
+    key(&mut ui, KeyCode::Enter);
+    assert!(text(&mut ui, 150, 42).contains("Work graph"));
+    ui.shutdown();
+}
+
+#[test]
+fn work_canvas_draws_declared_prerequisites_and_keeps_parent_grouping_separate() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Declared work");
+    for (id, label, depends, parent) in [
+        ("ready", "Ready prerequisite", serde_json::json!([]), None),
+        (
+            "build",
+            "Build dependent",
+            serde_json::json!(["ready"]),
+            Some("group"),
+        ),
+        ("group", "Parent grouping", serde_json::Value::Null, None),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+                "depends_on":depends,"parent_id":parent
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Ready prerequisite");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Char('o'));
+    let shown = text(&mut ui, 200, 60);
+    let canvas = shown
+        .lines()
+        .skip(2)
+        .take(56)
+        .map(|row| row.chars().take(120).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(canvas.contains("Ready prerequisite"), "{shown}");
+    assert!(canvas.contains("Build dependent"), "{shown}");
+    assert!(canvas.contains("Parent grouping"), "{shown}");
+    assert!(
+        canvas.contains("requires"),
+        "dependency must be drawn as an edge: {shown}"
+    );
+    assert!(shown.contains("1 prerequisite edge"), "{shown}");
+    key(&mut ui, KeyCode::Down);
+    let selected = text(&mut ui, 200, 60);
+    assert!(
+        selected.contains("Parent: Parent grouping (group)"),
+        "{selected}"
+    );
+    assert!(selected.contains("grouping only"), "{selected}");
+    ui.shutdown();
+}
+
+#[test]
+fn cyclic_missing_and_disconnected_work_remain_visible_and_selectable() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Imperfect declarations");
+    for (id, label, deps) in [
+        ("a", "Cycle first", serde_json::json!(["b"])),
+        (
+            "b",
+            "Cycle second",
+            serde_json::json!(["a", "missing-input"]),
+        ),
+        ("c", "Independent work", serde_json::Value::Null),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},"depends_on":deps
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Cycle first");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Char('o'));
+    let shown = text(&mut ui, 200, 60);
+    assert!(shown.contains("2 cyclic tasks"), "{shown}");
+    assert!(shown.contains("Unresolved: missing-input"), "{shown}");
+    assert!(shown.contains("Independent work"), "{shown}");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    let independent = text(&mut ui, 200, 60);
+    assert!(
+        independent.contains("Selected work: Independent work"),
+        "{independent}"
+    );
+    assert!(
+        independent.contains("Dependencies: not declared"),
+        "{independent}"
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn task_mouse_selection_and_dragged_camera_survive_status_refresh() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Stable graph");
+    for (id, label, owner) in [
+        ("a", "First task", "main"),
+        ("b", "Second task", "worker-two"),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":"active","source":"task report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":owner},"depends_on":[]
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "First task");
+    key(&mut ui, KeyCode::Char('w'));
+    let locate = |screen: &str, needle: &str| {
+        screen
+            .lines()
+            .enumerate()
+            .skip(2)
+            .find_map(|(row, line)| {
+                let line: String = line.chars().take(90).collect();
+                line.find(needle).map(|column| {
+                    (
+                        unicode_width::UnicodeWidthStr::width(&line[..column]) as u16,
+                        row as u16,
+                    )
+                })
+            })
+            .unwrap_or_else(|| panic!("missing canvas label {needle}: {screen}"))
+    };
+    let (x, y) = locate(&text(&mut ui, 150, 42), "Second task");
+    let pointer = |ui: &mut FleetConsole, kind, x, y| {
+        ui.handle_event(&Event::Mouse(MouseEvent {
+            kind,
+            column: x,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }));
+    };
+    pointer(&mut ui, MouseEventKind::Down(MouseButton::Left), x, y);
+    pointer(&mut ui, MouseEventKind::Up(MouseButton::Left), x, y);
+    let selected = text(&mut ui, 150, 42);
+    assert!(
+        selected.contains("Selected work: Second task"),
+        "{selected}"
+    );
+    assert!(
+        selected.contains("Recipient: Agent worker-two"),
+        "{selected}"
+    );
+    pointer(&mut ui, MouseEventKind::Down(MouseButton::Left), x, y);
+    pointer(
+        &mut ui,
+        MouseEventKind::Drag(MouseButton::Left),
+        x + 6,
+        y + 2,
+    );
+    pointer(&mut ui, MouseEventKind::Up(MouseButton::Left), x + 6, y + 2);
+    let dragged = text(&mut ui, 150, 42);
+    let moved = locate(&dragged, "Second task");
+    assert_ne!(moved, (x, y), "drag should move the task");
+    key(&mut ui, KeyCode::Right);
+    let panned = locate(&text(&mut ui, 150, 42), "Second task");
+    save_work_report(
+        &home,
+        "goal",
+        1,
+        serde_json::json!({"id":"b","status":"blocked","next":"Keep inspecting"}),
+    );
+    let refreshed = wait_text(&mut ui, "Keep inspecting");
+    assert!(
+        refreshed.contains("Selected work: Second task"),
+        "{refreshed}"
+    );
+    assert_eq!(
+        locate(&refreshed, "Second task"),
+        panned,
+        "refresh must preserve dragged position and camera"
+    );
+    key(&mut ui, KeyCode::Char('x'));
+    assert!(text(&mut ui, 150, 42).contains("Commands and public activity"));
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('R'));
+    assert!(text(&mut ui, 150, 42).contains("Read-only replay requested"));
+    ui.shutdown();
+}
+
+#[test]
+fn agents_back_returns_to_the_selected_work_and_its_camera() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Route navigation");
+    for id in ["first", "second"] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":format!("Task {id}"),"status":"active","source":"report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    let fleet = wait_text(&mut ui, "Task first");
+    assert!(fleet.contains("Zoetrope · Fleet"), "{fleet}");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Down);
+    text(&mut ui, 150, 42);
+    key(&mut ui, KeyCode::Right);
+    let work = text(&mut ui, 150, 42);
+    let canvas = |screen: &str| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    key(&mut ui, KeyCode::Char('a'));
+    let agents = wait_text(&mut ui, "Agents expanded");
+    assert!(agents.contains("Zoetrope · Agents"), "{agents}");
+    key(&mut ui, KeyCode::Esc);
+    let restored = text(&mut ui, 150, 42);
+    assert!(
+        restored.contains("Selected work: Task second"),
+        "{restored}"
+    );
+    assert_eq!(
+        canvas(&restored),
+        canvas(&work),
+        "Back restores the preceding Work camera and selection"
+    );
+    click_console_action(&mut ui, "[Back Esc]");
+    assert!(text(&mut ui, 150, 42).contains("Zoetrope · Fleet"));
+    ui.shutdown();
+}
+
+#[test]
+fn dense_work_graph_reports_omissions_and_navigation_stays_bounded() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Bounded declarations");
+    for at in 0..80 {
+        let dependencies: Vec<_> = (0..64)
+            .filter(|dependency| *dependency != at)
+            .map(|dependency| format!("task-{dependency}"))
+            .collect();
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"),"label":format!("Bounded task {at}"),"status":"active","source":"report",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}, "depends_on":dependencies
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Bounded task 0");
+    let started = Instant::now();
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("references omitted"), "{shown}");
+    assert!(shown.contains("2048 prerequisite edges"), "{shown}");
+    for _ in 0..79 {
+        key(&mut ui, KeyCode::Down);
+    }
+    let last = text(&mut ui, 150, 42);
+    assert!(last.contains("Selected work: Bounded task 79"), "{last}");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "bounded interaction took {:?}",
+        started.elapsed()
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn bound_source_tasks_draw_dependencies_and_human_ownership_never_selects_a_recipient() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Source projection");
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("WORK.md"), "## Tasks\n| ID | Task | Status | Owner | Blocked by | Next |\n| --- | --- | --- | --- | --- | --- |\n| T1 | Native implementation | active | main | None | Run checks |\n| T2 | Human approval | planned | Alice | T1 | Review evidence |\n").unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["tracking", "enable", "--project"])
+        .arg(&project)
+        .args([
+            "--provider",
+            "codex",
+            "--session",
+            "goal",
+            "--source",
+            "WORK.md#Tasks",
+            "--root",
+        ])
+        .arg(home.0.join("state"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Native implementation");
+    key(&mut ui, KeyCode::Char('w'));
+    let native = text(&mut ui, 150, 42);
+    assert!(native.contains("1 prerequisite edge"), "{native}");
+    key(&mut ui, KeyCode::Down);
+    let human = text(&mut ui, 150, 42);
+    assert!(human.contains("Selected work: Human approval"), "{human}");
+    assert!(human.contains("Owner: Alice"), "{human}");
+    assert!(human.contains("Selected work unavailable"), "{human}");
+    assert!(!human.contains("Recipient: Coordinator"), "{human}");
+    assert!(human.contains("Source ID:"), "{human}");
+    assert!(human.contains("WORK.md#Tasks"), "{human}");
+    ui.shutdown();
+}
+
+#[test]
+fn source_snapshot_replaces_the_old_plan_and_removed_task_selection_expires() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Source lifetime");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"legacy", "label":"Obsolete standalone report", "status":"active", "source":"old report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+        }),
+    );
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let write_source = |body: &str| {
+        std::fs::write(
+            project.join("WORK.md"),
+            format!("## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n{body}"),
+        )
+        .unwrap()
+    };
+    let sync = |operation: &str| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"));
+        command.args(["tracking", operation]);
+        if operation == "enable" {
+            command.args(["--source", "WORK.md#Tasks"]);
+        }
+        let output = command
+            .args(["--project"])
+            .arg(&project)
+            .args(["--provider", "codex", "--session", "goal", "--root"])
+            .arg(home.0.join("state"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    write_source("| T1 | Current document task | active | main |\n");
+    sync("enable");
+    let mut ui = home.ui();
+    let current = wait_text(&mut ui, "Current document task");
+    assert!(!current.contains("Obsolete standalone report"), "{current}");
+    key(&mut ui, KeyCode::Char('w'));
+    write_source("");
+    sync("sync");
+    let retired = wait_text(&mut ui, "No reported work");
+    assert!(retired.contains("Selected work unavailable"), "{retired}");
+    assert!(!retired.contains("Current document task"), "{retired}");
+    assert!(!retired.contains("Obsolete standalone report"), "{retired}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_details_prioritize_task_context_and_keep_full_commands_behind_commands() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Focused details");
+    let command = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{
+        "type":"function_call","name":"exec_command","call_id":"command",
+        "arguments":serde_json::json!({"cmd":"cargo test --known-public-command"}).to_string()
+    }});
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+            .unwrap(),
+        "{command}"
+    )
+    .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"focus", "label":"Inspect current task", "status":"blocked", "source":"attributed worker report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Understand the intended result", "next":"Check the public seam", "blocker":"Await review"
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect current task");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 200, 70);
+    assert!(
+        !shown.contains("cargo test --known-public-command"),
+        "{shown}"
+    );
+    assert!(
+        shown.find("Purpose: Understand").unwrap() < shown.find("Source: attributed").unwrap(),
+        "{shown}"
+    );
+    key(&mut ui, KeyCode::Char('x'));
+    wait_text(&mut ui, "cargo test --known-public-command");
+    ui.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn ambiguous_work_owner_disables_controls_without_rerouting_to_coordinator() {
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Ambiguous ownership");
+    for native in ["child-thread", "other-child"] {
+        let meta = serde_json::json!({"type":"session_meta","payload":{
+            "id":native,"session_id":"root-goal","thread_source":"subagent",
+            "source":{"subagent":{"thread_spawn":{"parent_thread_id":"root-goal","agent_path":"/root/parser"}}}
+        }});
+        std::fs::write(
+            home.0
+                .join(format!("codex/sessions/2026/10/23/rollout-{native}.jsonl")),
+            format!("{meta}\n"),
+        )
+        .unwrap();
+    }
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({
+            "id":"parser","label":"Resolve parser ownership","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/parser"}
+        }),
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Resolve parser ownership");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = wait_text(&mut ui, "Guidance unavailable: owner path is ambiguous");
+    assert!(shown.contains("Owner ID: /root/parser"), "{shown}");
+    assert!(
+        shown.contains("Queue unavailable: owner path is ambiguous"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Stop unavailable: owner path is ambiguous"),
+        "{shown}"
+    );
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(&mut ui, "Feedback unavailable: owner path is ambiguous");
+    for action in [KeyCode::F(2), KeyCode::F(3), KeyCode::F(4)] {
+        key(&mut ui, action);
+        wait_text(&mut ui, "owner path is ambiguous");
+    }
+    ui.shutdown();
+    peer.finish();
+}
+
+#[cfg(unix)]
+#[test]
+fn missing_work_owner_is_explained_without_matching_a_similar_agent_name() {
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Missing ownership");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_path":"/root/different","agent_nickname":"/root/missing"}}
+"#).unwrap();
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({
+            "id":"parser","label":"Missing parser ownership","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/missing"}
+        }),
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Missing parser ownership");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = wait_text(
+        &mut ui,
+        "Guidance unavailable: owner path has no native match",
+    );
+    assert!(shown.contains("Owner ID: /root/missing"), "{shown}");
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(
+        &mut ui,
+        "Feedback unavailable: owner path has no native match",
+    );
+    for action in [KeyCode::F(2), KeyCode::F(3), KeyCode::F(4)] {
+        key(&mut ui, action);
+    }
+    ui.shutdown();
+    peer.finish();
+}
+
+#[test]
+fn readable_work_view_restores_the_selected_task_after_panning_offscreen() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Readable navigation");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"readable","label":"Find this task", "status":"active", "source":"report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Find this task");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 150, 42);
+    let canvas = |screen: String| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for _ in 0..30 {
+        key(&mut ui, KeyCode::Right);
+    }
+    assert!(!canvas(text(&mut ui, 150, 42)).contains("Find this task"));
+    key(&mut ui, KeyCode::Char('r'));
+    assert!(canvas(text(&mut ui, 150, 42)).contains("Find this task"));
+    ui.shutdown();
+}
+
+#[test]
+fn reordering_source_rows_preserves_task_identity_placement_and_camera() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Stable source order");
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let first = "| T1 | First stable task | active | main | Original order |\n";
+    let second = "| T2 | Second stable task | planned | main | |\n";
+    let write_source = |rows: String| {
+        std::fs::write(project.join("WORK.md"), format!("## Tasks\n| ID | Task | Status | Owner | Next |\n| --- | --- | --- | --- | --- |\n{rows}")).unwrap()
+    };
+    let sync = |operation: &str| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"));
+        command
+            .args(["tracking", operation, "--project"])
+            .arg(&project)
+            .args(["--provider", "codex", "--session", "goal", "--root"])
+            .arg(home.0.join("state"));
+        if operation == "enable" {
+            command.args(["--source", "WORK.md#Tasks"]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    write_source(format!("{first}{second}"));
+    sync("enable");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "First stable task");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 150, 42);
+    key(&mut ui, KeyCode::Right);
+    let canvas = |screen: String| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = canvas(text(&mut ui, 150, 42));
+    write_source(format!(
+        "{second}{}",
+        first.replace("Original order", "Rows reordered")
+    ));
+    sync("sync");
+    let after = wait_text(&mut ui, "Rows reordered");
+    assert!(
+        after.contains("Selected work: First stable task"),
+        "{after}"
+    );
+    assert_eq!(canvas(after), before, "row order is not a topology change");
+    ui.shutdown();
+}
+
+#[test]
+fn a_resolved_logical_report_suppresses_its_owners_native_plan_fallback() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Owner fallback");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_path":"/root/parser","agent_nickname":"Parser"}}
+"#).unwrap();
+    let plan: WorkUpdate = serde_json::from_value(serde_json::json!({"op":"import_plan", "proposal":{
+        "id":"native-plan","producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "steps":[{"step":"Old native fallback","status":"in_progress"}],"source":"native"
+    }})).unwrap();
+    Store::new(home.0.join("state"))
+        .apply(&home.key("goal"), plan)
+        .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"report","label":"Reported parser task","status":"active","source":"report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"/root/parser"}
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Reported parser task");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 150, 42);
+    assert!(!shown.contains("Old native fallback"), "{shown}");
+    assert!(shown.contains("Work graph · 1 tasks"), "{shown}");
     ui.shutdown();
 }

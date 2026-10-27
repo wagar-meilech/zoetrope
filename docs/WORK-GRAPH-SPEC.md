@@ -1,6 +1,6 @@
 # Visual work graph and persistent workflow tracking
 
-Status: approved through Q1–Q5, “Answered, proceed,” and final “Approved, proceed.” The [six-ticket plan](WORK-GRAPH-PLAN.md), mechanism and existing public testing seams are approved. Continues the existing integration.
+Status: approved through Q1–Q5, “Answered, proceed,” and final “Approved, proceed.” The [six-ticket plan](WORK-GRAPH-PLAN.md), mechanism and existing public testing seams are approved. Continues the existing integration. Published as [issue #15](https://github.com/wagar-meilech/zoetrope/issues/15).
 
 ## Problem Statement
 

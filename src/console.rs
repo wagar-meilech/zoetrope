@@ -46,6 +46,13 @@ pub struct AgentKey {
     pub agent_id: String,
 }
 
+/// Result of joining a reported collaboration path to public native metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnerResolution {
+    Resolved(AgentKey),
+    Ambiguous,
+}
+
 /// Navigation shared by terminal and other local frontends.
 #[derive(Debug, Clone)]
 pub enum ConsoleCommand {
@@ -113,6 +120,51 @@ pub struct LiveThread {
     pub name: Option<String>,
     pub project: Option<String>,
     pub activity: LiveActivity,
+}
+
+/// Follow only the parent IDs and collaboration paths recorded in public
+/// headers. Missing, conflicting, cyclic or excessively deep ancestry fails
+/// closed; project names and transcript timestamps never enter the join.
+fn owner_ancestry<'a>(
+    mut indexed: &'a provider::metadata::Indexed,
+    session: &SessionKey,
+    native: &BTreeMap<AgentKey, Vec<&'a provider::metadata::Indexed>>,
+) -> bool {
+    for _ in 0..64 {
+        if indexed.metadata.internal {
+            return false;
+        }
+        let Some((expected, _)) = indexed
+            .metadata
+            .owner_path
+            .as_deref()
+            .and_then(|p| p.rsplit_once('/'))
+        else {
+            return false;
+        };
+        let Some(parent) = indexed.metadata.owner_parent.as_deref() else {
+            return false;
+        };
+        if expected == "/root" {
+            return parent == session.session_id;
+        }
+        let Some(parents) = native.get(&AgentKey {
+            session: session.clone(),
+            agent_id: parent.to_owned(),
+        }) else {
+            return false;
+        };
+        let first = parents[0];
+        if parents.iter().any(|record| {
+            record.metadata.internal
+                || record.metadata.owner_path.as_deref() != Some(expected)
+                || record.metadata.owner_parent != first.metadata.owner_parent
+        }) {
+            return false;
+        }
+        indexed = first;
+    }
+    false
 }
 
 /// A local fleet console. Discovery is explicit, so construction performs no IO.
@@ -463,6 +515,62 @@ impl Console {
             command_at: activity.command_at.clone(),
             purpose: activity.purpose.clone(),
         })
+    }
+
+    /// Exact provider/root-qualified collaboration aliases, from cached public
+    /// session headers. Duplicate native matches never select a recipient.
+    pub fn owner_resolutions(&self) -> BTreeMap<AgentKey, OwnerResolution> {
+        let mut native: BTreeMap<AgentKey, Vec<&provider::metadata::Indexed>> = BTreeMap::new();
+        let mut roots = BTreeSet::new();
+        for indexed in self.metadata.values() {
+            let session = SessionKey {
+                provider: indexed.file.provider,
+                session_id: indexed.file.session.clone(),
+            };
+            if indexed.file.role == FileRole::Root {
+                roots.insert(session.clone());
+            }
+            native
+                .entry(AgentKey {
+                    session,
+                    agent_id: indexed.metadata.agent.clone(),
+                })
+                .or_default()
+                .push(indexed);
+        }
+        let mut candidates: BTreeMap<AgentKey, BTreeSet<AgentKey>> = BTreeMap::new();
+        for (owner, records) in &native {
+            for indexed in records {
+                let Some(path) = indexed.metadata.owner_path.as_deref() else {
+                    continue;
+                };
+                if !roots.contains(&owner.session)
+                    || !path.starts_with("/root/")
+                    || path.split('/').skip(1).any(str::is_empty)
+                    || !owner_ancestry(indexed, &owner.session, &native)
+                {
+                    continue;
+                }
+                candidates
+                    .entry(AgentKey {
+                        session: owner.session.clone(),
+                        agent_id: path.to_owned(),
+                    })
+                    .or_default()
+                    .insert(owner.clone());
+            }
+        }
+        candidates
+            .into_iter()
+            .map(|(alias, owners)| {
+                let resolution = if owners.len() == 1 {
+                    OwnerResolution::Resolved(owners.into_iter().next().unwrap())
+                } else {
+                    OwnerResolution::Ambiguous
+                };
+                (alias, resolution)
+            })
+            .collect()
     }
 
     /// Cached provider-recorded names for producer/recipient labels, including

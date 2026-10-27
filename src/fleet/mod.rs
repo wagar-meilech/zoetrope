@@ -6,6 +6,7 @@ mod editor;
 mod presentation;
 pub mod runtime;
 mod state_worker;
+mod work_graph;
 mod work_view;
 use crate::console::AgentKey;
 use crate::control::ThreadSnapshot;
@@ -74,6 +75,7 @@ struct InventoryView {
     summaries: BTreeMap<SessionKey, WorkSummary>,
     versions: BTreeMap<SessionKey, Option<(u64, SystemTime)>>,
     agent_names: BTreeMap<AgentKey, String>,
+    owner_resolutions: BTreeMap<AgentKey, crate::console::OwnerResolution>,
     activity: Option<(AgentKey, Option<crate::console::RecordedActivity>)>,
     sources: BTreeMap<SessionKey, PathBuf>,
     selection: Option<FleetNodeId>,
@@ -143,6 +145,7 @@ impl Inventory {
                 let view = InventoryView {
                     ready: true,
                     agent_names: console.agent_names(),
+                    owner_resolutions: console.owner_resolutions(),
                     activity,
                     graph: console.graph().clone(),
                     query: query.clone(),
@@ -255,6 +258,15 @@ enum EditKind {
     },
 }
 
+struct Navigation {
+    selection: Option<FleetNodeId>,
+    work_selection: Option<work_view::Selection>,
+    work_mode: bool,
+    work_canvas: bool,
+    agents_mode: bool,
+    viewport: rataflow::Viewport,
+}
+
 struct PendingSave {
     id: u64,
     text: String,
@@ -278,6 +290,10 @@ pub struct FleetConsole {
     selected_work: Option<WorkRecord>,
     work_selection: Option<work_view::Selection>,
     work_mode: bool,
+    work_canvas: bool,
+    agents_mode: bool,
+    navigation: Vec<Navigation>,
+    work_graph: work_graph::WorkGraph,
     activity_request: Option<AgentKey>,
     replay_requested: bool,
     work_reload: Option<SessionKey>,
@@ -348,6 +364,10 @@ impl FleetConsole {
             selected_work: None,
             work_selection: None,
             work_mode: true,
+            work_canvas: false,
+            agents_mode: false,
+            navigation: Vec::new(),
+            work_graph: work_graph::WorkGraph::new(),
             activity_request: None,
             replay_requested: false,
             work_reload: None,
@@ -416,7 +436,9 @@ impl FleetConsole {
                 .as_ref()
                 .and_then(session_key)
                 .is_some_and(|key| self.view.versions.get(key) != view.versions.get(key));
-            changed = self.view.activity != view.activity
+            let owners_changed = self.view.owner_resolutions != view.owner_resolutions;
+            changed = owners_changed
+                || self.view.activity != view.activity
                 || self.view.agent_names != view.agent_names
                 || self.view.ready != view.ready
                 || self.view.query != view.query
@@ -425,6 +447,9 @@ impl FleetConsole {
                 || selection_changed
                 || self.view.errors != view.errors;
             self.view = view;
+            if owners_changed {
+                self.select_recipient(self.control_target());
+            }
             if let Some((key, expanded)) = &self.expanding
                 && self
                     .view
@@ -766,6 +791,9 @@ impl FleetConsole {
         self.snapshots.get(id)
     }
     fn runtime_word(&self) -> &str {
+        if let Some(reason) = self.owner_unavailable_reason() {
+            return reason;
+        }
         if self
             .selected_agent()
             .is_some_and(|agent| agent.session.provider == crate::provider::Provider::Claude)
@@ -782,7 +810,10 @@ impl FleetConsole {
     }
     fn control_availability(&self, mode: FeedbackMode) -> Result<&'static str, &'static str> {
         use crate::control::RuntimeStatus;
-        let target = self.control_target().ok_or("select a goal or agent")?;
+        let target = self.control_target().ok_or_else(|| {
+            self.owner_unavailable_reason()
+                .unwrap_or("select a goal or agent")
+        })?;
         if target.session.provider != crate::provider::Provider::Codex {
             return Err("transcript viewing only");
         }
@@ -847,7 +878,11 @@ impl FleetConsole {
             return;
         }
         let Some(target) = self.control_target() else {
-            self.status = "Select a goal or agent first".into();
+            self.status = format!(
+                "Control unavailable: {}",
+                self.owner_unavailable_reason()
+                    .unwrap_or("select a goal or agent")
+            );
             return;
         };
         if let Err(reason) = self.control_availability(mode) {
@@ -894,9 +929,37 @@ impl FleetConsole {
             self.status = "Control queue is busy; nothing was sent".into();
         }
     }
+    fn owner_unavailable_reason(&self) -> Option<&'static str> {
+        if self.pane == Pane::Feedback && self.feedback_target.is_some() {
+            return None;
+        }
+        self.work_selection.as_ref()?;
+        let Some(owner) = self.selected_work_owner() else {
+            return Some("selected work has no native owner");
+        };
+        if !owner.agent_id.starts_with('/') {
+            return None;
+        }
+        match self.view.owner_resolutions.get(&owner) {
+            Some(crate::console::OwnerResolution::Resolved(_)) => None,
+            Some(crate::console::OwnerResolution::Ambiguous) => Some("owner path is ambiguous"),
+            None => Some("owner path has no native match"),
+        }
+    }
+    fn resolved_owner(&self, reported: &AgentKey) -> Option<AgentKey> {
+        if !reported.agent_id.starts_with('/') {
+            return Some(reported.clone());
+        }
+        match self.view.owner_resolutions.get(reported) {
+            Some(crate::console::OwnerResolution::Resolved(owner)) => Some(owner.clone()),
+            _ => None,
+        }
+    }
     fn selected_agent(&self) -> Option<AgentKey> {
         if self.work_selection.is_some() {
-            return self.selected_work_owner();
+            return self
+                .selected_work_owner()
+                .and_then(|owner| self.resolved_owner(&owner));
         }
         match self.view.selection.as_ref()? {
             FleetNodeId::Session(key) => Some(AgentKey {
@@ -1053,6 +1116,12 @@ impl FleetConsole {
             self.edit_kind = Some(EditKind::Feedback);
             self.edit = Some(Editor::new(text));
             self.status = "Editing feedback · Esc saves draft".into();
+        } else {
+            self.status = format!(
+                "Feedback unavailable: {}",
+                self.owner_unavailable_reason()
+                    .unwrap_or("select a goal or agent")
+            );
         }
     }
     fn update_state(&mut self, key: SessionKey, update: WorkUpdate, message: &str) -> bool {
@@ -1797,6 +1866,7 @@ impl FleetConsole {
     }
 
     fn select(&mut self, id: FleetNodeId) {
+        self.work_canvas = false;
         self.work_mode = matches!(id, FleetNodeId::Session(_));
         self.work_selection = None;
         self.feedback_requested = false;
@@ -1843,7 +1913,21 @@ impl FleetConsole {
     }
 
     fn move_selection(&mut self, delta: isize) {
-        let nodes = &self.view.graph.nodes;
+        let scoped = self
+            .agents_mode
+            .then(|| self.view.selection.as_ref().and_then(session_key).cloned())
+            .flatten();
+        let nodes: Vec<_> = self
+            .view
+            .graph
+            .nodes
+            .iter()
+            .filter(|node| {
+                scoped
+                    .as_ref()
+                    .is_none_or(|key| session_key(&node.id) == Some(key))
+            })
+            .collect();
         let current = self
             .view
             .selection
@@ -1991,12 +2075,20 @@ impl FleetConsole {
                 );
             }
         }
+        self.sync_work_graph();
         // Batch geometry resolution: the single-node APIs re-walk all prior
         // nodes after every insertion/position update.
         let _ = self.flow.set_nodes(nodes);
         let _ = self.flow.set_edges(edges);
         if let Some(id) = &self.view.selection {
             self.flow.select_node(&flow_id(id));
+        }
+    }
+    fn active_flow(&mut self) -> &mut Flow<Card, StepEdge> {
+        if self.work_canvas {
+            &mut self.work_graph.flow
+        } else {
+            &mut self.flow
         }
     }
     fn navigate(&mut self, command: ConsoleCommand) {
@@ -2152,19 +2244,24 @@ impl FleetConsole {
                     self.show_help = true;
                     self.help_scroll = 0;
                 }
-                KeyCode::Char('+') | KeyCode::Char('=') => self.flow.zoom_in(),
-                KeyCode::Char('-') => self.flow.zoom_out(),
-                KeyCode::Char('o') => self.flow.request_fit_view(),
+                KeyCode::Char('+') | KeyCode::Char('=') => self.active_flow().zoom_in(),
+                KeyCode::Char('-') => self.active_flow().zoom_out(),
+                KeyCode::Char('o') => {
+                    self.active_flow().request_fit_view();
+                    self.pending_center = false;
+                    self.work_graph.pending_center = false;
+                }
                 KeyCode::Char('r') => {
-                    self.flow.zoom_to(1.0);
-                    self.pending_center = true;
+                    self.active_flow().zoom_to(1.0);
+                    self.work_graph.pending_center = self.work_canvas;
+                    self.pending_center = !self.work_canvas;
                 }
                 KeyCode::Left => {
-                    self.flow.pan(8.0, 0.0);
+                    self.active_flow().pan(8.0, 0.0);
                     self.pending_center = false;
                 }
                 KeyCode::Right => {
-                    self.flow.pan(-8.0, 0.0);
+                    self.active_flow().pan(-8.0, 0.0);
                     self.pending_center = false;
                 }
                 KeyCode::Char('I') => self.navigate(ConsoleCommand::ToggleInternal),
@@ -2212,7 +2309,8 @@ impl FleetConsole {
                     }
                 }
                 KeyCode::Enter if self.pane == Pane::Documents => self.open_document(),
-                KeyCode::Enter | KeyCode::Char(' ') if self.pane == Pane::Graph => {
+                KeyCode::Enter if self.pane == Pane::Graph => self.focus_work(),
+                KeyCode::Char(' ') if self.pane == Pane::Graph && !self.work_canvas => {
                     self.toggle_expansion()
                 }
                 KeyCode::Char('w') if matches!(self.pane, Pane::Graph | Pane::Feedback) => {
@@ -2284,6 +2382,9 @@ impl FleetConsole {
                 KeyCode::PageDown => self.scroll = self.scroll.saturating_add(8),
                 KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(8),
                 KeyCode::Esc => {
+                    if self.pane == Pane::Graph && (self.work_canvas || self.agents_mode) {
+                        self.back_to_fleet();
+                    }
                     self.pane = Pane::Graph;
                     self.scroll = 0;
                 }
