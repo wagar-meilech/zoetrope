@@ -44,3 +44,24 @@ The final source-only owner guard is preserved exactly: direct source-native IDs
 The fast-forward retains the exact checked source: `src` tree `45c3967824302a07a7e8933c2dbc9e8dc5e0b621`, `tests` tree `8d3935b0810f3eb89801a60a03b805bf3f34057a`; Cargo manifest/lock blobs remain `a27ae937bd79b9960fdbd65bb2c143adf74ef2e6` / `be9833fc08bcd562f239033be23307d72dc1be38`. The [WG-3 implementation evidence](wg-3-implementation.md) records **16 tracking tests and five targeted source UI tests passed, one existing source UI probe ignored**, plus strict all-target Clippy, formatting and diff checks on the final source. Earlier combined native, portable/no-default-feature and Rust 1.88 checks passed before the final source-owner guard; they are retained as qualified earlier evidence, with the full final combined root run still pending. No checks were repeated merely to relocate this identical tree. Documentation-only integration updates passed the staged diff check and leave application/test content unchanged.
 
 The [source contract](wg-3-source-contract.md) is available for the tracking-skill consumer. The canonical frontier marks WG-3 `done` / `Integrated` and WG-4 `active`, owner `/root/wg4_skill`. This records ticket integration rather than outcome verification, issue closure or final independent review. WG-6 still owns final combined checks and independent Standards/Spec reviews. No push, publication, installation, main-branch merge, native input or other-project changes were performed.
+
+## WG-4 — reusable tracking skill — 27 October 2026
+
+- Previous integration tip: `ee34502e3d9d12c7601e2a4afdd4b4c16247606a`.
+- Immutable source branch: `feat/tracking-skill`, checked clean at `fa55b5783e46a5ebb9d7a33e39ab7f7facdbb455` in `/tmp/zoetrope-wg4`.
+- Integration result: fast-forward to `fa55b5783e46a5ebb9d7a33e39ab7f7facdbb455`; no merge commit or conflicts. Verified source ancestry already includes the previous integration tip and its scoped SourceTask owner guards/work graph.
+
+The merger verified clean source/integration worktrees, the exact source hash and integration-tip ancestry before advancing the branch. WG-4's Rust changes only extend the exact-scope tracking activation draft; source-native ownership proof and graph behavior remain unchanged. The merged application, test, installer and skill content is identical to the checked source. Retained Git objects:
+
+| Path | Git object |
+| --- | --- |
+| `src` | `77a009ee439c238694600200a918cdb7e632c310` |
+| `tests` | `d3a60fb2fd391de2340c42a3be19097722979fec` |
+| `scripts` | `1f2a1840d75ada617c70e0a417b458994ea30009` |
+| `skills` | `0426e642cba56f3dc7ed5294a1cbbea0cbb95cde` |
+| `Cargo.toml` | `a27ae937bd79b9960fdbd65bb2c143adf74ef2e6` |
+| `Cargo.lock` | `be9833fc08bcd562f239033be23307d72dc1be38` |
+
+The [WG-4 implementation evidence](wg-4-implementation.md) supplies retained green results: **60 public fleet UI tests passed, one existing resource probe ignored; 16 tracking tests and all seven installer tests passed**, plus strict all-target Clippy, formatting, shell syntax, diff checks and the skill validator. These checks used `CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/skill`; installer fixtures isolated both `HOME` and `CODEX_HOME`. The independent disposable-project skill exercises passed Matt-style setup, exact new-goal binding/resume, disable, opted-out continuation with an old committed pointer, and a non-Matt fallback with two real tasks. This evidence is limited to those scenarios and the recorded check scope. No checks were repeated merely to relocate this unchanged source through a fast-forward. Documentation-only frontier/evidence updates passed the staged diff check and leave the checked application/test/installer/skill content unchanged.
+
+The canonical frontier marks WG-4 `done` / `Integrated`. WG-5 remains active and must include this integration before its handoff. WG-6 still owns combined final checks, independent Standards/Spec reviews, HANDOFF updates and the live installation; integration does not establish outcome verification or issue closure. No push, publication, global installation, main-branch merge, native input or other-project changes were performed.
