@@ -1762,7 +1762,7 @@ impl FleetConsole {
         };
         let session = shell_quote(&target.session.session_id);
         let mut text = format!(
-            "Please propose concise, editable completion criteria for this goal: {}. Include testing and final checks. Keep outcomes unverified until supported by evidence.\n\nRead the exact goal record with:\n{command} show {provider} {session}\n\nUpdate this same goal record with:\n{command} apply {provider} {session} '<update JSON>'\nUse {help} for update fields.\n",
+            "Please propose concise, editable completion criteria for this goal: {}. Include testing and final checks. Keep outcomes unverified until supported by evidence.\n\nRead compact context:\n{command} context {provider} {session}\n\nUpdate this same goal record with:\n{command} apply {provider} {session} '<update JSON>'\nUse {help} for update fields.\n",
             self.selected_label()
         );
         if self.selected_work.as_ref().is_some_and(|r| r.checkpoints) {

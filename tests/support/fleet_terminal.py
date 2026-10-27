@@ -189,7 +189,8 @@ try:
             ["/bin/sh", "-c", "command -v zoe"], env=command_environment, text=True
         ).strip() == str(fake)
         expect("Inspect runtime fixture goal", compact=True)
-        key, operation = (b"T", "context") if scenario == "tracking-cli" else (b"A", "show")
+        key = b"T" if scenario == "tracking-cli" else b"A"
+        expected_prefix = "Enable Zoetrope" if scenario == "tracking-cli" else "Please propose"
         os.write(terminal, key)
         deadline = time.monotonic() + 3
         command = None
@@ -199,9 +200,9 @@ try:
                 "show", "codex", "root-goal",
             ]))
             drafts = saved["record"]["drafts"]
-            if drafts:
+            if drafts and drafts[0]["text"].startswith(expected_prefix):
                 command = next((line for line in drafts[0]["text"].splitlines()
-                                if " state --root " in line and f" {operation} " in line), None)
+                                if " state --root " in line and " context " in line), None)
                 if command:
                     break
             receive(0.05)
@@ -211,7 +212,8 @@ try:
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             record = json.loads(result.stdout)
-            goal = record["goal"] if operation == "context" else record["record"]["goal"]
+            goal = record["goal"]
+            observations["compact_context"] = all(field not in record for field in ("record", "questions", "drafts", "outbox"))
             observations["reads_exact_store"] = result.returncode == 0 and goal["title"] == "Inspect runtime fixture goal"
         except (ValueError, KeyError, TypeError):
             observations["reads_exact_store"] = False

@@ -119,3 +119,42 @@ all-feature Clippy passed on Rust 1.99 and 1.88, as did formatting and whitespac
 checks. One fully specified embedded FleetConfig fixture now explicitly sets
 `state_executable: None`. The exact final committed tree is rechecked before
 handoff; the handoff supplies its SHA.
+
+## Compact criteria-read follow-up
+
+Criteria (`A`) now asks for `state context`, matching tracking (`T`), rather than
+asking an agent to read the full operator `state show` record. Apply/help retain
+the same exact executable, absolute root and provider/session pinning. Full show
+remains available only when an operator explicitly requests it.
+
+Public RED/GREEN command:
+
+```sh
+CARGO_TARGET_DIR=/tmp/zoetrope-sem-build/review-fixes cargo test --locked --test fleet_ui criteria_requests_read_compact_context_without_saved_private_material -- --exact
+```
+
+RED: the persisted criteria draft requested full `show`. GREEN: it requests
+compact context and contains no full-show instruction. With a saved secret
+question answer, another agent’s private draft and a private outbox entry in the
+goal store, executing the actual drafted command from the agent project returns
+the correct goal, omits record/question/draft/outbox fields and private material,
+and stays within the existing 64 KiB context limit.
+
+The executable/PT Y regression now executes `context` for both T/A and verifies
+the compact shape as well as the current executable/store. It waits for each
+action’s own draft prefix, so A cannot accidentally validate an earlier T draft.
+The relative-root and selected-child criteria expectations also use context.
+Only one source template line changes; no new API or read policy is introduced.
+
+Final acceptance commands, run on the committed follow-up before handoff:
+
+```sh
+CARGO_TARGET_DIR=/tmp/zoetrope-sem-build/review-fixes cargo test --locked --all-features --quiet
+CARGO_TARGET_DIR=/tmp/zoetrope-sem-build/review-fixes cargo clippy --locked --all-targets --all-features -- -D warnings
+CARGO_TARGET_DIR=/tmp/zoetrope-sem-build/review-fixes-msrv cargo +1.88.0 clippy --locked --all-targets --all-features -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The handoff supplies the exact final checked SHA and suite totals; the earlier
+317/318 totals above describe the earlier review/bootstrap checkpoints.
