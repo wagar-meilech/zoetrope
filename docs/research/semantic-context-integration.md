@@ -113,3 +113,39 @@ Source tests were not repeated for this documentation-only merge. The single
 review-fix implementer and coordinating agent retain final review resolutions,
 strict lint checks, combined test counts and resource measurements. No remote
 publication or native runtime actions were performed.
+
+## Final review resolutions
+
+The exact ready commit `4a05528432770aeb64d6004336adcb7fb36cdd44` on
+`feat/semantic-review-fixes` included `cd41785` and had a clean implementer
+worktree. It merged conflict-free as `23a131e`. Immediately after the merge,
+`git diff --exit-code 4a05528432770aeb64d6004336adcb7fb36cdd44 HEAD` passed:
+the integrated tree matched the implementer's checked tree byte-for-byte.
+
+The fix notes describe native-plan withdrawal, exact absolute tracking roots,
+provider-owned plan status normalization, shared current-work selection and
+machine-applicable baseline lint corrections. Saved/context JSON keeps its
+legacy spellings. See [review-fix evidence](semantic-context-review-fixes.md).
+
+Focused verification on the actual integration checkout passed:
+
+```text
+cargo test --locked --test fleet_ui withdrawing_a_native_plan_clears_work_and_expires_its_selected_entry -- --exact
+1 passed
+
+cargo test --locked --test fleet_ui tracking_and_criteria_commands_share_the_ui_store_across_project_directories -- --exact
+1 passed
+
+cargo fmt --check
+passed
+
+git diff --check
+passed
+```
+
+The identical source tree had already passed the implementer's full 317 native
+tests (one existing resource probe ignored), strict Clippy on Rust 1.99 and
+1.88, and portable compilation. Those results were not rerun by the merger.
+The coordinator retains final portable tests, browser/rustdoc/package/release
+checks, resource measurements and independent reviewer follow-up. This merge
+performed no remote or native runtime actions.
