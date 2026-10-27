@@ -13,6 +13,8 @@ use crate::workstate::{Store, WorkOutcomeLink, WorkRecord, WorkStatus};
 
 const MAX_CACHE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES: u64 = 256 * 1024;
+type Fields = BTreeMap<String, String>;
+type ParsedSource = (Vec<Fields>, BTreeSet<String>);
 
 /// Current local-source observation, separate from supplemental reports/evidence.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -173,10 +175,13 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
     }
     let project = fs::canonicalize(project.context("--project is required")?)
         .context("project root is unavailable")?;
-    let session = SessionKey {
+    let mut session = SessionKey {
         provider: provider.context("--provider is required")?,
         session_id: session.context("--session is required")?,
     };
+    if session.session_id == "auto" {
+        session.session_id = session.provider.runtime_root()?;
+    }
     if session.session_id.is_empty()
         || session.session_id.len() > 100
         || session.session_id.chars().any(char::is_control)
@@ -239,10 +244,15 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
         if !sources.is_empty() {
             bail!("--source is only accepted by enable");
         }
-        if operation == "disable"
-            && let Some(index) = index
-        {
-            registry.bindings[index].enabled = false;
+        if operation == "disable" {
+            registry.projects.retain(|old| old != &project);
+            for binding in registry
+                .bindings
+                .iter_mut()
+                .filter(|binding| binding.project == project)
+            {
+                binding.enabled = false;
+            }
         }
     }
     if operation == "sync"
@@ -353,10 +363,7 @@ fn field(name: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-fn parse_table(
-    text: &str,
-    heading: &str,
-) -> Result<(Vec<BTreeMap<String, String>>, BTreeSet<String>)> {
+fn parse_table(text: &str, heading: &str) -> Result<ParsedSource> {
     let mut in_fence = false;
     let mut lines = Vec::new();
     let mut heading_level = None;
@@ -444,6 +451,51 @@ fn identifier(value: &str) -> bool {
         && value
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+}
+
+fn parse_ticket(text: &str) -> Result<ParsedSource> {
+    let mut values = BTreeMap::new();
+    let mut fenced = false;
+    for line in text.lines().take(64) {
+        let line = line.trim();
+        if line.starts_with("```") || line.starts_with("~~~") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced || line.is_empty() {
+            continue;
+        }
+        if let Some(title) = line.strip_prefix("# ") {
+            if values.insert("label".into(), title.to_owned()).is_some() {
+                bail!("duplicate ticket title");
+            }
+            continue;
+        }
+        if line.starts_with('#') || line == "---" {
+            break;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            break;
+        };
+        let Some(name) = field(name.trim_matches('*')) else {
+            break;
+        };
+        let value = value.trim_start_matches('*').trim().to_owned();
+        if value.len() > 1024 {
+            bail!("ticket field exceeds 1024 bytes");
+        }
+        if values.insert(name.to_owned(), value).is_some() {
+            bail!("duplicate ticket metadata field");
+        }
+    }
+    if !["id", "label", "status"]
+        .iter()
+        .all(|name| values.contains_key(*name))
+    {
+        bail!("ticket metadata requires ID, title and Status within first 64 lines");
+    }
+    let authority = values.keys().cloned().collect();
+    Ok((vec![values], authority))
 }
 fn task(
     source: &Source,
@@ -538,10 +590,11 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
         }
         let text = std::str::from_utf8(&bytes).context("source is not UTF-8")?;
         let (_, heading) = parts(&source.selector)?;
-        let (rows, authority) = parse_table(
-            text,
-            heading.context("ticket metadata is not supported yet")?,
-        )?;
+        let (rows, authority) = if let Some(heading) = heading {
+            parse_table(text, heading)?
+        } else {
+            parse_ticket(text)?
+        };
         source.authority.extend(authority);
         let time = chrono::Utc::now().to_rfc3339();
         let tasks: Vec<_> = rows
@@ -581,9 +634,36 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
     }
 }
 
+/// Run on the inventory worker. Only declared local files are visited.
+pub(crate) fn refresh(root: &Path) -> Result<()> {
+    if !root.join("tracking.json").exists() {
+        return Ok(());
+    }
+    let _lock = lock(root)?;
+    let mut registry = read(root)?;
+    let previous = registry.clone();
+    for binding in &mut registry.bindings {
+        if binding.enabled {
+            for source in &mut binding.sources {
+                refresh_source(&binding.project, &binding.session, source);
+            }
+        }
+    }
+    if registry != previous {
+        write(root, &registry)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn stamp(root: &Path) -> Option<(u64, std::time::SystemTime)> {
+    let metadata = fs::metadata(root.join("tracking.json")).ok()?;
+    Some((metadata.len(), metadata.modified().ok()?))
+}
+
 /// Populate cached source observations; this does not read project files.
 pub(crate) fn project(root: &Path, record: &mut WorkRecord) -> Result<()> {
     record.source_tasks.clear();
+    record.source_snapshot = false;
     record.source_diagnostics.clear();
     for binding in read(root)?
         .bindings
@@ -591,7 +671,53 @@ pub(crate) fn project(root: &Path, record: &mut WorkRecord) -> Result<()> {
         .filter(|binding| binding.session == record.session)
     {
         for source in &binding.sources {
-            record.source_tasks.extend(source.tasks.clone());
+            record.source_snapshot |= !source.fingerprint.is_empty();
+            for observed in &source.tasks {
+                let mut task = observed.clone();
+                task.stale |= !binding.enabled;
+                if let Some(work) = record
+                    .work_items
+                    .iter()
+                    .find(|work| work.report.id == task.id)
+                {
+                    let report = &work.report;
+                    let provenance = format!("report:{}@{}", report.source, work.revision);
+                    for (field, destination, supplement) in [
+                        ("purpose", &mut task.purpose, &report.purpose),
+                        ("change", &mut task.change, &report.change),
+                        ("next", &mut task.next, &report.next),
+                        ("blocker", &mut task.blocker, &report.blocker),
+                    ] {
+                        if !source.authority.contains(field) && supplement.is_some() {
+                            destination.clone_from(supplement);
+                            task.provenance.insert(field.into(), provenance.clone());
+                        }
+                    }
+                    if !source.authority.contains("owner") {
+                        task.owner = Some(report.owner.clone());
+                        task.owner_label = report.owner.agent_id.clone();
+                        task.provenance.insert("owner".into(), provenance.clone());
+                    }
+                    if !source.authority.contains("depends_on") && report.depends_on.is_some() {
+                        task.depends_on.clone_from(&report.depends_on);
+                        task.provenance
+                            .insert("depends_on".into(), provenance.clone());
+                    }
+                    task.parent_id.clone_from(&report.parent_id);
+                    task.outcome_links.clone_from(&report.outcome_links);
+                    if report.label != task.label
+                        || task.status != Some(report.status)
+                        || source.authority.contains("owner")
+                            && task.owner.as_ref() != Some(&report.owner)
+                    {
+                        record.source_diagnostics.push(format!(
+                            "Source owns task fields for {}; edit {} to change them",
+                            task.task_id, source.selector
+                        ));
+                    }
+                }
+                record.source_tasks.push(task);
+            }
             if !binding.enabled {
                 record
                     .source_diagnostics

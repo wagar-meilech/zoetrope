@@ -348,6 +348,9 @@ impl Console {
             return;
         };
         self.work_errors.clear();
+        if let Err(error) = store.refresh_sources() {
+            self.work_errors.push(format!("Source tracking: {error}"));
+        }
         let keys: Vec<_> = self
             .sessions
             .iter()
