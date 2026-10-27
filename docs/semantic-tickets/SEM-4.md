@@ -2,7 +2,7 @@
 
 Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md).
 
-Status: reporting/documentation ready locally; final combined validation and independent review pending. Remote publication remains pending approval.
+Status: implemented and verified locally; remote publication pending explicit approval.
 
 Blocked by: SEM-3.
 
@@ -16,4 +16,4 @@ Follow docs/SEMANTIC-CONTEXT-SPEC.md and the completed questionnaire. Public con
 
 ## Local result
 
-See [documentation and example verification](../research/sem-4-implementation.md). Root performs final combined tests/resources/review before marking SEM-4 complete.
+See [documentation and example verification](../research/sem-4-implementation.md). Final combined tests, resources and both review axes are complete: [validation](../SEMANTIC-CONTEXT-VALIDATION.md).

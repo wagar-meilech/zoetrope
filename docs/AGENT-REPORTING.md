@@ -10,14 +10,14 @@ The operator chooses the projects. Keep their existing instructions intact. With
 
 ## Agent convention
 
-1. Use the provider, full native session ID and exact state root from the tracking request. If any is missing, obtain it before writing. A project path or title does not establish a session identity.
+1. Use the CLI executable, provider, full native session ID and exact state root supplied by the tracking request. If any is missing, obtain it before writing. A project path or title does not establish a session identity.
 2. Read compact context when tracking begins, and after a conflict or scope change. Reuse returned revisions between reports. If criteria are missing, propose concise editable `set_goal` outcomes for the agreed scope, including tests and final checks; keep them unverified until evidence exists.
 3. Publish short, stable work items at meaningful transitions: plan or scope changes, work starting/completing, a blocker, an important finding, or verification. Batch related changes; routine commands and file operations need no separate report.
 4. Describe the actual owner and useful purpose/change/next/blocker. Record dependencies and outcome links only when known. Keep reported work status separate from verified goal evidence.
 
 ## Compact read and partial reports
 
-These are syntax examples. Replace `/exact/state/root` and every `SESSION_ID` with the supplied values before running them. The examples use a Codex coordinator; use the supplied provider and actual child ID when applicable.
+These are syntax examples. Replace `zoe` with the supplied CLI executable (preserving shell quoting), `/exact/state/root` and every `SESSION_ID` with the supplied values before running them. The examples use a Codex coordinator; use the supplied provider and actual child ID when applicable.
 
 ```bash
 zoe state --root '/exact/state/root' context codex 'SESSION_ID'

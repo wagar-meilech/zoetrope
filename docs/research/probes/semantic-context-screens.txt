@@ -1,0 +1,115 @@
+VIEW default 150x42
+Zoetrope · Current work
+Goal progress, agents and guidance
+                                                                                          ┌ Selected work ───────────────────────────────────────────┐
+                                                                                          │Selected: Semantic resource fixture                       │
+                                                                                          │Recipient: Coordinator                                    │
+                                                                                          │███████████████   1 of 4 verified · 25%                   │
+─────────────────────────┐                                                                │[Steer f] [Coordinator C] [Enable tracking T] [Work w]    │
+                         │                                                                │[Agents a] [Commands x] [Replay R]                        │
+                         │                                                                │Work toward goal                                          │
+                         │                                                                │[reported done] Record durable work                       │
+                         │                                                                │[in progress] Expose steering controls                    │
+                         │─╮                                                              │[blocked] Validate the combined behavior                  │
+                         │ │                                                              │[reported done] Check recipient visibility                │
+                         │ │                                                              │5 work entries · w select work                            │
+─────────────────────────┘ │                                                              │Owner: Coordinator                                        │
+                           │                                                              │Source: synthetic fixture                                 │
+                           │┌────────────────────────────────┐                            │Recorded: 2026-10-27T18:11:10.392618614+00:00             │
+                           ││Semantic resource fixture       │                            │Dependencies: Record durable work (reporting)             │
+                           ││1 of 4 verified · 25%           │                            │Outcome: Steering availability is visible (revision 1)    │
+                           ││[#####---------------]          │                            │Purpose: Show the actual recipient before sending         │
+                           ││Recorded: Update the plan       │                            │Changed: Added discoverable actions                       │
+                           ▶│                                │                            │Next: Inspect narrow-terminal layout                      │
+                            │                                │                            │                                                          │
+                            │                                │                            │Codex controls unavailable                                │
+                            └────────────────────────────────┘                            │Guidance unavailable: Codex disconnected                  │
+                                                                                          │Queue unavailable: Codex disconnected                     │
+                                                                                          │Stop unavailable: Codex disconnected                      │
+                                                                                          │No recorded public message or shell command for this      │
+                                                                                          │owner.                                                    │
+                                                                                          │                                                          │
+                                                                                          │f feedback · Q saved questions · c criteria               │
+                                                                                          │d documents · R read-only replay                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          └──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Local monitoring · no model calls
+VIEW work 150x42
+Zoetrope · Current work
+Goal progress, agents and guidance
+                                                                                          ┌ Selected work ───────────────────────────────────────────┐
+                                                                                          │Selected: Semantic resource fixture                       │
+                                                                                          │Recipient: Coordinator                                    │
+                                                                                          │███████████████   1 of 4 verified · 25%                   │
+─────────────────────────┐                                                                │[Steer f] [Coordinator C] [Enable tracking T] [Work w]    │
+                         │                                                                │[Agents a] [Commands x] [Replay R]                        │
+                         │                                                                │Work toward goal                                          │
+                         │                                                                │[reported done] Record durable work                       │
+                         │                                                                │› [in progress] Expose steering controls                  │
+                         │─╮                                                              │[blocked] Validate the combined behavior                  │
+                         │ │                                                              │[reported done] Check recipient visibility                │
+                         │ │                                                              │5 work entries · w select work                            │
+─────────────────────────┘ │                                                              │Selected work: Expose steering controls                   │
+                           │                                                              │Owner: Coordinator                                        │
+                           │┌────────────────────────────────┐                            │Source: synthetic fixture                                 │
+                           ││Semantic resource fixture       │                            │Recorded: 2026-10-27T18:11:10.392618614+00:00             │
+                           ││1 of 4 verified · 25%           │                            │Dependencies: Record durable work (reporting)             │
+                           ││[#####---------------]          │                            │Outcome: Steering availability is visible (revision 1)    │
+                           ││Recorded: Update the plan       │                            │Purpose: Show the actual recipient before sending         │
+                           ▶│                                │                            │Changed: Added discoverable actions                       │
+                            │                                │                            │Next: Inspect narrow-terminal layout                      │
+                            │                                │                            │                                                          │
+                            └────────────────────────────────┘                            │Codex controls unavailable                                │
+                                                                                          │Guidance unavailable: Codex disconnected                  │
+                                                                                          │Queue unavailable: Codex disconnected                     │
+                                                                                          │Stop unavailable: Codex disconnected                      │
+                                                                                          │No recorded public message or shell command for this      │
+                                                                                          │owner.                                                    │
+                                                                                          │                                                          │
+                                                                                          │f feedback · Q saved questions · c criteria               │
+                                                                                          │d documents · R read-only replay                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          │                                                          │
+                                                                                          └──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner
+VIEW narrow work 60x28
+Zoetrope · Current work
+Goal progress, agents and guidance
+
+
+
+
+─────────────────────────┐
+┌ Selected work ───────────────────────────────────────────┐
+│Selected: Semantic resource fixture                       │
+│Recipient: Coordinator                                    │
+│███████████████   1 of 4 verified · 25%                   │
+│[Steer f] [Coordinator C] [Enable tracking T] [Work w]    │
+│[Agents a] [Commands x] [Replay R]                        │
+│Work toward goal                                          │
+│› [in progress] Expose steering controls                  │
+│Owner: Coordinator                                        │
+│Purpose: Show the actual recipient before sending         │
+│Next: Inspect narrow-terminal layout                      │
+│Codex controls unavailable                                │
+│Guidance unavailable: Codex disconnected                  │
+│Queue unavailable: Codex disconnected                     │
+│Stop unavailable: Codex disconnected                      │
+│                                                          │
+│Recorded detail · PageDown scroll                         │
+│Work toward goal                                          │
+└──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  ? help
+Work selected · [ / ] or arrows choose · f steer its owner

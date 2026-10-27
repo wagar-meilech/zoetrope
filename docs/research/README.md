@@ -25,8 +25,7 @@ local records do not imply remote completion.
 | Reporting guidance and documentation | [SEM-4](sem-4-implementation.md) |
 
 Semantic checks run on Linux and are distinct from the 25 October installed Mac
-release evidence below. Final combined checks, resource comparison and independent
-review are recorded separately from ticket-level results.
+release evidence below. Final [validation](../SEMANTIC-CONTEXT-VALIDATION.md), [two-axis review](semantic-context-review.md), [review/bootstrap fixes](semantic-context-review-fixes.md), and [resource observations](semantic-context-resource-results.json) record the completed local work.
 
 ## Completed implementation and review
 

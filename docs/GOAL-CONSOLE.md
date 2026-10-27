@@ -254,3 +254,5 @@ replay/resolution using disposable sessions. Second-client answer arbitration
 and real command/permission approval coexistence have not been established by
 those probes. Live actions fail visibly when the local runtime does not support
 them; Zoetrope does not start a replacement daemon or change runtime settings.
+
+Final semantic-context checks and resource observations are in [the 27 October validation](SEMANTIC-CONTEXT-VALIDATION.md). Native tracking and criteria drafts use the running executable and an absolute state root; both read compact context.

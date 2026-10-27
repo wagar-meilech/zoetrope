@@ -1,5 +1,5 @@
 //! Manual public-runtime resource probe; compile after a release build.
-//! See semantic-context-validation.md for the exact command and observations.
+//! See docs/SEMANTIC-CONTEXT-VALIDATION.md for the exact command and observations.
 use std::path::PathBuf;
 use zoetrope::console::DiscoveryRoots;
 use zoetrope::fleet::{FleetConfig, runtime};

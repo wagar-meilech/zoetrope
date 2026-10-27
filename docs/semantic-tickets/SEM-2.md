@@ -2,7 +2,7 @@
 
 Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md).
 
-Status: implemented and integrated locally in `fc06c2b`; remote publication pending approval.
+Status: implemented and verified locally; remote publication pending explicit approval.
 
 Blocked by: None.
 

@@ -48,7 +48,7 @@ criterion; missing dependencies/context and stale links remain explicit.
 - `C` / **Coordinator** explicitly selects the goal's coordinator. Child drafts
   stay with their original recipients.
 - `T` / **Enable tracking** prepares an editable coordinator draft with exact
-  local state/session identity and transition-only reporting. Missing criteria
+  local executable/state/session identity and transition-only reporting. Missing criteria
   trigger a request for `set_goal` outcomes including tests/final checks.
 - F2/F3/F4 or Ctrl-S/Ctrl-Q/Ctrl-X deliberately send guidance / queue / stop.
   Saving a draft does not send it; runtime acceptance does not prove completion.
@@ -78,9 +78,7 @@ claims about the new semantic code. The
 [build-status snapshot](research/zoetrope-build-status.json) also describes that
 earlier installed release.
 
-The semantic iteration is built and checked on Linux. Current per-ticket checks
-are linked from the research index; final combined validation and review must
-remain separately dated. No updated global `zoe` command was installed here.
+The semantic iteration is built and checked on Linux. Final [semantic validation](SEMANTIC-CONTEXT-VALIDATION.md) records 319 native and 176 portable tests, both strict Rust lint runs, browser/package checks and the qualified Linux resource observations. The [independent review](research/semantic-context-review.md) is clear on both axes. Per-ticket evidence remains in the research index. No updated global `zoe` command was installed here.
 Use `cargo build --release --locked` and `./target/release/zoe` to run this
 checkout. Existing native Codex compatibility limits still apply; local protocol
 peers verify behavior without claiming universal live runtime compatibility.

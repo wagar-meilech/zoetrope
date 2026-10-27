@@ -2,7 +2,7 @@
 
 Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md).
 
-Status: implemented and integrated locally in `e6a6d52 (detail correction ec35ad3)`; remote publication pending approval.
+Status: implemented and verified locally; remote publication pending explicit approval.
 
 Blocked by: SEM-1 and SEM-2.
 
