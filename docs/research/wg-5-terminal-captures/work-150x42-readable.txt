@@ -1,0 +1,42 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                                             ┌ Selected work ───────────────────────────────────────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ? unknown                    │Selected: WG-5 visual fixture                             │
+                              └────────────────────────────┘                              │Recipient: Coordinator                                    │
+                                             │                                            │              Outcomes: 0 of 5 verified · 0%              │
+                                             │                                            │Reported work: 5 of 12 done                               │
+                                         requires──────────requires──────────────▼        │● 1 active  ! 1 blocked  ○ 3 planned  × 1 cancelled  ? 1  │
+                              ┌────────────────────────────┐      ┌───────────────────────│unknown                                                   │
+                              │✓ Customize order           │      │✓ Delivery locations   │[Steer f] [Coordinator C] [Enable tracking T] [Work w]    │
+                              │reported done               │      │reported done          │[Agents a] [Commands x] [Replay R]                        │
+                              │Owner: Coordinator          │      │Owner: Coordinator     │Work toward goal                                          │
+                              │1 prerequisite(s)           │      │1 prerequisite(s)      │Selected work: Close the order                            │
+                              │                            │      │                       │Status: in progress                                       │
+                              └────────────────────────────┘      └───────────────────────│Owner: Coordinator                                        │
+                                             │                                   │        │Purpose: Close the sale safely                            │
+                                             │                                   │        │Next: Review callback expiry                              │
+                                         requ▼res──────────requires──────────────╯        │Source: coordinator · local report                        │
+                              ┌› selected──────────────────┐                              │Recorded: 2026-10-27 22:20 UTC                            │
+                              │● Close the order           │                              │Dependencies: Customize order (custom), Delivery locations│
+                              │in progress                 │                              │(locations)                                               │
+                              │Owner: Coordinator          │                              │                                                          │
+                              │2 prerequisite(s)           │                              │Codex controls unavailable                                │
+                              │                            │                              │Guidance unavailable: Codex disconnected                  │
+                              └────────────────────────────┘                              │Queue unavailable: Codex disconnected                     │
+                                             │                                            │Stop unavailable: Codex disconnected                      │
+                                             │                                            │                                                          │
+                                         requires                                         │f feedback · Q saved questions · c criteria               │
+                              ┌────────────────────────────┐                              │d documents · R read-only replay                          │
+                              │○ Payment confirmation      │                              │                                                          │
+                              │planned                     │                              │                                                          │
+                              │Owner: Coordinator          │                              │                                                          │
+                              │1 prerequisite(s)           │                              │                                                          │
+                              │                            │                              │                                                          │
+                              └────────────────────────────┘                              │                                                          │
+                                             │                                            │                                                          │
+                                             │                                            │                                                          │
+                                         requires──────────requires──────────────▼        │                                                          │
+                              ┌────────────────────────────┐      ┌───────────────────────│                                                          │
+                              │! Send reminders            │      │○ Customer corrections └──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner

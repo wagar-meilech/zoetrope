@@ -115,3 +115,30 @@ python3 docs/research/probes/wg-5-terminal-capture.py \
 Before the final source integration: 66 public UI tests passed, one existing
 manual resource probe ignored; all eight real-terminal/runtime tests passed.
 Strict all-target Clippy passed. Final integrated checks and capture links follow.
+
+
+Final topic integration is `5887980`, which includes latest root `c4b3855`
+(WG-4) and the earlier WG-3 source hardening/WG-2 native-owner safeguards.
+The only merge conflict was appended public tests; both sides were retained.
+
+Final checks on that integrated tree:
+
+- `cargo test --locked --test fleet_ui --test fleet_runtime --bin zoe`:
+  **69 UI passed, one existing manual resource probe ignored; eight real-terminal
+  runtime tests and eight existing executable tests passed**. Includes the
+  twelve-task overview, declared/cyclic/missing dependencies, keyboard/mouse,
+  dragged camera, source retirement/reorder, source-owner safety, pinned drafts,
+  exact-recipient controls and replay return regressions. UI suite: 10.74 seconds.
+- `cargo clippy --locked --all-targets -- -D warnings`: passed.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- The existing dense 80-task public interaction budget remains green. The new
+  narrow limit/legend fixture includes 40 tasks and 2,520 references; it passes
+  without losing cancellation/unknown legend cues.
+- Final [terminal captures](wg-5-terminal-captures/README.md) archive PNG,
+  plain-cell and actual ANSI evidence at all three sizes, including the improved
+  adaptive overview. All six final captures were inspected. This is synthetic
+  evidence; no live terminal, native agent or other project's files changed.
+
+The root owns combined native/portable/browser/MSRV checks, independent review,
+final integration and live installation. This topic did not push, publish,
+install, merge into root/main, or alter the live tmux environment.
