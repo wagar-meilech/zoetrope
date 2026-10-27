@@ -86,3 +86,24 @@ The merger verified clean source/integration worktrees, the exact source hash an
 The [WG-5 implementation evidence](wg-5-implementation.md) supplies retained final green results: **69 public UI tests passed, one existing manual resource probe ignored; eight real-terminal/runtime tests and eight executable tests passed**, plus strict all-target Clippy, formatting and diff checks. These checks used `CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/visuals` and include source-owner guards, activation drafts, recipient pinning, navigation, graph limits and adaptive overview regressions. The [six final terminal captures](wg-5-terminal-captures/README.md) archive PNG, plain-cell and actual ANSI evidence for readable/overview views at 150×42, 106×48 and 60×28, using disposable synthetic state. The visual agent inspected all six and root inspected the improved 106×48 adaptive overview. This establishes those fixtures and recorded check scope, not every terminal or live-project behavior. No checks were repeated merely to relocate the identical source. Documentation-only frontier/evidence updates passed the staged diff check and preserve the checked application/test/installer/skill content.
 
 The canonical frontier marks WG-5 `done` / `Integrated` and WG-6 `active`, owner `main`. All implementation tickets are now integrated; root/WG-6 owns combined native/portable/browser/MSRV checks, independent Standards/Spec reviews, final handoff and live installation. Integration does not establish outcome verification or issue closure. No push, publication, global installation, main-branch merge, native input or other-project changes were performed.
+
+## WG-6 — final review fixes — 27 October 2026
+
+- Previous integration tip: `bfbadce1ad3784e2d946930ddb49a7d929c5671d`.
+- Immutable source branch: `feat/work-graph-review-fixes`, checked clean at `2a65e3155310768a34833a4f0b762c4e6afc72df` in `/tmp/zoetrope-wg-fixes`.
+- Integration result: fast-forward to `2a65e3155310768a34833a4f0b762c4e6afc72df`; no merge commit or conflicts. The checked source already contains the previous integration tip. Its final topic merge leaves the application/test/package/browser inputs identical to validated topic commit `2fd3ac5`.
+
+The merger verified clean source/integration worktrees, exact source identity and integration-tip ancestry. The fixes reject nonregular sources before opening and use nonblocking Unix open plus descriptor validation; duplicate IDs across selected ticket files retain stale last-good state; visual cues use typed statuses; auto color preference passes both supported compiler lints; contention fixtures lock the exact public goal record. Scoped source-owner guards, exact activation and native recipient pinning remain in the integrated ancestry. Retained checked objects:
+
+| Path | Git object |
+| --- | --- |
+| `src` | `d88231676f16e4d23f5c024bcd4838f65eebbcb9` |
+| `tests` | `ae6fa9e97272d9ce2a28585520a33de20c160379` |
+| `scripts` | `1f2a1840d75ada617c70e0a417b458994ea30009` |
+| `skills` | `0426e642cba56f3dc7ed5294a1cbbea0cbb95cde` |
+| `Cargo.toml` | `244094e91689a84305dd54acbfee8b69b194c222` |
+| `Cargo.lock` | `2b643b079db6fb4cd004f1c35a5e61d539089968` |
+
+The [review-fix evidence](work-graph-review-fixes.md) supplies retained green results on Rust 1.88 and 1.99: **18 tracking, 69 UI and eight PTY/runtime tests passed**, with one existing manual UI resource probe ignored; normal parallel UI suites and strict all-target Clippy also passed on both compilers after the contention-fixture correction. Portable checks passed 176 library and 13 Console tests; the excluded WebAssembly workspace check, formatting and diff checks passed. The evidence records both public RED/GREEN regressions and qualifies the earlier nondeterministic contention failure. No tests were repeated merely to relocate identical checked inputs. Documentation-only integration updates passed the staged diff check and leave the checked implementation/test/package/browser content unchanged.
+
+WG-6 remains `active`, owner `main`. Root owns final full-suite, package/rustdoc, resources, installation, live observation and independent reviewer rechecks; earlier baseline results are not final-source verification. No push, publication, global installation, main-branch merge, native input or other-project changes were performed.
