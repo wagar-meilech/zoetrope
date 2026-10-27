@@ -14,6 +14,7 @@
 //! zoe inspect <file|id|dir> headless: print the session tree + info
 //! ```
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -74,9 +75,44 @@ USAGE:
     zoe inspect <file|id>   headless: print the session tree + info
     zoe state --help       local goals, evidence, drafts and questions
     zoe control --help     explicit controls for the existing local Codex runtime
+    zoe --color <mode>      auto (respects NO_COLOR), always, or never; applies to this process
     zoe --version           print the version and exit
 
 Once open, scrub/follow/pause/go-live are available no matter how you launched.";
+
+/// Remove global styling flags before choosing Fleet, replay, or a subcommand.
+/// Crossterm exposes a process-local atomic override; the parent environment is
+/// never changed, including an inherited NO_COLOR preference.
+fn color_arguments(arguments: impl Iterator<Item = String>) -> Result<Vec<String>> {
+    let mut arguments = arguments;
+    let mut remaining = Vec::new();
+    if let Some(executable) = arguments.next() {
+        remaining.push(executable);
+    }
+    let mut mode = "auto".to_owned();
+    while let Some(argument) = arguments.next() {
+        if argument == "--color" {
+            mode = arguments
+                .next()
+                .ok_or_else(|| anyhow!("--color requires auto, always, or never\n\n{USAGE}"))?;
+        } else if let Some(value) = argument.strip_prefix("--color=") {
+            mode = value.to_owned();
+        } else {
+            remaining.push(argument);
+        }
+    }
+    let enabled = match mode.as_str() {
+        "always" => true,
+        "never" => false,
+        "auto" => {
+            std::io::stdout().is_terminal()
+                && !std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty())
+        }
+        _ => bail!("invalid --color mode {mode:?}; expected auto, always, or never\n\n{USAGE}"),
+    };
+    crossterm::style::force_color_output(enabled);
+    Ok(remaining)
+}
 
 /// Parse `std::env::args` into a [`Cli`]. Returns a usage error on bad input.
 fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
@@ -325,18 +361,18 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    if std::env::args().nth(1).as_deref() == Some("state") {
-        return zoetrope::workstate::run_cli(std::env::args().skip(2));
+    let arguments = color_arguments(std::env::args())?;
+    if arguments.get(1).map(String::as_str) == Some("state") {
+        return zoetrope::workstate::run_cli(arguments.into_iter().skip(2));
     }
-    if std::env::args().nth(1).as_deref() == Some("tracking") {
-        return zoetrope::tracking::run_cli(std::env::args().skip(2));
+    if arguments.get(1).map(String::as_str) == Some("tracking") {
+        return zoetrope::tracking::run_cli(arguments.into_iter().skip(2));
     }
 
-    if let Some(result) = zoetrope::control::run_cli(&std::env::args().skip(1).collect::<Vec<_>>())
-    {
+    if let Some(result) = zoetrope::control::run_cli(&arguments[1..]) {
         return result;
     }
-    let cli = parse_cli(std::env::args())?;
+    let cli = parse_cli(arguments.into_iter())?;
     match cli {
         Cli::Fleet => {
             let config = zoetrope::fleet::FleetConfig {

@@ -25,7 +25,7 @@ pub(super) struct Task {
 #[derive(Default, PartialEq, Eq)]
 struct Topology(BTreeMap<String, Option<BTreeSet<String>>>);
 pub(super) struct WorkGraph {
-    pub flow: Flow<Card, StepEdge>,
+    pub flow: Flow<Card, visual::SemanticEdge>,
     goal: Option<SessionKey>,
     topology: Topology,
     positions: BTreeMap<String, (f64, f64)>,
@@ -37,6 +37,7 @@ impl WorkGraph {
     pub fn new() -> Self {
         Self {
             flow: Flow::new()
+                .with_theme(visual::theme())
                 .with_deselect_on_pane_click(false)
                 .with_min_zoom(0.1),
             goal: None,
@@ -135,6 +136,7 @@ impl WorkGraph {
                     pos,
                     (30.0, 7.0),
                     Card {
+                        cue: visual::Cue::work(&task.status),
                         title: task.title,
                         detail: task.status,
                         progress: format!("Owner: {}", task.owner),
@@ -159,6 +161,7 @@ impl WorkGraph {
                     pos,
                     (30.0, 7.0),
                     Card {
+                        cue: visual::Cue::work("unknown"),
                         title: format!("Unresolved: {reference}"),
                         detail: "missing prerequisite".into(),
                         progress: "Owner unavailable".into(),

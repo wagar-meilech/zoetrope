@@ -78,6 +78,13 @@ impl<'a> Entry<'a> {
             },
         }
     }
+    fn display_status(self) -> String {
+        if self.status().is_none() {
+            format!("unknown: {}", self.status_label())
+        } else {
+            self.status_label().into()
+        }
+    }
     fn source(self) -> &'a str {
         match self {
             Self::Report(work) => &work.report.source,
@@ -217,6 +224,60 @@ impl FleetConsole {
             }
         }
         entries
+    }
+    pub(super) fn reported_progress(&self, compact: bool) -> Vec<ratatui::text::Line<'static>> {
+        use ratatui::text::{Line, Span};
+        let entries = self.work_entries();
+        let mut counts = [0usize; 6];
+        for entry in &entries {
+            let at = match entry.status() {
+                Some(WorkStatus::Done) => 0,
+                Some(WorkStatus::Active) => 1,
+                Some(WorkStatus::Blocked) => 2,
+                Some(WorkStatus::Planned) => 3,
+                Some(WorkStatus::Cancelled) => 4,
+                None => 5,
+            };
+            counts[at] += 1;
+        }
+        let mut spans = Vec::new();
+        for (at, (label, status)) in [
+            ("done", "reported done"),
+            ("active", "in progress"),
+            ("blocked", "blocked"),
+            ("planned", "planned"),
+            ("cancelled", "cancelled"),
+            ("unknown", "unknown"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if !compact && at == 0 {
+                continue;
+            }
+            let cue = visual::Cue::work(status);
+            spans.push(Span::styled(
+                if compact {
+                    format!("{}{} ", cue.glyph, counts[at])
+                } else {
+                    format!("{} {} {label}  ", cue.glyph, counts[at])
+                },
+                Style::default().fg(cue.color),
+            ));
+        }
+        if compact {
+            spans.insert(0, Span::raw("Reported: "));
+            vec![Line::from(spans)]
+        } else {
+            vec![
+                Line::raw(format!(
+                    "Reported work: {} of {} done",
+                    counts[0],
+                    entries.len()
+                )),
+                Line::from(spans),
+            ]
+        }
     }
     pub(super) fn work_owner_label(&self, owner: &AgentKey) -> String {
         let resolved = self.resolved_owner(owner);
@@ -370,7 +431,7 @@ impl FleetConsole {
             .map(|entry| work_graph::Task {
                 id: work_graph::selection_id(&entry.selection()),
                 title: entry.label().into(),
-                status: entry.status_label().into(),
+                status: entry.display_status(),
                 owner: entry.owner_label(self),
                 dependencies: entry.dependencies().cloned(),
                 reference: entry.reference().map(str::to_owned),
@@ -422,11 +483,10 @@ impl FleetConsole {
                 current_entry(&entries, self.work_selection.as_ref()).map(|at| entries[at])
             {
                 let mut lines = vec![
-                    "Work toward goal".to_owned(),
                     format!(
                         "{} [{}] {}",
                         if selected { "›" } else { "→" },
-                        crate::ui::truncate(entry.status_label(), 40),
+                        crate::ui::truncate(&entry.display_status(), 40),
                         crate::ui::truncate(entry.label(), 120)
                     ),
                     format!(
@@ -434,13 +494,33 @@ impl FleetConsole {
                         crate::ui::truncate(&entry.owner_label(self), 120)
                     ),
                 ];
-                for (label, value) in entry.context() {
+                let context = entry.context();
+                for at in [0, 2, 3, 1] {
+                    let (label, value) = context[at];
                     if let Some(value) = value {
                         lines.push(format!("{label}: {value}"));
                     }
                 }
-                lines.push(self.runtime_word().into());
-                lines.extend(self.steering_text().lines().map(str::to_owned));
+                lines.push(
+                    [
+                        ("Guidance", FeedbackMode::Guidance),
+                        ("Queue", FeedbackMode::Queue),
+                        ("Stop", FeedbackMode::Stop),
+                    ]
+                    .into_iter()
+                    .map(|(name, mode)| {
+                        format!(
+                            "{name} {}",
+                            if self.control_availability(mode).is_ok() {
+                                "available"
+                            } else {
+                                "unavailable"
+                            }
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("  "),
+                );
                 let compact = lines
                     .iter()
                     .map(|line| crate::ui::truncate(line, width as usize))
@@ -486,15 +566,20 @@ impl FleetConsole {
         };
         let selected = self.work_selection.is_some().then_some(current);
         let start = current.saturating_sub(1);
-        for (at, entry) in entries.iter().enumerate().skip(start).take(4) {
+        for (at, entry) in entries
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(if self.work_canvas { 0 } else { 4 })
+        {
             let marker = if selected == Some(at) { "› " } else { "" };
             text.push_str(&format!(
                 "{marker}[{}] {}\n",
-                crate::ui::truncate(entry.status_label(), 40),
+                crate::ui::truncate(&entry.display_status(), 40),
                 crate::ui::truncate(entry.label(), 120)
             ));
         }
-        if entries.len() > 4 {
+        if entries.len() > 4 && !self.work_canvas {
             text.push_str(&format!("{} work entries · w select work\n", entries.len()));
         }
         if entries.len() == 512 || record.plan_drafts.len() > 512 {
@@ -506,6 +591,9 @@ impl FleetConsole {
                 "Selected work: {}\n",
                 crate::ui::truncate(current.label(), 160)
             ));
+        }
+        if self.work_canvas {
+            text.push_str(&format!("Status: {}\n", current.display_status()));
         }
         text.push_str(&format!(
             "Owner: {}\n",

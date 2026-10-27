@@ -55,6 +55,14 @@ if pid == 0:
     os.environ["ZOETROPE_STATE_DIR"] = str(fixture / "state")
     os.environ["TERM"] = "xterm-256color"
     arguments = ["--project"] if scenario == "project" else []
+    if scenario.startswith("color-"):
+        mode = scenario.removeprefix("color-")
+        if mode in ("auto", "always"):
+            os.environ["NO_COLOR"] = "1"
+        else:
+            os.environ.pop("NO_COLOR", None)
+        if mode != "default":
+            arguments = ["--color", mode]
     os.execv(executable, [executable, *arguments])
 
 os.close(start_read)
@@ -155,6 +163,14 @@ try:
         observations = {"project": expect("Inspect runtime fixture goal"), "fleet": "Current work" in visible()}
     else:
         observations = {"fleet": expect("Current work")}
+    if scenario.startswith("color-"):
+        # Count only color-setting SGR; reset/bold/cursor sequences are not color.
+        sgr = re.findall(rb"\x1b\[([0-9;]*)m", data)
+        observations["ansi_color"] = any(
+            value in range(30, 38) or value in range(40, 48) or value in range(90, 98)
+            or value in range(100, 108) or value in (38, 48)
+            for sequence in sgr for value in [int(part or b"0") for part in sequence.split(b";")]
+        )
     if scenario in ("autosave", "paste") and observations["fleet"]:
         expect("Inspect runtime fixture goal", compact=True)
         os.write(terminal, b"f")

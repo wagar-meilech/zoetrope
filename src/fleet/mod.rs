@@ -6,6 +6,7 @@ mod editor;
 mod presentation;
 pub mod runtime;
 mod state_worker;
+mod visual;
 mod work_graph;
 mod work_view;
 use crate::console::AgentKey;
@@ -193,6 +194,7 @@ fn flow_id(id: &FleetNodeId) -> String {
 }
 #[derive(Debug, Clone, PartialEq)]
 struct Card {
+    cue: visual::Cue,
     title: String,
     detail: String,
     progress: String,
@@ -201,35 +203,77 @@ struct Card {
 }
 impl NodeContent for Card {
     fn render(&self, ctx: &NodeRenderContext, buf: &mut Buffer) {
-        let color = if ctx.selected {
-            Color::Yellow
+        use ratatui::text::{Line, Span};
+        if ctx.area.width < 12 || ctx.area.height < 4 {
+            let mut style = Style::default().fg(Color::Black).bg(self.cue.color);
+            if ctx.selected {
+                style = style.add_modifier(Modifier::REVERSED | Modifier::BOLD);
+            }
+            buf.set_style(ctx.area, style);
+            let glyphs = format!("{}{}", if ctx.selected { "›" } else { "" }, self.cue.glyph);
+            let title = if ctx.area.width >= 6 {
+                format!(
+                    "{glyphs} {}",
+                    crate::ui::truncate(
+                        &self.title,
+                        ctx.area
+                            .width
+                            .saturating_sub(if ctx.selected { 3 } else { 2 })
+                            as usize
+                    )
+                )
+            } else {
+                glyphs
+            };
+            if ctx.area.width > 0 && ctx.area.height > 0 {
+                buf.set_stringn(
+                    ctx.area.x,
+                    ctx.area.y,
+                    title,
+                    ctx.area.width as usize,
+                    style,
+                );
+            }
+            return;
+        }
+        let border = if ctx.selected {
+            visual::ACCENT
         } else {
-            Color::DarkGray
+            self.cue.color
         };
-        let mut lines = crate::ui::wrap(&self.title, ctx.area.width.saturating_sub(2) as usize, 2);
+        let width = ctx.area.width.saturating_sub(2) as usize;
+        let mut lines = vec![Line::from(vec![
+            Span::styled(
+                format!("{} ", self.cue.glyph),
+                Style::default().fg(self.cue.color),
+            ),
+            Span::styled(
+                crate::ui::truncate(&self.title, width.saturating_sub(2)),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ])];
         if !self.detail.is_empty() {
-            lines.push(self.detail.clone());
-        }
-        if !self.progress.is_empty() {
-            lines.push(self.progress.clone());
-        }
-        if !self.bar.is_empty() {
-            lines.push(self.bar.clone());
-        }
-        if !self.activity.is_empty() {
-            lines.extend(crate::ui::wrap(
-                &self.activity,
-                ctx.area.width.saturating_sub(2) as usize,
-                2,
+            lines.push(Line::styled(
+                crate::ui::truncate(&self.detail, width),
+                Style::default().fg(self.cue.color),
             ));
         }
-        Paragraph::new(lines.join("\n"))
+        for value in [&self.progress, &self.bar, &self.activity] {
+            if !value.is_empty() {
+                lines.push(Line::raw(crate::ui::truncate(value, width)));
+            }
+        }
+        Paragraph::new(lines)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(color)),
+                    .title(if ctx.selected { "› selected" } else { "" })
+                    .border_style(Style::default().fg(border).add_modifier(if ctx.selected {
+                        Modifier::BOLD
+                    } else {
+                        Modifier::empty()
+                    })),
             )
-            .wrap(Wrap { trim: true })
             .render(ctx.area, buf);
     }
 }
@@ -316,13 +360,14 @@ pub struct FleetConsole {
     quit_after_save: bool,
     notify: Arc<tokio::sync::Notify>,
     view: InventoryView,
-    flow: Flow<Card, StepEdge>,
+    flow: Flow<Card, visual::SemanticEdge>,
     positions: BTreeMap<FleetNodeId, (f64, f64)>,
     history: bool,
     pending_center: bool,
     show_help: bool,
     help_scroll: u16,
     canvas_area: Rect,
+    frame_area: Rect,
     progress_area: Option<Rect>,
     action_areas: Vec<(Rect, presentation::Action)>,
     requested_selection: Option<FleetNodeId>,
@@ -391,6 +436,7 @@ impl FleetConsole {
             notify,
             view: InventoryView::default(),
             flow: Flow::new()
+                .with_theme(visual::theme())
                 .with_deselect_on_pane_click(false)
                 .with_min_zoom(0.1),
             positions: BTreeMap::new(),
@@ -399,6 +445,7 @@ impl FleetConsole {
             show_help: false,
             help_scroll: 0,
             canvas_area: Rect::default(),
+            frame_area: Rect::default(),
             progress_area: None,
             action_areas: Vec::new(),
             requested_selection: None,
@@ -2038,6 +2085,7 @@ impl FleetConsole {
                 String::new()
             };
             let card = Card {
+                cue: visual::Cue::fleet(&node.id, &detail),
                 bar,
                 title,
                 detail,
@@ -2084,7 +2132,7 @@ impl FleetConsole {
             self.flow.select_node(&flow_id(id));
         }
     }
-    fn active_flow(&mut self) -> &mut Flow<Card, StepEdge> {
+    fn active_flow(&mut self) -> &mut Flow<Card, visual::SemanticEdge> {
         if self.work_canvas {
             &mut self.work_graph.flow
         } else {

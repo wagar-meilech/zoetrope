@@ -160,3 +160,19 @@ fn tracking_commands_use_the_running_executable_even_with_an_incompatible_cli_on
         assert_eq!(observed["exit"], 0, "{observed}");
     }
 }
+
+#[test]
+fn color_modes_emit_real_terminal_ansi_and_global_flags_preserve_fleet_launch() {
+    let fixture = Fixture::new();
+    for (mode, colored) in [
+        ("auto", false),
+        ("always", true),
+        ("never", false),
+        ("default", true),
+    ] {
+        let observed = fixture.run(&format!("color-{mode}"));
+        assert_eq!(observed["fleet"], true, "{mode}: {observed}");
+        assert_eq!(observed["ansi_color"], colored, "{mode}: {observed}");
+        assert_eq!(observed["exit"], 0, "{mode}: {observed}");
+    }
+}

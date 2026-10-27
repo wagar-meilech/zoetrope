@@ -18,17 +18,24 @@ recorded plan text and document paths, rather than every tool output.
 
 ## Understanding the work
 
-The selected goal shows a work list alongside its verified-outcome count. It
-reuses recorded native plans immediately; explicit reports replace plan fallback
-for the same owner. Work can be planned, in progress, blocked, reported done or
-cancelled. A reported completed step earns no verified outcome credit by itself.
+Fleet selects projects and goals. Press `w`, Enter, or **Work** on a goal to open
+its task/dependency graph, then use arrows or `[` / `]` to choose a task. **Back**
+or Esc restores the previous view, selection and camera. Declared prerequisites
+are arrows into a task; parent grouping never invents a prerequisite. Isolated,
+unresolved and cyclic work remains visible. Recorded native plans are available
+immediately; explicit reports replace the same owner's native plan fallback.
 
-Press `w` or click **Work** to select a work item, then use arrows or `[` / `]`
-to choose another. Its owner becomes the recipient for ordinary `f` steering.
-Before work is focused, arrows navigate the fleet. Press `a` or click **Agents**
-for agent inspection; `x` / **Commands** shows the selected owner's cached public
-message and latest shell command; `R` / **Replay** opens the saved activity graph.
-Enter/Space still expands or collapses agents in the fleet.
+The legend uses ○ blue planned, ● cyan active, ! red blocked, ✓ green reported
+done, × gray cancelled and ? magenta unknown. A gold border and **› selected**
+identify selection. `o` fits the overview, retaining status/selection cues at
+small zoom; `r` restores the selected task at readable size. Reported counts and
+verified outcomes are separate: a completed task earns no outcome credit by itself.
+
+A selected task's owner becomes the recipient for ordinary `f` steering. Before
+opening Work, arrows select goals in Fleet. Press `a` or **Agents** for agent
+inspection; `x` / **Commands** shows the selected owner's full cached public
+messages and shell command; `R` / **Replay** opens the saved activity graph.
+Commands stay behind that explicit route. Enter/Space expands agents in Agents.
 
 Work detail shows its owner, source, recorded time and reported purpose/change/
 next action/blocker. Dependencies are shown only when declared: **not declared**
@@ -54,7 +61,7 @@ appear first; PageUp/PageDown scrolls the remaining detail.
 | `w`, then arrows or `[` / `]` | Focus and select meaningful work. |
 | `a` / **Agents** in Work/Agents views | Open agent inspection; `w` returns to work. |
 | `x` / **Commands** in Work/Agents views | Read the selected owner's cached commands/public messages. |
-| Enter or Space | Expand or collapse the selected goal. |
+| Enter or Space | Open a goal's Work graph; expand/collapse agents in Agents. |
 | Left / Right, `+` / `-`, `o`, `r` | Pan, zoom, fit the overview, restore readable size. |
 | `f` / **Steer** | Edit feedback for the selected recipient. |
 | `C` / **Coordinator** | Explicitly select this goal's coordinator; retain recipient-specific drafts. |
@@ -69,7 +76,7 @@ appear first; PageUp/PageDown scrolls the remaining detail.
 | F2 / F3 / F4, or Ctrl-S / Ctrl-Q / Ctrl-X in Feedback | Send guidance / queue / stop. |
 | `b` | Read saved deliveries and their status. |
 | `I` | Reveal internal helpers under their owning work. |
-| Esc | Save feedback or a partial answer and return; cancel a criteria edit. |
+| Esc / **Back** | Restore the previous view; save an open feedback/answer draft; cancel a criteria edit. |
 | `R` / **Replay** | Open read-only session replay; `q` returns to the fleet. |
 | PageUp / PageDown | Scroll selected detail. |
 | `?` | Show context and keyboard help. |
@@ -81,9 +88,22 @@ saves the partial answer and keeps editing; Esc returns to Questions after
 saving. Tab moves between
 prompts and number keys choose an option in Questions.
 
+## Terminal colors
+
+`zoe --color auto` respects a nonempty inherited `NO_COLOR` and enables color on
+terminals. `zoe --color always` restores color for this process even when the
+parent shell or tmux sets `NO_COLOR=1`; `zoe --color never` disables it. The flag
+is global and also works with `--project`, replay and subcommands. Glyphs, labels
+and the selected marker remain useful in monochrome.
+
 ## Goal progress
 
-A goal's completion criteria define its progress. Each verified criterion needs
+Reported work shows done, active, blocked, planned, cancelled and unknown counts
+for the displayed task projection. These counts are not an effort estimate or
+ETA; cancelled work is excluded from done. Source and recorded-time labels stay
+with selected details, including stale source warnings.
+
+A goal's completion criteria define its verified-outcome progress. Each verified criterion needs
 recorded evidence or an explicit user attestation. The display shows both the
 verified count and the percentage. Criteria contribute equally unless weights
 are supplied; for example, verifying one criterion with weight 3 out of weights

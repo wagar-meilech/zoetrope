@@ -3183,3 +3183,362 @@ fn a_resolved_logical_report_suppresses_its_owners_native_plan_fallback() {
     assert!(shown.contains("Work graph · 1 tasks"), "{shown}");
     ui.shutdown();
 }
+
+#[test]
+fn work_statuses_have_consistent_color_and_non_color_cues() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/visual", false);
+    home.goal("goal", "Status visual language");
+    for (at, status) in ["active", "planned", "blocked", "done", "cancelled"]
+        .iter()
+        .enumerate()
+    {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"), "label":format!("Visual phase {at}"), "status":status,
+                "source":"coordinator", "depends_on":[],
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Visual phase 0");
+    key(&mut ui, KeyCode::Char('w'));
+    for (at, glyph, color) in [
+        (0, "●", Color::Cyan),
+        (1, "○", Color::LightBlue),
+        (2, "!", Color::LightRed),
+        (3, "✓", Color::Green),
+        (4, "×", Color::DarkGray),
+    ] {
+        let mut terminal = Terminal::new(TestBackend::new(150, 42)).unwrap();
+        terminal.draw(|f| ui.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let expected = format!("{glyph} Visual phase {at}");
+        let row = buffer
+            .content()
+            .chunks(150)
+            .find(|row| {
+                row.iter()
+                    .map(|cell| cell.symbol())
+                    .collect::<String>()
+                    .contains(&expected)
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing semantic title {expected}: {}",
+                    text(&mut ui, 150, 42)
+                )
+            });
+        let cue = row.iter().find(|cell| cell.symbol() == glyph).unwrap();
+        assert_eq!(cue.fg, color, "status cue for phase {at}");
+        key(&mut ui, KeyCode::Down);
+    }
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("Legend:"), "{shown}");
+    assert!(shown.contains("✓ done"), "{shown}");
+    assert!(shown.contains("? unknown"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn overview_retains_status_and_selection_before_readable_zoom_restores_titles() {
+    use ratatui::style::{Color, Modifier};
+    let home = Home::new();
+    home.session("goal", "/projects/overview", false);
+    home.goal("goal", "Inspect an overview");
+    for at in 0..20 {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"), "label":format!("Overview task {at}"),
+                "status":if at == 0 {"active"} else {"planned"}, "source":"coordinator",
+                "depends_on":if at == 0 {vec![]} else {vec![format!("task-{}",at-1)]},
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Overview task 0");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 150, 42);
+    key(&mut ui, KeyCode::Char('o'));
+    let mut terminal = Terminal::new(TestBackend::new(150, 42)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let selected = buffer.content().iter().find(|cell| {
+        cell.symbol() == "●" && cell.bg == Color::Cyan && cell.modifier.contains(Modifier::REVERSED)
+    });
+    assert!(
+        selected.is_some(),
+        "overview must carry the active task and a monochrome selection cue: {}",
+        text(&mut ui, 150, 42)
+    );
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Char('r'));
+    let readable = text(&mut ui, 150, 42);
+    assert!(readable.contains("○ Overview task 1"), "{readable}");
+    ui.shutdown();
+}
+
+#[test]
+fn reported_work_counts_keep_cancellation_unknown_and_verified_outcomes_separate() {
+    let home = Home::new();
+    home.session("goal", "/projects/progress", false);
+    home.goal("goal", "Honest progress");
+    for (at, status) in ["active", "planned", "blocked", "done", "cancelled"]
+        .iter()
+        .enumerate()
+    {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"),"label":format!("Progress phase {at}"),"status":status,"source":"attributed coordinator",
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    Store::new(home.0.join("state")).apply(&home.key("goal"),serde_json::from_value(serde_json::json!({
+        "op":"import_plan","proposal":{"id":"unknown-plan",
+        "producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "steps":[{"step":"Await external status","status":"new-provider-state"}],"source":"native plan"}
+    })).unwrap()).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Progress phase 0");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 200, 50);
+    assert!(shown.contains("Reported work: 1 of 6 done"), "{shown}");
+    for status in [
+        "1 active",
+        "1 blocked",
+        "1 planned",
+        "1 cancelled",
+        "1 unknown",
+    ] {
+        assert!(shown.contains(status), "missing {status}: {shown}");
+    }
+    assert!(shown.contains("Outcomes: 0 of 2 verified"), "{shown}");
+    assert!(shown.contains("Source: attributed coordinator"), "{shown}");
+    assert!(shown.contains("Recorded:"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn narrow_work_view_keeps_a_readable_task_card_beside_focused_context() {
+    let home = Home::new();
+    home.session("goal", "/projects/narrow", false);
+    home.goal("goal", "A usable narrow graph");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"current","label":"Inspect narrow graph","status":"active","source":"coordinator", "depends_on":[],
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Keep the graph useful","next":"Check small terminal","blocker":"Await review"
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect narrow graph");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 60, 28);
+    assert!(
+        shown.contains("● Inspect narrow graph"),
+        "a readable task card must fit: {shown}"
+    );
+    assert!(
+        shown.contains("no prerequisites"),
+        "the graph card must retain dependency context: {shown}"
+    );
+    for context in [
+        "Owner: Coordinator",
+        "Purpose: Keep the graph useful",
+        "Next: Check small terminal",
+        "Blocker: Await review",
+        "Guidance unavailable",
+        "Queue unavailable",
+        "Stop unavailable",
+    ] {
+        assert!(shown.contains(context), "missing {context}: {shown}");
+    }
+    assert!(shown.contains("Reported:"), "{shown}");
+    assert!(shown.contains("Outcomes:"), "{shown}");
+    assert!(shown.contains("Legend:"), "{shown}");
+    assert!(shown.contains("[Commands x]"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn an_unknown_native_status_never_inherits_a_known_status_color_from_its_label() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/unknown", false);
+    home.goal("goal", "Honest unknown status");
+    Store::new(home.0.join("state")).apply(&home.key("goal"),serde_json::from_value(serde_json::json!({
+        "op":"import_plan","proposal":{"id":"unknown-plan",
+        "producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "steps":[{"step":"Unrecognized native state","status":"reported done"}],"source":"native plan"}
+    })).unwrap()).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Unrecognized native state");
+    key(&mut ui, KeyCode::Char('w'));
+    let mut terminal = Terminal::new(TestBackend::new(150, 42)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let title = buffer.content().chunks(150).find(|row| {
+        row.iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>()
+            .contains("? Unrecognized native state")
+    });
+    assert!(
+        title.is_some(),
+        "unknown must retain its own glyph: {}",
+        text(&mut ui, 150, 42)
+    );
+    assert_eq!(
+        title
+            .unwrap()
+            .iter()
+            .find(|cell| cell.symbol() == "?")
+            .unwrap()
+            .fg,
+        Color::Magenta
+    );
+    let shown = text(&mut ui, 150, 42);
+    assert!(shown.contains("unknown: reported done"), "{shown}");
+    assert!(shown.contains("Reported work: 0 of 1 done"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn focused_work_marks_selection_without_color_and_styles_its_blocker_consistently() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/attention", false);
+    home.goal("goal", "Focused attention");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"review","label":"Review delivery","status":"blocked","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Make the gate clear","next":"Read review","blocker":"Review needed"
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Review delivery");
+    key(&mut ui, KeyCode::Char('w'));
+    let mut terminal = Terminal::new(TestBackend::new(150, 42)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    for value in ["Status: blocked", "Blocker: Review needed"] {
+        let row = terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(150)
+            .find(|row| {
+                row.iter()
+                    .map(|cell| cell.symbol())
+                    .collect::<String>()
+                    .contains(value)
+            })
+            .unwrap();
+        let start = row
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>()
+            .chars()
+            .collect::<Vec<_>>()
+            .windows(value.chars().count())
+            .position(|part| part.iter().copied().eq(value.chars()))
+            .unwrap();
+        assert_eq!(row[start].fg, Color::LightRed, "{value}");
+    }
+    let shown = text(&mut ui, 150, 42);
+    assert!(
+        shown.contains("› selected"),
+        "graph selection needs a non-color cue: {shown}"
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn opening_work_from_search_keeps_its_breadcrumb_and_visible_back_action() {
+    let home = Home::new();
+    home.session("goal", "/projects/search", false);
+    home.goal("goal", "Searchable work");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"review","label":"Inspect search navigation","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Searchable work");
+    key(&mut ui, KeyCode::Char('/'));
+    type_text(&mut ui, "Searchable work");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Search: Searchable work");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 150, 42);
+    assert!(
+        shown.contains("[Back Esc] Fleet / search / Searchable work"),
+        "{shown}"
+    );
+    assert!(shown.contains("Search: Searchable work"), "{shown}");
+    click_console_action(&mut ui, "[Back Esc]");
+    let restored = text(&mut ui, 150, 42);
+    assert!(restored.starts_with("Zoetrope · Fleet"), "{restored}");
+    ui.shutdown();
+}
+
+#[test]
+fn narrow_graph_limit_notices_keep_the_status_legend_visible() {
+    let home = Home::new();
+    home.session("goal", "/projects/legend", false);
+    home.goal("goal", "Bounded graph legend");
+    for at in 0..40 {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("task-{at}"),"label":format!("Dense work {at}"),"status":"active","source":"coordinator",
+                "depends_on":(0..40).filter(|dependency|*dependency!=at).map(|dependency|format!("task-{dependency}")).chain((0..24).map(|missing|format!("missing-{missing}"))).collect::<Vec<_>>(),
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Dense work 0");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 60, 28);
+    assert!(shown.contains("LIMIT:"), "{shown}");
+    for status in [
+        "○ planned",
+        "● active",
+        "! blocked",
+        "✓ done",
+        "× cancelled",
+        "? unknown",
+    ] {
+        assert!(
+            shown.contains(status),
+            "limit diagnostics must not hide {status}: {shown}"
+        );
+    }
+    ui.shutdown();
+}

@@ -48,7 +48,7 @@ fn activate(ui: &mut FleetConsole, action: Action) {
     }
 }
 
-fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect) -> Rect {
+fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect, compact: bool) -> Rect {
     if !matches!(ui.pane, Pane::Graph | Pane::Feedback) || ui.selected_work.is_none() {
         return area;
     }
@@ -62,6 +62,15 @@ fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect) -> Rect {
                 ),
                 ("[Queue Ctrl-Q]", Action::Queue, Some(FeedbackMode::Queue)),
                 ("[Stop Ctrl-X]", Action::Stop, Some(FeedbackMode::Stop)),
+            ]
+        } else if compact {
+            &[
+                ("[Steer f]", Action::Steer, None),
+                ("[Agents a]", Action::Agents, None),
+                ("[Commands x]", Action::Commands, None),
+                ("[Replay R]", Action::Replay, None),
+                ("[Coordinator C]", Action::Coordinator, None),
+                ("[Enable tracking T]", Action::Tracking, None),
             ]
         } else {
             &[
@@ -89,7 +98,7 @@ fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect) -> Rect {
         let available = mode.is_none_or(|mode| ui.control_availability(mode).is_ok());
         frame.render_widget(
             Paragraph::new(label).style(Style::default().fg(if available {
-                Color::Yellow
+                visual::ACCENT
             } else {
                 Color::DarkGray
             })),
@@ -148,9 +157,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             ui.query
         )
     };
-    let breadcrumb = if !ui.query.is_empty() || ui.searching {
-        description.clone()
-    } else if ui.work_canvas {
+    let breadcrumb = if ui.work_canvas {
         let project = ui
             .view
             .selection
@@ -180,6 +187,12 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     } else {
         description.clone()
     };
+    let breadcrumb = if (ui.work_canvas || ui.agents_mode) && (!ui.query.is_empty() || ui.searching)
+    {
+        format!("{breadcrumb} · {description}")
+    } else {
+        breadcrumb
+    };
     frame.render_widget(
         Paragraph::new(format!(
             "Zoetrope · {} · {}\n{breadcrumb}",
@@ -198,13 +211,17 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         ))
         .style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(visual::ACCENT)
                 .add_modifier(Modifier::BOLD),
         ),
         header,
     );
+    let compact_work =
+        body.width < 96 && ui.work_canvas && ui.pane == Pane::Graph && ui.edit.is_none();
     let (canvas, panel) = if body.width < 96 {
-        let graph_height = if ui.pane == Pane::Graph && !ui.work_mode && ui.edit.is_none() {
+        let graph_height = if compact_work {
+            body.height.saturating_sub(14).max(body.height / 3)
+        } else if ui.pane == Pane::Graph && !ui.work_mode && ui.edit.is_none() {
             body.height / 2
         } else {
             body.height.min(5)
@@ -218,13 +235,32 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         (a, b)
     };
     let canvas = if ui.work_canvas {
-        let [legend, graph] =
-            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(canvas);
-        frame.render_widget(Paragraph::new(ui.work_graph.summary.as_str()), legend);
+        let [legend, graph] = Layout::vertical([
+            Constraint::Length(if canvas.width < 80 { 3 } else { 2 }),
+            Constraint::Fill(1),
+        ])
+        .areas(canvas);
+        let [summary, statuses] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(legend);
+        frame.render_widget(
+            Paragraph::new(crate::ui::truncate(
+                &ui.work_graph.summary,
+                summary.width as usize,
+            )),
+            summary,
+        );
+        frame.render_widget(
+            Paragraph::new(visual::legend()).wrap(Wrap { trim: true }),
+            statuses,
+        );
         graph
     } else {
         canvas
     };
+    if ui.work_canvas && ui.frame_area != frame.area() {
+        ui.work_graph.pending_center = true;
+    }
+    ui.frame_area = frame.area();
     ui.canvas_area = canvas;
     frame.render_widget(ui.active_flow(), canvas);
     if ui.work_canvas && ui.work_graph.pending_center {
@@ -250,15 +286,18 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             canvas,
         );
     }
-    let block = Block::default().borders(Borders::ALL).title(match ui.pane {
-        Pane::Deliveries => " Saved deliveries ",
-        Pane::Questions => " Saved questions ",
-        Pane::Criteria => " Completion criteria ",
-        Pane::Documents => " Documents ",
-        Pane::Feedback => " Feedback ",
-        Pane::Commands => " Commands and public activity ",
-        Pane::Graph => " Selected work ",
-    });
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(visual::ACCENT))
+        .title(match ui.pane {
+            Pane::Deliveries => " Saved deliveries ",
+            Pane::Questions => " Saved questions ",
+            Pane::Criteria => " Completion criteria ",
+            Pane::Documents => " Documents ",
+            Pane::Feedback => " Feedback ",
+            Pane::Commands => " Commands and public activity ",
+            Pane::Graph => " Selected work ",
+        });
     let inner = block.inner(panel);
     frame.render_widget(block, panel);
     ui.progress_area = None;
@@ -270,7 +309,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     let mut content = inner;
     if let Some(record) = &ui.selected_work {
         let [summary, gauge, rest] = Layout::vertical([
-            Constraint::Length(2),
+            Constraint::Length(if compact_work { 0 } else { 2 }),
             Constraint::Length(1),
             Constraint::Fill(1),
         ])
@@ -301,11 +340,11 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             frame.render_widget(
                 Gauge::default()
                     .ratio(ratio)
-                    .label(progress.label)
+                    .label(format!("Outcomes: {}", progress.label))
                     .gauge_style(Style::default().fg(if complete {
                         Color::Green
                     } else {
-                        Color::Yellow
+                        visual::ACCENT
                     })),
                 gauge,
             );
@@ -316,7 +355,17 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             );
         }
     }
-    content = draw_actions(ui, frame, content);
+    if ui.selected_work.is_some() && ui.pane == Pane::Graph {
+        let progress = ui.reported_progress(compact_work);
+        let [reported, rest] = Layout::vertical([
+            Constraint::Length(if compact_work { 1 } else { 3 }),
+            Constraint::Fill(1),
+        ])
+        .areas(content);
+        frame.render_widget(Paragraph::new(progress).wrap(Wrap { trim: true }), reported);
+        content = rest;
+    }
+    content = draw_actions(ui, frame, content, compact_work);
     if ui.edit.is_some() {
         draw_editor(ui, frame, content);
     } else {
@@ -344,9 +393,13 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             }
         };
         frame.render_widget(
-            Paragraph::new(details)
-                .wrap(Wrap { trim: true })
-                .scroll((ui.scroll, 0)),
+            Paragraph::new(if ui.pane == Pane::Graph {
+                visual::details(&details)
+            } else {
+                ratatui::text::Text::raw(&details)
+            })
+            .wrap(Wrap { trim: true })
+            .scroll((ui.scroll, 0)),
             content,
         );
     }
