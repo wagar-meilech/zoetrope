@@ -31,6 +31,8 @@ release evidence below. Final [validation](../SEMANTIC-CONTEXT-VALIDATION.md), [
 
 ## Completed implementation and review
 
+- [Work graph review fixes](work-graph-review-fixes.md): source validation, typed
+  status cues, compiler compatibility and public regression evidence.
 - [Build-status snapshot](zoetrope-build-status.json): installed release,
   verification, resource samples, source baseline and compatibility pointers.
 - [Final independent review](zoetrope-final-review-2026-10-25.md): original
