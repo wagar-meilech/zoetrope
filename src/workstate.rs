@@ -483,6 +483,10 @@ pub struct WorkRecord {
     #[serde(default)]
     pub work_items: Vec<WorkItem>,
     #[serde(default)]
+    pub source_tasks: Vec<crate::tracking::SourceTask>,
+    #[serde(default)]
+    pub source_diagnostics: Vec<String>,
+    #[serde(default)]
     pub criterion_history: Vec<CriterionRevision>,
     #[serde(default)]
     pub checkpoints: bool,
@@ -501,6 +505,8 @@ impl WorkRecord {
             documents: Vec::new(),
             plan_drafts: Vec::new(),
             work_items: Vec::new(),
+            source_tasks: Vec::new(),
+            source_diagnostics: Vec::new(),
             criterion_history: Vec::new(),
             checkpoints: false,
         }
@@ -914,7 +920,9 @@ impl Store {
         let file = match fs::File::open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(WorkRecord::empty(session.clone()));
+                let mut record = WorkRecord::empty(session.clone());
+                crate::tracking::project(&self.root, &mut record)?;
+                return Ok(record);
             }
             Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
         };
@@ -969,6 +977,7 @@ impl Store {
                 feedback.message=Some("Delivery uncertain after interruption; inspect Codex before explicitly trying again".into());
             }
         }
+        crate::tracking::project(&self.root, &mut record)?;
         Ok(record)
     }
     pub fn apply(&self, session: &SessionKey, update: WorkUpdate) -> Result<WorkRecord> {
