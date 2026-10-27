@@ -100,6 +100,13 @@ impl<'a> Entry<'a> {
         }
     }
     fn owner_label(self, ui: &FleetConsole) -> String {
+        if let Self::Source(task) = self {
+            return if task.owner_label.is_empty() {
+                "Unassigned".into()
+            } else {
+                task.owner_label.clone()
+            };
+        }
         self.owner()
             .map(|owner| ui.work_owner_label(owner))
             .unwrap_or_else(|| match self {
@@ -327,6 +334,14 @@ impl FleetConsole {
         let selected = self.work_selection.as_ref()?;
         let entries = self.work_entries();
         current_entry(&entries, Some(selected)).and_then(|at| entries[at].owner().cloned())
+    }
+    pub(super) fn selected_work_is_source(&self) -> bool {
+        let Some(selected) = self.work_selection.as_ref() else {
+            return false;
+        };
+        let entries = self.work_entries();
+        current_entry(&entries, Some(selected))
+            .is_some_and(|at| matches!(entries[at], Entry::Source(_)))
     }
     pub(super) fn focus_work(&mut self) {
         if self.view.selection.as_ref().and_then(session_key).is_none() {

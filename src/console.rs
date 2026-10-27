@@ -122,6 +122,44 @@ pub struct LiveThread {
     pub activity: LiveActivity,
 }
 
+/// Validate a native identity without requiring a collaboration path. Source
+/// documents may name native IDs, but only a public parent chain can prove that
+/// they belong to this exact root. The caller separately requires its header.
+fn native_owner_ancestry<'a>(
+    mut indexed: &'a provider::metadata::Indexed,
+    session: &SessionKey,
+    native: &BTreeMap<AgentKey, Vec<&'a provider::metadata::Indexed>>,
+) -> bool {
+    for _ in 0..64 {
+        if indexed.metadata.internal {
+            return false;
+        }
+        if indexed.file.role == FileRole::Root {
+            return indexed.file.session == session.session_id;
+        }
+        let Some(parent) = indexed.metadata.owner_parent.as_deref() else {
+            return false;
+        };
+        if parent == session.session_id {
+            return true;
+        }
+        let Some(parents) = native.get(&AgentKey {
+            session: session.clone(),
+            agent_id: parent.to_owned(),
+        }) else {
+            return false;
+        };
+        let first = parents[0];
+        if parents.iter().any(|record| {
+            record.metadata.internal || record.metadata.owner_parent != first.metadata.owner_parent
+        }) {
+            return false;
+        }
+        indexed = first;
+    }
+    false
+}
+
 /// Follow only the parent IDs and collaboration paths recorded in public
 /// headers. Missing, conflicting, cyclic or excessively deep ancestry fails
 /// closed; project names and transcript timestamps never enter the join.
@@ -517,8 +555,9 @@ impl Console {
         })
     }
 
-    /// Exact provider/root-qualified collaboration aliases, from cached public
-    /// session headers. Duplicate native matches never select a recipient.
+    /// Exact provider/root-qualified collaboration aliases and proven native
+    /// identities, from cached public session headers. Duplicate alias matches
+    /// never select a recipient; native IDs require their recorded ancestry.
     pub fn owner_resolutions(&self) -> BTreeMap<AgentKey, OwnerResolution> {
         let mut native: BTreeMap<AgentKey, Vec<&provider::metadata::Indexed>> = BTreeMap::new();
         let mut roots = BTreeSet::new();
@@ -560,7 +599,7 @@ impl Console {
                     .insert(owner.clone());
             }
         }
-        candidates
+        let mut resolutions: BTreeMap<_, _> = candidates
             .into_iter()
             .map(|(alias, owners)| {
                 let resolution = if owners.len() == 1 {
@@ -570,7 +609,29 @@ impl Console {
                 };
                 (alias, resolution)
             })
-            .collect()
+            .collect();
+        for (owner, records) in &native {
+            if owner.session.provider != Provider::Codex
+                || owner.agent_id.starts_with('/')
+                || !roots.contains(&owner.session)
+                || !records
+                    .iter()
+                    .all(|indexed| native_owner_ancestry(indexed, &owner.session, &native))
+            {
+                continue;
+            }
+            resolutions.insert(owner.clone(), OwnerResolution::Resolved(owner.clone()));
+            if owner.agent_id == "main" {
+                resolutions.insert(
+                    AgentKey {
+                        session: owner.session.clone(),
+                        agent_id: owner.session.session_id.clone(),
+                    },
+                    OwnerResolution::Resolved(owner.clone()),
+                );
+            }
+        }
+        resolutions
     }
 
     /// Cached provider-recorded names for producer/recipient labels, including

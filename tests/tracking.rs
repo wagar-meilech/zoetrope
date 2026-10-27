@@ -142,6 +142,7 @@ fn invalid_missing_and_duplicate_sources_keep_last_good_until_valid_empty_remove
     let original = project.show()["record"]["source_tasks"][0].clone();
     for invalid in [
         "## Tasks\nTemporarily editing table\n".to_owned(),
+        "## Tasks\n|\n|---|\n".to_owned(),
         format!("{valid}| T1 | Duplicate | active |\n"),
         "X".repeat(256 * 1024 + 1),
     ] {
@@ -224,6 +225,13 @@ fn source_owned_fields_win_and_clears_do_not_revive_supplements() {
             .as_str()
             .unwrap()
             .contains("supplement")
+    );
+    project.write("WORK.md", "## Tasks\n| ID | Task | Status | Next |\n| --- | --- | --- | --- |\n| T1 | Duplicate | planned | |\n| T1 | Duplicate | done | |\n");
+    project.ok("sync", &[]);
+    assert_eq!(
+        project.show()["record"]["source_tasks"][0]["next"],
+        "Run checks",
+        "invalid edits must retain prior field authority as well as data"
     );
     project.write("WORK.md", "## Tasks\n| ID | Task | Status | Next |\n| --- | --- | --- | --- |\n| T1 | Source title | planned | |\n");
     project.ok("sync", &[]);
@@ -348,6 +356,155 @@ fn canonical_sources_replace_parallel_old_plans_but_invalid_initial_sources_keep
     project.ok("sync", &[]);
     assert!(context()["work_items"].as_array().unwrap().is_empty());
     assert!(context()["source_tasks"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn bounded_refresh_rejects_excess_rows_and_unchanged_content_is_a_persistent_noop() {
+    let project = Project::new();
+    let mut table = "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n".to_owned();
+    for index in 0..512 {
+        table.push_str(&format!("| T{index} | Work {index} | planned |\n"));
+    }
+    project.write("WORK.md", &table);
+    let enabled = project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    assert_eq!(enabled["sources"][0]["tasks"], 512);
+    let cache = project.0.join("state/tracking.json");
+    let unchanged = std::fs::metadata(&cache).unwrap().modified().unwrap();
+    project.write("WORK.md", &table);
+    assert_eq!(project.ok("sync", &[]), enabled);
+    assert_eq!(
+        std::fs::metadata(&cache).unwrap().modified().unwrap(),
+        unchanged
+    );
+    table.push_str("| TOO-MANY | Rejected | planned |\n");
+    project.write("WORK.md", &table);
+    assert_eq!(project.ok("sync", &[])["sources"][0]["stale"], true);
+    assert_eq!(
+        project.show()["record"]["source_tasks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        512
+    );
+    // Several sources in one goal share a bounded effective task population.
+    project.write(
+        "OTHER.md",
+        "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| X | Other | active |\n",
+    );
+    let failed = project.run(
+        "enable",
+        &["--source", "WORK.md#Tasks", "--source", "OTHER.md#Tasks"],
+    );
+    assert!(!failed.status.success());
+}
+
+#[test]
+fn reenable_of_a_missing_allowlisted_file_retains_last_good_instead_of_losing_binding() {
+    let project = Project::new();
+    project.write(
+        "WORK.md",
+        "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| T1 | Saved source | planned |\n",
+    );
+    project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    project.ok("disable", &[]);
+    std::fs::remove_file(project.0.join("WORK.md")).unwrap();
+    let enabled = project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    assert_eq!(enabled["enabled"], true);
+    assert_eq!(enabled["sources"][0]["stale"], true);
+    assert_eq!(
+        project.show()["record"]["source_tasks"][0]["label"],
+        "Saved source"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn allowlist_rejects_symlinks_outside_the_selected_project() {
+    let project = Project::new();
+    let unrelated = Project::new();
+    unrelated.write(
+        "PRIVATE.md",
+        "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| SECRET | Never import | done |\n",
+    );
+    std::os::unix::fs::symlink(unrelated.0.join("PRIVATE.md"), project.0.join("LINK.md")).unwrap();
+    let result = project.run("enable", &["--source", "LINK.md#Tasks"]);
+    assert!(!result.status.success());
+    assert!(
+        project.show()["record"]["source_tasks"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn ticket_set_dependencies_resolve_only_unambiguous_explicit_ids_in_the_same_goal() {
+    let project = Project::new();
+    project.write("T1.md", "# First\nID: T1\nStatus: done\nBlocked by: None\n");
+    project.write(
+        "T2.md",
+        "# Second\nID: T2\nStatus: blocked\nBlocked by: T1\n",
+    );
+    project.ok(
+        "enable",
+        &["--source", "T1.md@ticket", "--source", "T2.md@ticket"],
+    );
+    let shown = project.show();
+    let tasks = shown["record"]["source_tasks"].as_array().unwrap();
+    assert_eq!(tasks[1]["depends_on"][0], tasks[0]["id"]);
+}
+
+#[test]
+fn fenced_task_examples_cannot_become_authoritative_tables() {
+    let project = Project::new();
+    project.write("WORK.md", "~~~~md\n```\n## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| WRONG | Code example | done |\n~~~~\n## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| REAL | Actual work | active |\n");
+    project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    assert_eq!(
+        project.show()["record"]["source_tasks"][0]["task_id"],
+        "REAL"
+    );
+}
+
+#[test]
+fn malformed_native_owner_references_remain_unavailable_without_becoming_coordinator() {
+    let project = Project::new();
+    project.write("WORK.md", "## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n| A | Invalid native root token | planned | native:main |\n| B | Invalid native alias token | planned | native:/root/worker |\n");
+    project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    for task in project.show()["record"]["source_tasks"].as_array().unwrap() {
+        assert_eq!(task["owner"], Value::Null);
+    }
+}
+
+#[test]
+fn source_set_growth_beyond_goal_bounds_is_stale_and_preserves_last_good_tasks() {
+    let project = Project::new();
+    let table = |prefix: &str| {
+        let mut table = "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n".to_owned();
+        for n in 0..256 {
+            table.push_str(&format!("| {prefix}{n} | Work | planned |\n"));
+        }
+        table
+    };
+    project.write("ONE.md", &table("A"));
+    project.write("TWO.md", &table("B"));
+    project.ok(
+        "enable",
+        &["--source", "ONE.md#Tasks", "--source", "TWO.md#Tasks"],
+    );
+    project.write(
+        "TWO.md",
+        &format!("{}| EXTRA | Too many | done |\n", table("B")),
+    );
+    let status = project.ok("sync", &[]);
+    assert_eq!(status["sources"][1]["stale"], true);
+    assert_eq!(status["sources"][1]["tasks"], 256);
+    assert_eq!(
+        project.show()["record"]["source_tasks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        512
+    );
 }
 impl Drop for Project {
     fn drop(&mut self) {

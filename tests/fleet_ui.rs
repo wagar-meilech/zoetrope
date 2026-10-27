@@ -3542,3 +3542,90 @@ fn narrow_graph_limit_notices_keep_the_status_legend_visible() {
     }
     ui.shutdown();
 }
+
+#[cfg(unix)]
+#[test]
+fn source_native_owner_requires_exact_root_metadata_before_selecting_or_sending() {
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("foreign-root", "/projects/unrelated", true);
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Source native boundary");
+    let child = home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl");
+    std::fs::write(&child, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-thread\",\"session_id\":\"foreign-root\",\"thread_source\":\"subagent\",\"parent_thread_id\":\"foreign-root\",\"agent_nickname\":\"Parser\"}}\n").unwrap();
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("WORK.md"), "## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n| T1 | Foreign source owner | active | native:child-thread |\n| T2 | Missing source owner | active | native:missing-thread |\n| T3 | Exact root source owner | active | native:root-goal |\n").unwrap();
+    let enabled = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["tracking", "enable", "--project"])
+        .arg(&project)
+        .args([
+            "--provider",
+            "codex",
+            "--session",
+            "root-goal",
+            "--source",
+            "WORK.md#Tasks",
+            "--root",
+        ])
+        .arg(home.0.join("state"))
+        .output()
+        .unwrap();
+    assert!(
+        enabled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&enabled.stderr)
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Foreign source owner");
+    key(&mut ui, KeyCode::Char('w'));
+    let foreign = wait_text(
+        &mut ui,
+        "Guidance unavailable: source owner lacks native scope",
+    );
+    assert!(foreign.contains("Owner: native:child-thread"), "{foreign}");
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(
+        &mut ui,
+        "Feedback unavailable: source owner lacks native scope",
+    );
+    for code in ['g', 'q', 'x'] {
+        ui.handle_event(&Event::Key(KeyEvent::new(
+            KeyCode::Char(code),
+            KeyModifiers::CONTROL,
+        )));
+    }
+    key(&mut ui, KeyCode::Down);
+    let missing = wait_text(&mut ui, "Selected work: Missing source owner");
+    assert!(
+        missing.contains("Guidance unavailable: source owner lacks native scope"),
+        "{missing}"
+    );
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(
+        &mut ui,
+        "Feedback unavailable: source owner lacks native scope",
+    );
+    std::fs::write(&child, "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-thread\",\"session_id\":\"root-goal\",\"thread_source\":\"subagent\",\"parent_thread_id\":\"root-goal\",\"agent_nickname\":\"Parser\"}}\n").unwrap();
+    key(&mut ui, KeyCode::Up);
+    wait_text(&mut ui, "Guidance available: current turn");
+    let resolved = text(&mut ui, 150, 42);
+    assert!(resolved.contains("Recipient: Parser"), "{resolved}");
+    assert!(
+        resolved.contains("Owner: native:child-thread"),
+        "{resolved}"
+    );
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Coordinator");
+    ui.shutdown();
+    peer.finish(); // Its public protocol fixture rejects every native control message.
+}

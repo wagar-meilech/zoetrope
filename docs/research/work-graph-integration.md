@@ -32,3 +32,15 @@ The merger verified clean source/integration worktrees and ancestry from the pre
 WG-1's immutable ancestry also contains the parent's explicitly authorized green WG-3 interfaces `c1c3f07` and `55c0115`. This establishes only that earlier source/import interface state. WG-3 remains **active** while its source hardening and final validation continue; no uncommitted WG-3 changes were merged and its ticket is not complete.
 
 The canonical frontier marks WG-1 `done` / `Integrated` and WG-5 `active` with owner `/root/wg5_visual`, making visual legibility work ready to start from this integration. Combined checks and independent final Standards/Spec reviews remain pending under WG-6. No push, publication, installation, main-branch merge or live/native input was performed.
+
+## WG-3 — structured local project sources — 27 October 2026
+
+- Previous integration tip: `55d35bb98a3942955d2d4a00e1ad25f7743b0ce0`.
+- Immutable source branch: `feat/work-sources`, checked clean at `b9afbb94b77f92b025ef04a45c2eecc3e58542eb` in `/tmp/zoetrope-wg3`.
+- Integration result: fast-forward to `b9afbb94b77f92b025ef04a45c2eecc3e58542eb`; no merge commit or conflicts. Verified ancestry includes the previous integration tip and WG-2's native identity-proof follow-up `d1d6344dbf5ccbc0d365e26dfc65a8251e8d4bd2`.
+
+The final source-only owner guard is preserved exactly: direct source-native IDs require scoped public metadata proof; missing/foreign/malformed identities cannot provide a steering recipient, ancestry-proven identities recover their exact native recipient, and exact native root identity normalizes to the coordinator. Raw source owner attribution and legacy explicit-report compatibility remain intact.
+
+The fast-forward retains the exact checked source: `src` tree `45c3967824302a07a7e8933c2dbc9e8dc5e0b621`, `tests` tree `8d3935b0810f3eb89801a60a03b805bf3f34057a`; Cargo manifest/lock blobs remain `a27ae937bd79b9960fdbd65bb2c143adf74ef2e6` / `be9833fc08bcd562f239033be23307d72dc1be38`. The [WG-3 implementation evidence](wg-3-implementation.md) records **16 tracking tests and five targeted source UI tests passed, one existing source UI probe ignored**, plus strict all-target Clippy, formatting and diff checks on the final source. Earlier combined native, portable/no-default-feature and Rust 1.88 checks passed before the final source-owner guard; they are retained as qualified earlier evidence, with the full final combined root run still pending. No checks were repeated merely to relocate this identical tree. Documentation-only integration updates passed the staged diff check and leave application/test content unchanged.
+
+The [source contract](wg-3-source-contract.md) is available for the tracking-skill consumer. The canonical frontier marks WG-3 `done` / `Integrated` and WG-4 `active`, owner `/root/wg4_skill`. This records ticket integration rather than outcome verification, issue closure or final independent review. WG-6 still owns final combined checks and independent Standards/Spec reviews. No push, publication, installation, main-branch merge, native input or other-project changes were performed.
