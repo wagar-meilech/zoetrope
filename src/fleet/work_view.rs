@@ -224,11 +224,6 @@ impl FleetConsole {
                     ),
                 ];
                 if let Entry::Report(work) = entry {
-                    if report.outcome_links.len() > 4 {
-                        text.push_str(
-                            "More outcome links recorded; inspect local context for detail.\n",
-                        );
-                    }
                     for (label, value) in [
                         ("Purpose", &work.report.purpose),
                         ("Next", &work.report.next),
@@ -373,6 +368,11 @@ impl FleetConsole {
                         "Outcome: {}\n",
                         crate::ui::truncate(&relation, 200)
                     ));
+                }
+                if report.outcome_links.len() > 4 {
+                    text.push_str(
+                        "More outcome links recorded; inspect local context for detail.\n",
+                    );
                 }
                 for (label, value) in [
                     ("Purpose", &report.purpose),
