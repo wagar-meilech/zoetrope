@@ -1,0 +1,72 @@
+{
+  "application_commit": "2a65e3155310768a34833a4f0b762c4e6afc72df",
+  "integration_commit": "811fb78d8b6d58b561aa594fc65432916ecab915",
+  "platform": "Linux x86_64",
+  "release_bytes": 8442096,
+  "release_sha256": "2084c912cbd69147afa15e9d197a16059d479b136dfb29d4908b6cd0b5fb8408",
+  "source_graphs": [
+    {
+      "fixture": "isolated structured local source and real release executable",
+      "tasks": 12,
+      "declared_edges": 8,
+      "source_bytes": 1512,
+      "open_seconds_observed": 0.07,
+      "measurement_seconds": 10.001,
+      "cpu_percent_one_core": 0.0,
+      "rss_kib": 8464,
+      "peak_rss_kib": 8464,
+      "idle_terminal_bytes": 0,
+      "explicit_color_override": true,
+      "exit_code": 0
+    },
+    {
+      "fixture": "isolated structured local source and real release executable",
+      "tasks": 512,
+      "declared_edges": 508,
+      "source_bytes": 59762,
+      "open_seconds_observed": 0.074,
+      "measurement_seconds": 10.001,
+      "cpu_percent_one_core": 0.1,
+      "rss_kib": 18712,
+      "peak_rss_kib": 18712,
+      "idle_terminal_bytes": 0,
+      "explicit_color_override": true,
+      "exit_code": 0
+    },
+    {
+      "fixture": "isolated structured local source and real release executable",
+      "tasks": 512,
+      "sources": 16,
+      "dense_within_sources": true,
+      "declared_edges": 15872,
+      "source_bytes": 153647,
+      "open_seconds_observed": 0.069,
+      "measurement_seconds": 10.001,
+      "cpu_percent_one_core": 0.4,
+      "rss_kib": 33580,
+      "peak_rss_kib": 33580,
+      "idle_terminal_bytes": 0,
+      "explicit_color_override": true,
+      "exit_code": 0
+    }
+  ],
+  "history_debug_probe": [
+    {
+      "goals": 1000,
+      "startup_ms": 313,
+      "peak_ui_poll_us": 19505
+    },
+    {
+      "goals": 4000,
+      "startup_ms": 837,
+      "peak_ui_poll_us": 81677
+    }
+  ],
+  "qualifications": [
+    "Owned disposable local sources, native recordings and PTYs; no real native guidance sent.",
+    "Ten-second samples after three-second warmup; process CPU ticks are coarse and these observations are not guarantees.",
+    "12-task and sparse512-task probes ran concurrently; dense512-task probe ran separately.",
+    "Dense graph uses16 source tables with declared cyclic relationships; drawn-edge bound omits excess edges visibly.",
+    "Graph-open time is observed terminal-header availability, not a timing assertion or whole-history parse duration."
+  ]
+}
