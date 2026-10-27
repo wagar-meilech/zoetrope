@@ -279,6 +279,7 @@ pub struct FleetConsole {
     state: StateWorker,
     state_root: PathBuf,
     state_executable: Option<PathBuf>,
+    tracking_skill: Option<PathBuf>,
     plan_index: usize,
     control: ControlWorker,
     documents: DocumentWorker,
@@ -353,6 +354,11 @@ impl FleetConsole {
             state,
             state_root: config.state_root.clone(),
             state_executable: config.state_executable.clone(),
+            tracking_skill: config
+                .roots
+                .codex_home
+                .as_ref()
+                .map(|home| home.join("skills/zoetrope-tracking/SKILL.md")),
             plan_index: 0,
             control,
             documents,
@@ -1738,17 +1744,8 @@ impl FleetConsole {
         self.status =
             "Coordinator selected explicitly; saved drafts retain their recipients".into();
     }
-    fn state_commands(&self) -> Result<(String, String), &'static str> {
-        if !self.state_root.is_absolute() {
-            return Err(
-                "State folder could not be resolved; restart from a valid working directory",
-            );
-        }
-        let root = self
-            .state_root
-            .to_str()
-            .ok_or("This state folder cannot be represented in a copyable command")?;
-        let executable = match &self.state_executable {
+    fn executable_command(&self) -> Result<String, &'static str> {
+        Ok(match &self.state_executable {
             Some(path) => {
                 if !path.is_absolute() {
                     return Err("State executable must use an absolute path for shared commands");
@@ -1760,7 +1757,19 @@ impl FleetConsole {
                 )
             }
             None => "zoe".into(),
-        };
+        })
+    }
+    fn state_commands(&self) -> Result<(String, String), &'static str> {
+        if !self.state_root.is_absolute() {
+            return Err(
+                "State folder could not be resolved; restart from a valid working directory",
+            );
+        }
+        let root = self
+            .state_root
+            .to_str()
+            .ok_or("This state folder cannot be represented in a copyable command")?;
+        let executable = self.executable_command()?;
         Ok((
             format!("{executable} state --root {}", shell_quote(root)),
             format!("{executable} state --help"),
@@ -1795,9 +1804,41 @@ impl FleetConsole {
             crate::provider::Provider::Claude => "claude",
         };
         let session = shell_quote(&target.session.session_id);
+        let skill = self
+            .tracking_skill
+            .as_ref()
+            .and_then(|path| path.to_str())
+            .map(|path| format!(" at {}", shell_quote(path)))
+            .unwrap_or_default();
+        let project = self.view.graph.nodes.iter().find_map(|node| {
+            if node.id == FleetNodeId::Session(target.session.clone()) {
+                match &node.parent {
+                    Some(FleetNodeId::Project(project)) if PathBuf::from(project).is_absolute() => {
+                        Some(project.as_str())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
         let mut instruction = format!(
-            "Enable Zoetrope work tracking for this goal. Keep a short plan of meaningful work items with stable IDs, actual agent owners, reported status and known outcome/dependency links. Report purpose, important changes, next steps or blockers when useful.\n\nRead compact context:\n{command} context {provider} {session}\n\nPublish changed work with upsert_work_item through:\n{command} apply {provider} {session} '<update JSON>'\nUse {help} for fields and revision checks. Keep outcomes unverified until supported by evidence. Publish only at meaningful transitions: plan/scope changes, work starts/completes, blockers, or verification. Batch changes; routine reads and commands need no report."
+            "Enable Zoetrope tracking for this exact goal. Use $zoetrope-tracking{skill}. Project setup is authorized: reuse the existing tracker/task artifacts, add only missing structured fields and a small managed conditional pointer. Select sources for this goal only; keep runtime paths and session IDs in local state. Normal source edits should supply ongoing updates; source status never verifies outcomes."
         );
+        if let Some(project) = project {
+            let executable = self
+                .executable_command()
+                .expect("state commands validated executable");
+            instruction.push_str(&format!(
+                "\n\nCheck this exact project/goal before setup:\n{executable} tracking status --project {} --provider {provider} --session {session} --root {}",
+                shell_quote(project), shell_quote(self.state_root.to_str().expect("state commands validated root"))
+            ));
+        } else {
+            instruction.push_str("\n\nThe project's absolute path is unavailable; obtain it before source setup. Use compact reporting meanwhile.");
+        }
+        instruction.push_str(&format!(
+            "\n\nRead compact context:\n{command} context {provider} {session}\n\nIf the skill is unavailable, keep the existing plan/native reports and use compact upsert_work_item transition reports via {command} apply {provider} {session} '<update JSON>'; {help} gives fields/revisions. Keep outcomes unverified until supported by evidence."
+        ));
         if record
             .goal
             .as_ref()

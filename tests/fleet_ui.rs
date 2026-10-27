@@ -593,10 +593,6 @@ fn tracking_is_an_editable_coordinator_draft_and_keeps_existing_feedback() {
     );
     assert!(coordinator.contains("upsert_work_item"), "{coordinator}");
     assert!(
-        coordinator.contains("meaningful transitions"),
-        "{coordinator}"
-    );
-    assert!(
         coordinator.contains(&home.0.join("state").to_string_lossy().to_string()),
         "{coordinator}"
     );
@@ -2276,7 +2272,9 @@ fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration()
 #[test]
 fn work_focused_coordinator_and_tracking_actions_stay_explicit_and_request_missing_criteria() {
     let home = Home::new();
-    home.session("goal", "/projects/steering", false);
+    let project = home.0.join("project's tracking");
+    std::fs::create_dir_all(&project).unwrap();
+    home.session("goal", project.to_str().unwrap(), false);
     std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
 "#).unwrap();
     save_work_report(
@@ -2287,7 +2285,16 @@ fn work_focused_coordinator_and_tracking_actions_stay_explicit_and_request_missi
         "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
         "status":"active","source":"worker"}),
     );
-    let mut ui = home.ui();
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        state_executable: Some(PathBuf::from(env!("CARGO_BIN_EXE_zoe"))),
+        socket: home.0.join("no-runtime.sock"),
+        ..FleetConfig::default()
+    });
     wait_text(&mut ui, "Expose steering");
     key(&mut ui, KeyCode::Char('w'));
     wait_text(&mut ui, "Recipient: Parser");
@@ -2319,6 +2326,41 @@ fn work_focused_coordinator_and_tracking_actions_stay_explicit_and_request_missi
         .unwrap()["text"]
         .as_str()
         .unwrap();
+    assert!(
+        coordinator.contains(
+            home.0
+                .join("codex/skills/zoetrope-tracking/SKILL.md")
+                .to_str()
+                .unwrap()
+        ),
+        "{coordinator}"
+    );
+    assert!(
+        coordinator.contains(env!("CARGO_BIN_EXE_zoe")),
+        "{coordinator}"
+    );
+    let status_command = coordinator
+        .lines()
+        .find(|line| line.contains(" tracking status "))
+        .expect("tracking setup must supply a usable exact-target status command");
+    let checked = std::process::Command::new("/bin/sh")
+        .args(["-c", status_command])
+        .output()
+        .unwrap();
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+    let scope: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(scope["project"], project.to_str().unwrap());
+    assert_eq!(
+        scope["session"],
+        serde_json::json!({"provider":"codex","session_id":"goal"})
+    );
+    assert_eq!(scope["project_opt_in"], false);
+    assert!(coordinator.contains("authorized"), "{coordinator}");
+    assert!(coordinator.contains("unavailable"), "{coordinator}");
     assert!(coordinator.contains("set_goal"), "{coordinator}");
     assert!(coordinator.contains("final checks"), "{coordinator}");
     assert!(coordinator.contains("unverified"), "{coordinator}");

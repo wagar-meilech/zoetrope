@@ -112,19 +112,22 @@ The preference alone does not pause Codex or change its permission rules.
 
 ## Enable tracking
 
-Press `T` or click **Enable tracking** to prepare an editable reporting draft for
-this goal's coordinator. It names the exact provider, session and local state
-location, requests compact work updates only at meaningful transitions, and
-preserves earlier feedback. When completion criteria are missing, it also asks
-for concise editable `set_goal` outcomes including tests and final checks.
+Press `T` or click **Enable tracking** to prepare an editable setup draft for
+this goal's coordinator. It names the installed skill/executable, exact provider,
+full native session, project and local state root, and preserves earlier feedback.
+Send guidance or Queue explicitly to authorize project setup. Missing completion
+criteria also prompt concise editable `set_goal` outcomes including tests/final
+checks; outcomes stay unverified until supported by evidence.
 
-The draft is saved locally. Choose Send guidance or Queue deliberately to send
-it; acceptance does not establish that reports will be maintained. Existing
-plans and public messages remain useful without sending a tracking request.
-For selected projects, the [agent reporting guide](AGENT-REPORTING.md) supplies a
-small conditional project-instruction pointer and the reusable convention. The
-operator chooses where to install it; Zoetrope does not edit project/global
-instructions automatically. No helper model is used in this iteration.
+The packaged [tracking skill](../skills/zoetrope-tracking/SKILL.md) fits the
+existing project tracker and task documents, adding only missing structured fields
+and small managed pointers. Normal source edits then update the graph locally.
+Each later goal binds its own exact native identity and selected source subset;
+a local project disable takes precedence over old committed pointers. The draft
+retains a compact reporting fallback if the skill is unavailable. Existing native
+plans and public messages remain useful without setup. See
+[tracking and reporting](AGENT-REPORTING.md) for status/disable commands and the
+fallback convention. Passive monitoring uses no helper model or network polling.
 
 ## Steering and questions
 
