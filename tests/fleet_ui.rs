@@ -2844,3 +2844,105 @@ fn bound_source_tasks_draw_dependencies_and_human_ownership_never_selects_a_reci
     assert!(human.contains("WORK.md#Tasks"), "{human}");
     ui.shutdown();
 }
+
+#[test]
+fn source_snapshot_replaces_the_old_plan_and_removed_task_selection_expires() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Source lifetime");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"legacy", "label":"Obsolete standalone report", "status":"active", "source":"old report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+        }),
+    );
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let write_source = |body: &str| {
+        std::fs::write(
+            project.join("WORK.md"),
+            format!("## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n{body}"),
+        )
+        .unwrap()
+    };
+    let sync = |operation: &str| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"));
+        command.args(["tracking", operation]);
+        if operation == "enable" {
+            command.args(["--source", "WORK.md#Tasks"]);
+        }
+        let output = command
+            .args(["--project"])
+            .arg(&project)
+            .args(["--provider", "codex", "--session", "goal", "--root"])
+            .arg(home.0.join("state"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    write_source("| T1 | Current document task | active | main |\n");
+    sync("enable");
+    let mut ui = home.ui();
+    let current = wait_text(&mut ui, "Current document task");
+    assert!(!current.contains("Obsolete standalone report"), "{current}");
+    key(&mut ui, KeyCode::Char('w'));
+    write_source("");
+    sync("sync");
+    let retired = wait_text(&mut ui, "No reported work");
+    assert!(retired.contains("Selected work unavailable"), "{retired}");
+    assert!(!retired.contains("Current document task"), "{retired}");
+    assert!(!retired.contains("Obsolete standalone report"), "{retired}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_details_prioritize_task_context_and_keep_full_commands_behind_commands() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Focused details");
+    let command = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{
+        "type":"function_call","name":"exec_command","call_id":"command",
+        "arguments":serde_json::json!({"cmd":"cargo test --known-public-command"}).to_string()
+    }});
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+            .unwrap(),
+        "{command}"
+    )
+    .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"focus", "label":"Inspect current task", "status":"blocked", "source":"attributed worker report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Understand the intended result", "next":"Check the public seam", "blocker":"Await review"
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect current task");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 200, 70);
+    assert!(
+        !shown.contains("cargo test --known-public-command"),
+        "{shown}"
+    );
+    assert!(
+        shown.find("Purpose: Understand").unwrap() < shown.find("Source: attributed").unwrap(),
+        "{shown}"
+    );
+    key(&mut ui, KeyCode::Char('x'));
+    wait_text(&mut ui, "cargo test --known-public-command");
+    ui.shutdown();
+}

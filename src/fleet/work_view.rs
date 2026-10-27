@@ -173,6 +173,14 @@ impl FleetConsole {
         let Some(record) = &self.selected_work else {
             return Vec::new();
         };
+        if record.source_snapshot {
+            return record
+                .source_tasks
+                .iter()
+                .take(512)
+                .map(Entry::Source)
+                .collect();
+        }
         let reported: BTreeSet<_> = record
             .work_items
             .iter()
@@ -390,12 +398,17 @@ impl FleetConsole {
         }
     }
     pub(super) fn inspection_text(&self, compact: bool, width: u16) -> String {
+        let activity = if self.work_canvas {
+            String::new()
+        } else {
+            self.activity_text()
+        };
         if !self.work_mode {
             return format!(
                 "Agent inspection · arrows select · w work\n{}\n{}{}",
                 self.runtime_word(),
                 self.steering_text(),
-                self.activity_text()
+                activity
             );
         }
         if compact {
@@ -433,7 +446,7 @@ impl FleetConsole {
                     "{compact}\n\nRecorded detail · PageDown scroll\n{}\n{}{}",
                     self.work_text(),
                     self.steering_text(),
-                    self.activity_text()
+                    activity
                 );
             }
         }
@@ -442,7 +455,7 @@ impl FleetConsole {
             self.work_text(),
             self.runtime_word(),
             self.steering_text(),
-            self.activity_text()
+            activity
         )
     }
     pub(super) fn work_text(&self) -> String {
@@ -491,8 +504,18 @@ impl FleetConsole {
             ));
         }
         text.push_str(&format!(
-            "Owner: {}\nSource: {}\nRecorded: {}\n",
-            crate::ui::truncate(&current.owner_label(self), 120),
+            "Owner: {}\n",
+            crate::ui::truncate(&current.owner_label(self), 120)
+        ));
+        if self.work_canvas {
+            for (label, value) in current.context() {
+                if let Some(value) = value {
+                    text.push_str(&format!("{label}: {}\n", crate::ui::truncate(value, 240)));
+                }
+            }
+        }
+        text.push_str(&format!(
+            "Source: {}\nRecorded: {}\n",
             crate::ui::truncate(current.source(), 160),
             crate::ui::truncate(current.recorded_at(), 80)
         ));
@@ -563,9 +586,14 @@ impl FleetConsole {
                         "More outcome links recorded; inspect local context for detail.\n",
                     );
                 }
-                for (label, value) in current.context() {
-                    if let Some(value) = value {
-                        text.push_str(&format!("{label}: {}\n", crate::ui::truncate(value, 240)));
+                if !self.work_canvas {
+                    for (label, value) in current.context() {
+                        if let Some(value) = value {
+                            text.push_str(&format!(
+                                "{label}: {}\n",
+                                crate::ui::truncate(value, 240)
+                            ));
+                        }
                     }
                 }
                 if let Entry::Source(task) = current {

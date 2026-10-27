@@ -54,3 +54,13 @@ creates prerequisites. Separate Fleet and Work flows retain independent cameras.
    Markdown table through the executable, draws its declared dependency, retains
    source/task identity and shows Alice's human ownership without selecting a
    native recipient. Unknown/unassigned source owners never fall back to main.
+
+8. `source_snapshot_replaces_the_old_plan_and_removed_task_selection_expires`:
+   after the parent's authorized merge of WG-3 `55c0115`, RED showed the old
+   standalone report alongside the source plan. GREEN honors the canonical
+   source snapshot, including valid empty sources: retiring a selected source
+   task expires its recipient and never resurrects old explicit/native work.
+9. `work_details_prioritize_task_context_and_keep_full_commands_behind_commands`:
+   RED showed full public shell commands in default Work details. GREEN places
+   purpose/next/blocker before source metadata and exposes full activity only
+   through the explicit Commands route.
