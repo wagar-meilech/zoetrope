@@ -208,6 +208,216 @@ pub struct CriterionRevision {
     pub changed_at: String,
 }
 
+/// An attributed work report, separate from evidence-backed outcome status.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkStatus {
+    Planned,
+    Active,
+    Blocked,
+    Done,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkOutcomeLink {
+    pub criterion_id: String,
+    pub goal_revision: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WorkItemInput {
+    pub id: String,
+    pub label: String,
+    pub owner: AgentKey,
+    pub status: WorkStatus,
+    pub source: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// None means not declared; an empty list explicitly declares no blockers.
+    #[serde(default)]
+    pub depends_on: Option<Vec<String>>,
+    #[serde(default)]
+    pub outcome_links: Vec<WorkOutcomeLink>,
+    #[serde(default)]
+    pub purpose: Option<String>,
+    #[serde(default)]
+    pub change: Option<String>,
+    #[serde(default)]
+    pub next: Option<String>,
+    #[serde(default)]
+    pub blocker: Option<String>,
+}
+
+impl WorkItemInput {
+    fn validate(&self, session: &SessionKey) -> Result<()> {
+        fn identifier(value: &str) -> bool {
+            !value.trim().is_empty() && value.len() <= 128 && !value.chars().any(char::is_control)
+        }
+        if !identifier(&self.id) || self.label.trim().is_empty() || self.label.len() > 512 {
+            bail!("work requires an identifier of 1 to 128 bytes and label of 1 to 512 bytes");
+        }
+        if self.owner.session != *session || !identifier(&self.owner.agent_id) {
+            bail!("work owner must identify an agent in this session");
+        }
+        if self.source.trim().is_empty() || self.source.len() > 512 {
+            bail!("work source must contain 1 to 512 bytes");
+        }
+        if [&self.purpose, &self.change, &self.next, &self.blocker]
+            .into_iter()
+            .flatten()
+            .any(|text| text.len() > 1024)
+        {
+            bail!("each work context field is limited to 1024 bytes");
+        }
+        if self
+            .parent_id
+            .as_ref()
+            .is_some_and(|parent| !identifier(parent) || parent == &self.id)
+        {
+            bail!("work parent requires a different valid identifier");
+        }
+        if let Some(dependencies) = &self.depends_on {
+            let mut ids = std::collections::BTreeSet::new();
+            if dependencies.len() > 64
+                || dependencies
+                    .iter()
+                    .any(|id| !identifier(id) || id == &self.id || !ids.insert(id))
+            {
+                bail!("work dependencies require at most 64 unique different identifiers");
+            }
+        }
+        let mut links = std::collections::BTreeSet::new();
+        if self.outcome_links.len() > 64
+            || self.outcome_links.iter().any(|link| {
+                !identifier(&link.criterion_id)
+                    || link.goal_revision == 0
+                    || !links.insert((&link.criterion_id, link.goal_revision))
+            })
+        {
+            bail!(
+                "outcome links require at most 64 unique criterion IDs with positive goal revisions"
+            );
+        }
+        Ok(())
+    }
+}
+
+/// A transition report. Omitted fields retain their prior values; nullable
+/// fields accept explicit null to clear previously recorded context.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkItemPatch {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<AgentKey>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<WorkStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub parent_id: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub depends_on: Option<Option<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_links: Option<Vec<WorkOutcomeLink>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub purpose: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub change: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub next: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "supplied"
+    )]
+    pub blocker: Option<Option<String>>,
+}
+
+fn supplied<'de, D, T>(deserializer: D) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+impl WorkItemPatch {
+    fn materialize(self, previous: Option<&WorkItemInput>) -> Result<WorkItemInput> {
+        Ok(WorkItemInput {
+            id: self.id,
+            label: self
+                .label
+                .or_else(|| previous.map(|p| p.label.clone()))
+                .context("new work requires label")?,
+            owner: self
+                .owner
+                .or_else(|| previous.map(|p| p.owner.clone()))
+                .context("new work requires owner")?,
+            status: self
+                .status
+                .or_else(|| previous.map(|p| p.status))
+                .context("new work requires status")?,
+            source: self
+                .source
+                .or_else(|| previous.map(|p| p.source.clone()))
+                .context("new work requires source")?,
+            parent_id: self
+                .parent_id
+                .unwrap_or_else(|| previous.and_then(|p| p.parent_id.clone())),
+            depends_on: self
+                .depends_on
+                .unwrap_or_else(|| previous.and_then(|p| p.depends_on.clone())),
+            outcome_links: self
+                .outcome_links
+                .unwrap_or_else(|| previous.map_or_else(Vec::new, |p| p.outcome_links.clone())),
+            purpose: self
+                .purpose
+                .unwrap_or_else(|| previous.and_then(|p| p.purpose.clone())),
+            change: self
+                .change
+                .unwrap_or_else(|| previous.and_then(|p| p.change.clone())),
+            next: self
+                .next
+                .unwrap_or_else(|| previous.and_then(|p| p.next.clone())),
+            blocker: self
+                .blocker
+                .unwrap_or_else(|| previous.and_then(|p| p.blocker.clone())),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WorkItem {
+    #[serde(flatten)]
+    pub report: WorkItemInput,
+    pub revision: u64,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkRecord {
     pub version: u32,
@@ -228,6 +438,8 @@ pub struct WorkRecord {
     #[serde(default)]
     pub plan_drafts: Vec<PlanProposal>,
     #[serde(default)]
+    pub work_items: Vec<WorkItem>,
+    #[serde(default)]
     pub criterion_history: Vec<CriterionRevision>,
     #[serde(default)]
     pub checkpoints: bool,
@@ -245,6 +457,7 @@ impl WorkRecord {
             outbox: Vec::new(),
             documents: Vec::new(),
             plan_drafts: Vec::new(),
+            work_items: Vec::new(),
             criterion_history: Vec::new(),
             checkpoints: false,
         }
@@ -287,6 +500,138 @@ impl WorkRecord {
                 .to_lowercase()
                 .contains(query)
         })
+    }
+
+    /// Reporting context excludes drafts, questions, deliveries and evidence bodies.
+    pub fn context(&self) -> serde_json::Value {
+        self.context_page(0, 16)
+    }
+
+    /// A bounded reporting page. Omission counts keep partial context explicit.
+    /// Stored fields remain complete; this read never changes the local record.
+    pub fn context_page(&self, offset: usize, limit: usize) -> serde_json::Value {
+        const MAX_BYTES: usize = 64 * 1024 - 1; // Reserve the CLI's newline.
+        fn short(text: &str) -> (String, bool) {
+            let mut chars = text.chars();
+            let value = chars.by_ref().take(256).collect();
+            (value, chars.next().is_some())
+        }
+        fn push(
+            values: &mut Vec<serde_json::Value>,
+            value: serde_json::Value,
+            budget: &mut usize,
+        ) -> bool {
+            let bytes = serde_json::to_vec(&value)
+                .expect("context value serializes")
+                .len()
+                + 1;
+            if bytes > *budget {
+                return false;
+            }
+            *budget -= bytes;
+            values.push(value);
+            true
+        }
+        let total_criteria = self.goal.as_ref().map_or(0, |goal| goal.criteria.len());
+        let total_steps: usize = self.plan_drafts.iter().map(|plan| plan.steps.len()).sum();
+        let offset = offset.min(self.work_items.len());
+        let mut context = serde_json::json!({
+            "session":self.session, "progress":self.progress(),
+            "goal":self.goal.as_ref().map(|goal| serde_json::json!({
+                "title":goal.title, "revision":goal.revision, "criteria":[]
+            })),
+            "work_items":[], "plans":[], "work_offset":offset,
+            "work_items_total":self.work_items.len(), "work_items_omitted":self.work_items.len(),
+            "criteria_omitted":total_criteria, "plans_omitted":self.plan_drafts.len(),
+            "plan_steps_omitted":total_steps, "next_work_offset":null,
+            "context_max_bytes":MAX_BYTES + 1
+        });
+        let available = MAX_BYTES.saturating_sub(
+            serde_json::to_vec(&context)
+                .expect("context header serializes")
+                .len()
+                + 64,
+        );
+        let mut criterion_budget = available.min(8 * 1024);
+        let mut plan_budget = available.saturating_sub(criterion_budget).min(8 * 1024);
+        let mut work_budget = available.saturating_sub(criterion_budget + plan_budget);
+        let mut criteria = Vec::new();
+        if let Some(goal) = &self.goal {
+            for criterion in goal.criteria.iter().take(32) {
+                let (label, truncated) = short(&criterion.label);
+                let value = serde_json::json!({
+                    "id":criterion.id,"label":label,"label_truncated":truncated,
+                    "status":criterion.status,"weight":criterion.weight,
+                    "evidence_count":criterion.evidence.len()
+                });
+                if !push(&mut criteria, value, &mut criterion_budget) {
+                    break;
+                }
+            }
+            context["criteria_omitted"] = (total_criteria - criteria.len()).into();
+            context["goal"]["criteria"] = criteria.into();
+        }
+        let mut work_items = Vec::new();
+        for work in self.work_items.iter().skip(offset).take(limit.clamp(1, 32)) {
+            let mut value = serde_json::to_value(work).expect("work serializes");
+            let mut text_truncated = false;
+            for key in ["label", "source", "purpose", "change", "next", "blocker"] {
+                if let Some(text) = value[key].as_str() {
+                    let (text, truncated) = short(text);
+                    text_truncated |= truncated;
+                    value[key] = text.into();
+                }
+            }
+            value["text_truncated"] = text_truncated.into();
+            for (field, count) in [
+                ("depends_on", "dependencies_omitted"),
+                ("outcome_links", "outcome_links_omitted"),
+            ] {
+                let omitted = if let Some(values) = value[field].as_array_mut() {
+                    let omitted = values.len().saturating_sub(16);
+                    values.truncate(16);
+                    omitted
+                } else {
+                    0
+                };
+                value[count] = omitted.into();
+            }
+            if !push(&mut work_items, value, &mut work_budget) {
+                break;
+            }
+        }
+        let next = offset + work_items.len();
+        context["work_items_omitted"] = (self.work_items.len() - work_items.len()).into();
+        context["next_work_offset"] = if next < self.work_items.len() {
+            next.into()
+        } else {
+            serde_json::Value::Null
+        };
+        context["work_items"] = work_items.into();
+        let mut plans = Vec::new();
+        let mut included_steps = 0;
+        for plan in self.plan_drafts.iter().take(4) {
+            let (source, source_truncated) = short(&plan.source);
+            let steps: Vec<_> = plan.steps.iter().take(8).map(|step| {
+                let (text, text_truncated) = short(&step.step);
+                let (status, status_truncated) = short(&step.status);
+                serde_json::json!({"step":text,"status":status,"text_truncated":text_truncated || status_truncated})
+            }).collect();
+            let step_count = steps.len();
+            let value = serde_json::json!({
+                "id":plan.id,"producer":plan.producer,"source":source,
+                "source_truncated":source_truncated,"steps":steps,
+                "steps_omitted":plan.steps.len() - step_count
+            });
+            if !push(&mut plans, value, &mut plan_budget) {
+                break;
+            }
+            included_steps += step_count;
+        }
+        context["plans_omitted"] = (self.plan_drafts.len() - plans.len()).into();
+        context["plan_steps_omitted"] = (total_steps - included_steps).into();
+        context["plans"] = plans.into();
+        context
     }
 
     pub fn progress(&self) -> Progress {
@@ -360,6 +705,10 @@ pub struct Progress {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum WorkUpdate {
+    UpsertWorkItem {
+        item: WorkItemPatch,
+        expected_revision: u64,
+    },
     ExpirePendingQuestions {
         #[serde(default)]
         target: Option<AgentKey>,
@@ -533,6 +882,19 @@ impl Store {
         if record.session != *session {
             bail!("local record identity does not match the selected session");
         }
+        if record.work_items.len() > 512 {
+            bail!("a goal can contain at most 512 work items");
+        }
+        let mut work_ids = std::collections::BTreeSet::new();
+        for work in &record.work_items {
+            work.report.validate(session)?;
+            if work.revision == 0
+                || !work_ids.insert(&work.report.id)
+                || chrono::DateTime::parse_from_rfc3339(&work.updated_at).is_err()
+            {
+                bail!("invalid work identity, revision or update time; record was left unchanged");
+            }
+        }
         // An interrupted process cannot prove whether a write reached Codex.
         // Keep its target/text/expected turn, but never auto-resend it.
         for feedback in &mut record.outbox {
@@ -610,6 +972,50 @@ impl Store {
                 other => other,
             };
             match update {
+                WorkUpdate::UpsertWorkItem {
+                    item,
+                    expected_revision,
+                } => {
+                    let previous = record
+                        .work_items
+                        .iter()
+                        .find(|entry| entry.report.id == item.id);
+                    let item = item.materialize(previous.map(|entry| &entry.report))?;
+                    item.validate(session)?;
+                    if let Some(existing) = record
+                        .work_items
+                        .iter_mut()
+                        .find(|entry| entry.report.id == item.id)
+                    {
+                        if existing.report == item
+                            && (existing.revision == expected_revision
+                                || expected_revision.checked_add(1) == Some(existing.revision))
+                        {
+                            continue;
+                        }
+                        if existing.revision != expected_revision {
+                            bail!("work revision changed; read current context before updating");
+                        }
+                        existing.report = item;
+                        existing.revision = existing
+                            .revision
+                            .checked_add(1)
+                            .context("work revision exhausted")?;
+                        existing.updated_at = chrono::Utc::now().to_rfc3339();
+                    } else {
+                        if expected_revision != 0 {
+                            bail!("new work requires expected_revision 0");
+                        }
+                        if record.work_items.len() >= 512 {
+                            bail!("a goal can contain at most 512 work items");
+                        }
+                        record.work_items.push(WorkItem {
+                            report: item,
+                            revision: 1,
+                            updated_at: chrono::Utc::now().to_rfc3339(),
+                        });
+                    }
+                }
                 WorkUpdate::ExpirePendingQuestions { target } => {
                     if target
                         .as_ref()
@@ -1070,13 +1476,17 @@ impl Store {
 
 const USAGE: &str = r#"zoe state [--root DIR] show PROVIDER SESSION
 zoe state [--root DIR] apply PROVIDER SESSION JSON
+zoe state [--root DIR] context PROVIDER SESSION [--offset N] [--limit 1..32]
 
 Local Zoetrope records only; PROVIDER is codex or claude. No runtime input is
 sent by these commands. apply returns a compact acknowledgment; show explicitly
-reads the full record. State uses ZOETROPE_STATE_DIR, XDG_STATE_HOME/zoetrope,
-or ~/.local/state/zoetrope.
+reads the full record. context emits at most 64 KiB with omission counts and a
+next_work_offset; its default work page is 16 entries. State uses
+ZOETROPE_STATE_DIR, XDG_STATE_HOME/zoetrope, or ~/.local/state/zoetrope.
 
 JSON updates (op is required):
+  upsert_work_item: expected_revision, item {id,label?,owner?,status?,source?,
+                   parent_id?,depends_on?,outcome_links?,purpose?,change?,next?,blocker?}
   set_goal: title, criteria [{id,label,weight?}], reason, provenance
   verify: id, evidence [{kind:reference|user_attestation,detail,provenance}], revision?
   set_criterion_status: id, status:pending|in_progress, reason, revision?
@@ -1095,6 +1505,14 @@ JSON updates (op is required):
   expire_pending_questions: target?                invalidate stored native request IDs
   answer_as_feedback: question_id, feedback_id, mode:guidance|queue
   add_document: document {id,path,producer,source,change:created|changed|deleted,changed_at?}
+
+New work requires expected_revision 0 and item id/label/owner/status/source.
+Statuses are planned|active|blocked|done|cancelled; done is an attributed report.
+Use the returned work_item.revision for subsequent updates. Omitted fields keep
+prior values; null clears parent/dependencies/purpose/change/next/blocker.
+Dependencies null means unknown; [] explicitly means none. outcome_links is
+[{criterion_id,goal_revision}]. Identical current/immediately retried updates
+are harmless; stale differing reports require rereading context.
 
 A target/producer is {"session":{"provider":"codex","session_id":"FULL_ID"},"agent_id":"main"}.
 Use the actual child ID for a child. A prompt is {id,question,header?,options?:[{label,description?}]}.
@@ -1133,25 +1551,61 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
         session_id: args.next().context("expected full session identity")?,
     };
     let update = match operation.as_str() {
-        "show" => None,
+        "show" | "context" => None,
         "apply" => Some(serde_json::from_str::<WorkUpdate>(
             &args.next().context("apply requires a JSON update")?,
         )?),
         _ => bail!("unknown local state command {operation:?}\n{USAGE}"),
     };
-    if args.next().is_some() {
+    let (mut offset, mut limit) = (0, 16);
+    if operation == "context" {
+        while let Some(flag) = args.next() {
+            let destination = match flag.as_str() {
+                "--offset" => &mut offset,
+                "--limit" => &mut limit,
+                _ => bail!("unknown context option {flag:?}\n{USAGE}"),
+            };
+            *destination = args
+                .next()
+                .context("context option requires a number")?
+                .parse::<usize>()
+                .context("context option requires a nonnegative integer")?;
+        }
+        if !(1..=32).contains(&limit) {
+            bail!("context limit must be between 1 and 32");
+        }
+    } else if args.next().is_some() {
         bail!("unexpected state arguments\n{USAGE}");
     }
+    let work_id = match &update {
+        Some(WorkUpdate::UpsertWorkItem { item, .. }) => Some(item.id.clone()),
+        _ => None,
+    };
     let store = Store::new(root);
     let record = if let Some(update) = update {
         store.apply(&session, update)?
     } else {
         store.read(&session)?
     };
-    if operation == "show" {
+    if operation == "context" {
+        println!("{}", record.context_page(offset, limit));
+    } else if operation == "show" {
         println!(
             "{}",
             serde_json::json!({"progress":record.progress(),"record":record})
+        );
+    } else if let Some(work_id) = work_id {
+        let work = record
+            .work_items
+            .iter()
+            .find(|work| work.report.id == work_id)
+            .context("saved work item was not found")?;
+        println!(
+            "{}",
+            serde_json::json!({
+                "saved":true,"session":session,"goal_revision":record.goal.as_ref().map(|goal| goal.revision),
+                "work_item":{"id":work.report.id,"revision":work.revision,"updated_at":work.updated_at}
+            })
         );
     } else {
         // Agent-maintained criteria must not echo megabytes of saved drafts or

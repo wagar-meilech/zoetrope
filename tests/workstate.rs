@@ -489,3 +489,296 @@ fn applying_updates_reports_compact_results_without_echoing_large_drafts_to_the_
     assert!(!String::from_utf8_lossy(&result.stdout).contains("Saved private draft"));
     assert_eq!(home.show()["record"]["checkpoints"], true);
 }
+
+#[test]
+fn work_reports_survive_restart_without_verifying_goal_outcomes() {
+    let home = Home::new();
+    home.apply(json!({"op":"set_goal","title":"Make steering clear","criteria":[{"id":"target","label":"Input reaches its target"}],"reason":"Agreed outcome","provenance":"operator"}));
+    home.apply(
+        json!({"op":"upsert_work_item","expected_revision":0,"item":{
+            "id":"inspect","label":"Inspect current navigation",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "status":"done","source":"coordinator report"
+        }}),
+    );
+    let restarted = home.show();
+    let item = &restarted["record"]["work_items"][0];
+    assert_eq!(item["id"], "inspect");
+    assert_eq!(item["label"], "Inspect current navigation");
+    assert_eq!(item["owner"]["agent_id"], "main");
+    assert_eq!(item["status"], "done");
+    assert_eq!(item["revision"], 1);
+    assert!(chrono::DateTime::parse_from_rfc3339(item["updated_at"].as_str().unwrap()).is_ok());
+    assert_eq!(restarted["progress"]["verified"], 0);
+    assert_eq!(restarted["progress"]["label"], "0 of 1 verified · 0%");
+}
+
+#[test]
+fn concurrent_work_revisions_reject_stale_reports_and_accept_identical_retries() {
+    let home = Home::new();
+    let item = json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "status":"active","source":"coordinator"});
+    let create = json!({"op":"upsert_work_item","expected_revision":0,"item":item});
+    let initial = home.apply(create.clone());
+    let retried = home.apply(create);
+    assert_eq!(
+        retried["record"]["work_items"],
+        initial["record"]["work_items"]
+    );
+    let mut finished = item.clone();
+    finished["status"] = json!("done");
+    let accepted =
+        home.apply(json!({"op":"upsert_work_item","expected_revision":1,"item":finished}));
+    assert_eq!(accepted["record"]["work_items"][0]["revision"], 2);
+    let stale = home.run(&[
+        "apply",
+        "codex",
+        "goal",
+        &json!({"op":"upsert_work_item","expected_revision":1,"item":item}).to_string(),
+    ]);
+    assert!(!stale.status.success());
+    assert!(String::from_utf8_lossy(&stale.stderr).contains("revision"));
+    assert_eq!(
+        home.show()["record"]["work_items"],
+        accepted["record"]["work_items"]
+    );
+}
+
+#[test]
+fn work_context_preserves_declared_dependencies_and_revision_qualified_outcomes() {
+    let home = Home::new();
+    let item = json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"worker"},
+        "status":"blocked","source":"worker report",
+        "parent_id":"design","depends_on":["runtime-api"],
+        "outcome_links":[{"criterion_id":"correct-target","goal_revision":3}],
+        "purpose":"Explain input before sending","change":"Child input is restricted",
+        "next":"Show coordinator selection","blocker":"Waiting for runtime capability"});
+    let saved = home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":item}));
+    let work = &saved["record"]["work_items"][0];
+    assert_eq!(work["parent_id"], "design");
+    assert_eq!(work["depends_on"], json!(["runtime-api"]));
+    assert_eq!(
+        work["outcome_links"],
+        json!([{"criterion_id":"correct-target","goal_revision":3}])
+    );
+    assert_eq!(work["purpose"], "Explain input before sending");
+    assert_eq!(work["change"], "Child input is restricted");
+    assert_eq!(work["next"], "Show coordinator selection");
+    assert_eq!(work["blocker"], "Waiting for runtime capability");
+    let mut independent = item.clone();
+    independent["id"] = json!("independent");
+    independent["depends_on"] = json!([]);
+    home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":independent}));
+    let mut unknown = item;
+    unknown["id"] = json!("unknown");
+    unknown.as_object_mut().unwrap().remove("depends_on");
+    let state = home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":unknown}));
+    assert_eq!(state["record"]["work_items"][1]["depends_on"], json!([]));
+    assert_eq!(state["record"]["work_items"][2]["depends_on"], Value::Null);
+    assert_eq!(state["progress"]["percent"], Value::Null);
+}
+
+#[test]
+fn transition_reports_update_only_supplied_fields_and_can_clear_context_explicitly() {
+    let home = Home::new();
+    home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":{
+        "id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"worker"},
+        "status":"blocked","source":"worker report","depends_on":["runtime-api"],
+        "purpose":"Explain available input","blocker":"Waiting for runtime", "next":"Inspect capability"
+    }}));
+    let updated = home.apply(
+        json!({"op":"upsert_work_item","expected_revision":1,"item":{
+            "id":"steering","status":"active","blocker":null,"next":"Render available actions"
+        }}),
+    );
+    let work = &updated["record"]["work_items"][0];
+    assert_eq!(work["revision"], 2);
+    assert_eq!(work["owner"]["agent_id"], "worker");
+    assert_eq!(work["label"], "Expose steering");
+    assert_eq!(work["source"], "worker report");
+    assert_eq!(work["purpose"], "Explain available input");
+    assert_eq!(work["depends_on"], json!(["runtime-api"]));
+    assert_eq!(work["blocker"], Value::Null);
+    assert_eq!(work["next"], "Render available actions");
+    let cleared = home.apply(
+        json!({"op":"upsert_work_item","expected_revision":2,"item":{
+            "id":"steering","depends_on":null,"purpose":null
+        }}),
+    );
+    assert_eq!(cleared["record"]["work_items"][0]["revision"], 3);
+    assert_eq!(
+        cleared["record"]["work_items"][0]["depends_on"],
+        Value::Null
+    );
+    assert_eq!(cleared["record"]["work_items"][0]["purpose"], Value::Null);
+    let invalid = home.run(&[
+        "apply",
+        "codex",
+        "goal",
+        &json!({"op":"upsert_work_item","expected_revision":0,"item":{"id":"missing"}}).to_string(),
+    ]);
+    assert!(!invalid.status.success());
+    assert_eq!(
+        home.show()["record"]["work_items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn invalid_work_reports_cannot_change_an_existing_record() {
+    let home = Home::new();
+    let valid = json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "status":"active","source":"coordinator"});
+    let initial = home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":valid}));
+    let invalid_patches = [
+        json!({"id":"steering","owner":{"session":{"provider":"codex","session_id":"another-goal"},"agent_id":"main"}}),
+        json!({"id":"steering","label":" ","status":"done"}),
+        json!({"id":"steering","source":""}),
+        json!({"id":"steering","purpose":"x".repeat(1025)}),
+        json!({"id":"steering","depends_on":["steering"]}),
+        json!({"id":"steering","depends_on":["same","same"]}),
+        json!({"id":"steering","parent_id":"steering"}),
+        json!({"id":"steering","outcome_links":[{"criterion_id":"target","goal_revision":0}]}),
+        json!({"id":"steering","outcome_links":[{"criterion_id":"","goal_revision":1}]}),
+        json!({"id":"steering","unexpected_field":"silently ignored?"}),
+    ];
+    for patch in invalid_patches {
+        let result = home.run(&[
+            "apply",
+            "codex",
+            "goal",
+            &json!({"op":"upsert_work_item","expected_revision":1,"item":patch}).to_string(),
+        ]);
+        assert!(!result.status.success(), "accepted invalid report: {patch}");
+        assert_eq!(
+            home.show()["record"]["work_items"],
+            initial["record"]["work_items"]
+        );
+    }
+}
+
+#[test]
+fn compact_context_reads_current_work_and_plans_without_echoing_private_history() {
+    let home = Home::new();
+    home.apply(json!({"op":"set_goal","title":"Make steering clear","criteria":[{"id":"target","label":"Input reaches its target"}],"reason":"Agreed","provenance":"operator"}));
+    let owner = json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    home.apply(json!({"op":"save_draft","target":owner,"text":"PRIVATE DRAFT ".repeat(2048)}));
+    home.apply(json!({"op":"verify","id":"target","evidence":[{"kind":"reference","detail":"VERBOSE EVIDENCE ".repeat(2048),"provenance":"operator"}]}));
+    home.apply(json!({"op":"import_plan","proposal":{"id":"native-plan","producer":owner,"steps":[{"step":"Inspect runtime","status":"in_progress"}],"source":"recorded native plan"}}));
+    home.apply(
+        json!({"op":"upsert_work_item","expected_revision":0,"item":{
+            "id":"steering","label":"Expose steering","owner":owner,
+            "status":"active","source":"coordinator","next":"Show input capability"
+        }}),
+    );
+    let result = home.run(&["context", "codex", "goal"]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(result.stdout.len() < 8192);
+    let text = String::from_utf8_lossy(&result.stdout);
+    assert!(!text.contains("PRIVATE DRAFT"));
+    assert!(!text.contains("VERBOSE EVIDENCE"));
+    assert!(!text.contains("drafts"));
+    assert!(!text.contains("outbox"));
+    let context: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(context["goal"]["title"], "Make steering clear");
+    assert_eq!(context["goal"]["revision"], 1);
+    assert_eq!(context["goal"]["criteria"][0]["id"], "target");
+    assert_eq!(context["goal"]["criteria"][0]["evidence_count"], 1);
+    assert_eq!(context["progress"]["verified"], 1);
+    assert_eq!(context["work_items"][0]["id"], "steering");
+    assert_eq!(context["work_items"][0]["next"], "Show input capability");
+    assert_eq!(context["plans"][0]["steps"][0]["status"], "in_progress");
+}
+
+#[test]
+fn context_pages_work_and_bounds_large_goal_and_plan_text() {
+    let home = Home::new();
+    home.apply(json!({"op":"set_goal","title":"Large report","criteria":[{"id":"huge","label":"Goal detail ".repeat(10000)}],"reason":"Bounded context","provenance":"operator"}));
+    let owner = json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    home.apply(json!({"op":"import_plan","proposal":{"id":"huge-plan","producer":owner,"steps":[{"step":"Plan detail ".repeat(10000),"status":"in_progress"}],"source":"native plan"}}));
+    for index in 0..24 {
+        home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":{
+            "id":format!("unit-{index:02}"),"label":format!("Work {index}"),"owner":owner,"status":"planned","source":"coordinator",
+            "purpose":"p".repeat(1024),"change":"c".repeat(1024),"next":"n".repeat(1024),"blocker":"b".repeat(1024)
+        }}));
+    }
+    let first = home.run(&["context", "codex", "goal"]);
+    assert!(first.status.success());
+    assert!(
+        first.stdout.len() <= 65536,
+        "context emitted {} bytes",
+        first.stdout.len()
+    );
+    let context: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(context["work_items_total"], 24);
+    assert!(context["work_items_omitted"].as_u64().unwrap() > 0);
+    assert_eq!(context["goal"]["criteria"][0]["label_truncated"], true);
+    assert_eq!(context["plans"][0]["steps"][0]["text_truncated"], true);
+    assert!(context["next_work_offset"].as_u64().unwrap() > 0);
+    let page = home.run(&["context", "codex", "goal", "--offset", "3", "--limit", "2"]);
+    assert!(
+        page.status.success(),
+        "{}",
+        String::from_utf8_lossy(&page.stderr)
+    );
+    let page: Value = serde_json::from_slice(&page.stdout).unwrap();
+    assert_eq!(page["work_items"].as_array().unwrap().len(), 2);
+    assert_eq!(page["work_items"][0]["id"], "unit-03");
+    assert_eq!(page["work_items"][1]["id"], "unit-04");
+    assert_eq!(page["next_work_offset"], 5);
+    assert_eq!(page["work_items_omitted"], 22);
+}
+
+#[test]
+fn work_receipts_return_the_saved_revision_without_echoing_report_context() {
+    let home = Home::new();
+    let create = json!({"op":"upsert_work_item","expected_revision":0,"item":{
+        "id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "status":"active","source":"coordinator","purpose":"VERBOSE CONTEXT ".repeat(50)
+    }});
+    let result = home.run(&["apply", "codex", "goal", &create.to_string()]);
+    assert!(result.status.success());
+    assert!(result.stdout.len() < 1024);
+    assert!(!String::from_utf8_lossy(&result.stdout).contains("VERBOSE CONTEXT"));
+    let receipt: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(receipt["saved"], true);
+    assert_eq!(receipt["work_item"]["id"], "steering");
+    assert_eq!(receipt["work_item"]["revision"], 1);
+    let update = home.run(&["apply","codex","goal",&json!({"op":"upsert_work_item","expected_revision":1,"item":{"id":"steering","status":"done"}}).to_string()]);
+    assert!(update.status.success());
+    let receipt: Value = serde_json::from_slice(&update.stdout).unwrap();
+    assert_eq!(receipt["work_item"]["revision"], 2);
+}
+
+#[test]
+fn an_identical_report_with_an_unrelated_revision_is_not_acknowledged_as_a_retry() {
+    let home = Home::new();
+    let item = json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "status":"active","source":"coordinator"});
+    let initial = home.apply(json!({"op":"upsert_work_item","expected_revision":0,"item":item}));
+    let invalid = home.run(&[
+        "apply",
+        "codex",
+        "goal",
+        &json!({"op":"upsert_work_item","expected_revision":99,"item":item}).to_string(),
+    ]);
+    assert!(!invalid.status.success());
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("revision"));
+    assert_eq!(
+        home.show()["record"]["work_items"],
+        initial["record"]["work_items"]
+    );
+}
