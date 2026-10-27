@@ -1,0 +1,23 @@
+cold_ms=452
+unchanged_mean_ms=2.767
+uncached_artifact_search_ms=275 visible_nodes=2
+selected_history_restored=8 progress=0 of 1 verified · 0%
+cached_100k_graph_reads_ms=0.633
+        0.79 real         0.60 user         0.08 sys
+            21217280  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                1322  page reclaims
+                 143  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 384  voluntary context switches
+                1858  involuntary context switches
+          6915989406  instructions retired
+          2111293083  cycles elapsed
+            17629472  peak memory footprint

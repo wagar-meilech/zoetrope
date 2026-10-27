@@ -1,0 +1,22 @@
+# ZOE4 root handoff
+
+Approved spec and public seams remain authoritative. These notes are implementation guidance, not extra scope.
+
+- Fleet must be a real expanding node/edge graph using existing rataflow, not only Console.render's plain indented list. Reuse graph pattern src/state/graph.rs and NodeContent pattern src/ui/nodes.rs. Stable identities; avoid full graph relayout on each refresh; keep existing positions/selection pinned. Explicit expansion/filter may adapt layout.
+- Main labels should use human goal/title/prompt, Coordinator, child nickname/task; raw UUIDs/tool plumbing belong details if needed. Graph cards emphasize goal and verified progress plus short existing meaningful activity. No invented semantic purposes. Keep Bash inspectable with stated purpose when recorded.
+- Current transcript fallback is only recent writes120s. Runtime Working/Waiting metadata must supersede it, so a quiet active/waiting thread stays visible. History H stays same searchable graph; / search covers goal/artifacts too.
+- All filesystem, socket, first expansion, transcript detail load, state saves and editor launch belong a worker, never the UI loop. Bounded channels/work; cached graph/state projections. Idle rendering should block on events and skip redraw for identical background refresh, not old60fps permanent animation. Debounce/coalesce draft saves; show Saving/Saved truthfully, flush on orderly exit. Never retarget a queued save after selection changes.
+- Persistent question text/choices and partial answers need a reachable view until explicit answer/dismiss, including expired requests. Defaults never submitted automatically. Fresh pending replay required to answer after reconnect. Expired answer may be explicitly copied into feedback; no automatic send.
+- Distinct visible Send guidance, Queue, Stop. Exact selected target and pinned turn; Accepted means runtime accepted, not goal completed. Persist local outbox before sending, unknown delivery never retried automatically. Unavailable child never routes parent. Queue can immediately start idle work, so label explicit delivery, separate from local draft.
+- In replay detail, controls must not send live commands accidentally. Keep old file/ID/inspect paths; bare zoe fleet, explicit --project for old cwd follow (or equally clear approved switch). Returning from detail preserves fleet/composer.
+- Goal tracking needs readable criteria/evidence view, explicit begin/edit, user attestation/evidence and request-agent-criteria action. Unknown progress honest; testing/final checks can be criteria; scope revisions retain evidence/history. Optional checkpoints disableddefault.
+- DocumentLauncher::open is blocking; run offthread only on explicit selected document open. Exact artifact path, producing agent; Display is UI-ready dispatch acknowledgment. Installed bridge + real MDReader preview already verified by root.
+- Narrow terminal should remain navigable, visible help; text editing captures normal shortcuts. Add public key/render tests and actual executable PTY smoke through approved seams using one RED/GREEN slice at a time.
+- Keep native module feature gates and existing browser replay. Node/JS only editor bridge, no hidden model service or network.
+
+- Editor launch uses external CLI and may wait on VS Code; isolate it from inventory/control workers and bound in-flight launches so repeated open keys cannot flood processes or delay steering.
+- Actual native runtime canAcceptDirectInput is true for coordinator and false for observed children. Gate guidance/queue accordingly, but Stop is a separate exact-turn protocol action; do not infer stop prohibition from an input capability.
+
+- Use independent bounded control and inventory/state work lanes: a cold history scan or expensive search must not delay an already-selected live Stop/Guide request. Coalesce obsolete search/refresh requests and ignore results belonging to an old query generation.
+
+- Critical activity boundary: existing FactKind::Reasoning combines assistant text and thinking (Claude Thinking, Codex reasoning summaries). Never use it as fleet purpose/commentary. Add provider-owned public activity projection from explicitly public commentary/final text or safe typed tool labels; skip analysis/thinking/encrypted reasoning. Codex wire::Message currently lacks channel, so retain/check channel if adding public commentary. Human task descriptions are safe existing metadata. Test with a fixture containing both public commentary and hidden reasoning.

@@ -1,0 +1,23 @@
+[
+  {
+    "phase": "current-before-fixes",
+    "clock": 178381.637320208,
+    "pid": 29246,
+    "cpu_time": "0:00.46",
+    "rss_kib": 8256
+  },
+  {
+    "phase": "current-before-fixes",
+    "clock": 178548.712975125,
+    "pid": 29246,
+    "cpu_time": "0:00.79",
+    "rss_kib": 8832
+  },
+  {
+    "phase": "history-before-fixes",
+    "clock": 178759.155830708,
+    "pid": 29246,
+    "cpu_time": "0:01.22",
+    "rss_kib": 9216
+  }
+]

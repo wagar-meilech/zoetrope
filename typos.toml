@@ -7,6 +7,8 @@ extend-ignore-re = [
   '"[^"\n]*…"',
   # A hyphenated prefix, not the word "mis" (e.g. "mis-dispatched").
   '\bmis-\w+',
+  # Archived implementation notes cite hexadecimal Git object ids.
+  '`[0-9a-f]{7,40}`',
 ]
 
 [default.extend-words]
@@ -16,6 +18,8 @@ ratatui = "ratatui"
 # Playback jargon rather than a misspelling of "sought": the media event is
 # itself named `seeked`, and a seeked-to frame is the frame a seek landed on.
 seeked = "seeked"
+# The terminal review tool herdr-reviewr appears in the interface research.
+reviewr = "reviewr"
 
 [files]
 # Real Codex captures: opaque call, response and thread ids are full of

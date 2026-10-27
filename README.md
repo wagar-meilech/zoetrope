@@ -270,6 +270,10 @@ please [open an issue](https://github.com/furkankly/zoetrope/issues).
 
 ## Contributing
 
+For work on this fork, start with the [project handoff](docs/HANDOFF.md).
+The [research archive](docs/research/README.md) contains implementation notes,
+review evidence and protocol exports alongside the current project documents.
+
 Pull requests are welcome. Support for another agent is one provider directory
 under `src/provider/`; [`docs/DISCOVERY.md`](https://github.com/furkankly/zoetrope/blob/main/docs/DISCOVERY.md)
 says what one consists of and what proves it.

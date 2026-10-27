@@ -1,0 +1,38 @@
+{
+  "spec": {
+    "number": 1,
+    "url": "https://github.com/wagar-meilech/zoetrope/issues/1"
+  },
+  "tickets": {
+    "1": {
+      "number": 2,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/2",
+      "title": "ZOE-1: Fleet inventory and console interface"
+    },
+    "2": {
+      "number": 3,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/3",
+      "title": "ZOE-2: Durable goals, questions, drafts and document records"
+    },
+    "3": {
+      "number": 4,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/4",
+      "title": "ZOE-3: Local Codex control and coexistence"
+    },
+    "4": {
+      "number": 5,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/5",
+      "title": "ZOE-4: Terminal fleet graph and interactive controls"
+    },
+    "5": {
+      "number": 6,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/6",
+      "title": "ZOE-5: VS Code MD Reader preview integration"
+    },
+    "6": {
+      "number": 7,
+      "url": "https://github.com/wagar-meilech/zoetrope/issues/7",
+      "title": "ZOE-6: End-to-end verification, docs and installed release"
+    }
+  }
+}

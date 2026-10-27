@@ -1,0 +1,17 @@
+{
+  "before": {
+    "head": "f9fda773c96c7649bc6be6fdb6e8cbe7ee00b540",
+    "tree": "c654a176eecb9668af0c9c2f3af051981ada5eb7",
+    "main": "b1f31dd26bd4e9e513885e39edb78d0850a5d1fe",
+    "remote": "f9fda773c96c7649bc6be6fdb6e8cbe7ee00b540",
+    "backup": "backup/goal-console-before-header-normalization-20261025"
+  },
+  "after": {
+    "head": "f327bf8be5a8a1652ecc90a135bcd563df0567de",
+    "tree": "c654a176eecb9668af0c9c2f3af051981ada5eb7",
+    "main": "b1f31dd26bd4e9e513885e39edb78d0850a5d1fe"
+  },
+  "unchanged_tree": true,
+  "unchanged_main": true,
+  "commit_lint": "passed"
+}

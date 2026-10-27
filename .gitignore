@@ -7,6 +7,13 @@
 /.playwright-mcp
 .DS_Store
 
+# Local research captures, compiled tools and executable rollback copies.
+/.local/
+__pycache__/
+/docs/research/zoe-control-compatibility-2026-10-23/*.jsonl
+/docs/research/zoe-control-compatibility-2026-10-23/probe*-output.txt
+/docs/research/zoe-control-compatibility-2026-10-23/*thread-id.txt
+
 # VHS insists on an Output even when only a Screenshot is wanted (assets/og.tape).
 tmp-*.gif
 

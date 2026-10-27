@@ -4,6 +4,11 @@ Terminal UI for a global goal/agent graph, persistent local steering and Claude 
 
 ## Approved goal-console work
 
+For continuation, start with `docs/HANDOFF.md`. Supporting research,
+implementation notes, review evidence and schema exports are consolidated in
+`docs/research/`; its README is the archive index. `docs/PAUSED-CHECKPOINT.md`
+records earlier pauses and is historical.
+
 The user approved `docs/GOAL-CONSOLE-SPEC.md`, its two public testing seams, and the task graph in `docs/GOAL-CONSOLE-TICKETS.md`. For this feature, explicit local Codex controls and opening a selected document extend the old read-only contract. Native transcripts stay read-only; the console must not add internet communication, telemetry, a hidden summarizing model, or automatic permission-policy changes. Preserve portable replay and the existing browser frontend.
 
 Use GitHub Issues in `wagar-meilech/zoetrope`; details are in `docs/agents/issue-tracker.md`. The umbrella spec is issue #1. Integrate implementation worktrees into `feat/goal-console`, and use one PR to close the spec and tickets. Do not merge that PR into main without a user request.

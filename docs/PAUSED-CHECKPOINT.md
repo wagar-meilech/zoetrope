@@ -29,16 +29,16 @@ historical.
   Remaining UI work also includes request-criteria/checkpoint wiring, final
   lifecycle/default CLI/replay/help/narrow-terminal behavior and resource tuning.
 - Current exact API, files, keymap and stopping point are in
-  `/Users/melikhov/Documents/Research/zoe-4-implementation.md`. These latest notes
+  [the UI implementation notes](research/zoe-4-implementation.md). These latest notes
   supersede the earlier WIP description below.
 - Root review observations and documentation corrections to finish are saved
-  in `/Users/melikhov/Documents/Research/zoetrope-root-review-2026-10-24.md`.
+  in [the root review notes](research/zoetrope-root-review-2026-10-24.md).
   Review the final combined code before treating candidate observations as bugs.
 - The current task has its own local goal record for Codex session
   `01a1691a-571a-7c03-bc87-946ac8a3d53d`: four of six criteria verified.
   `terminal` and `handoff` remain pending. This is Zoetrope-owned state, not a
   modification of native history.
-- Final check tools were prepared in `/private/tmp/zoetrope-check-tools/`:
+- Final check tools were prepared in what is now `.local/check-tools/`:
   committed 1.1.11 and typos 1.51.1, official release digests verified. Final
   lint checks have not yet run; no global installation or PATH change was made.
 
@@ -131,7 +131,7 @@ The approved requirements and answers remain in
 fast, resource-light code: Rust for the app; only a tiny JavaScript editor
 bridge; bounded caches/reads; no hidden summarizing model or extra GUI service.
 
-Detailed local notes are in `/Users/melikhov/Documents/Research/`:
+Detailed notes are now in [the repository research archive](research/README.md):
 
 - `zoe-4-implementation.md`: exact WIP state, last green test and next slices.
 - `zoe-4-ui-handoff.md`: UI, worker, replay-lifecycle and public-activity guidance.

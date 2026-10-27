@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-25",
+  "source": "47b41e1",
+  "binary_sha256": "3c2d4aa10ace5b5638fde45545c4470cd2ba53fedc81acfc29b7b861d2f86964",
+  "fresh": {
+    "profile": "optimized",
+    "view": "fresh launch, Current work, documents pane; no full replay",
+    "beforeAt": 1792961456677,
+    "afterAt": 1792961473379,
+    "before": "34654   0:00.17   8432   0.0 /Users/melikhov/.local/bin/zoe\n",
+    "after": "34654   0:00.20   8560   0.0 /Users/melikhov/.local/bin/zoe\n",
+    "elapsed_seconds": 16.702
+  },
+  "after_replay": {
+    "beforeAt": 1792961337685,
+    "afterAt": 1792961354053,
+    "before": "34519   0:00.91  23936   0.0 /Users/melikhov/.local/bin/zoe\n",
+    "after": "34519   0:00.94  23936   0.0 /Users/melikhov/.local/bin/zoe\n"
+  }
+}
