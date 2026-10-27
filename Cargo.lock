@@ -1859,6 +1859,7 @@ dependencies = [
  "fs2",
  "futures",
  "imbl",
+ "libc",
  "rataflow",
  "ratatui",
  "serde",

@@ -2,7 +2,8 @@
 
 use serde_json::Value;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 struct Project(PathBuf);
 impl Project {
@@ -17,14 +18,30 @@ impl Project {
         Self(path)
     }
     fn run(&self, operation: &str, extras: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_zoe"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_zoe"))
             .args(["tracking", operation, "--project"])
             .arg(&self.0)
             .args(["--provider", "codex", "--session", "goal", "--root"])
             .arg(self.0.join("state"))
             .args(extras)
-            .output()
-            .unwrap()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        // A deadlock guard, not a source-refresh performance requirement.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                let output = child.wait_with_output().unwrap();
+                panic!(
+                    "tracking {operation} deadlocked: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        child.wait_with_output().unwrap()
     }
     fn ok(&self, operation: &str, extras: &[&str]) -> Value {
         let output = self.run(operation, extras);
@@ -175,6 +192,60 @@ fn invalid_missing_and_duplicate_sources_keep_last_good_until_valid_empty_remove
             .unwrap()
             .is_empty()
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn nonregular_sources_retain_last_good_without_blocking_tracking_commands() {
+    let project = Project::new();
+    let path = project.0.join("WORK.md");
+    let fifo = || {
+        assert!(
+            Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    fifo();
+    let initial = project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    assert_eq!(initial["sources"][0]["stale"], true);
+    assert!(
+        initial["sources"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("regular file")
+    );
+    assert_eq!(project.show()["record"]["source_snapshot"], false);
+    assert_eq!(project.ok("status", &[])["enabled"], true);
+    assert_eq!(project.ok("disable", &[])["enabled"], false);
+
+    std::fs::remove_file(&path).unwrap();
+    project.write("WORK.md", "## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n| T1 | Keep last good | active | Alice |\n");
+    project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    let original = project.show()["record"]["source_tasks"][0].clone();
+    std::fs::remove_file(&path).unwrap();
+    fifo();
+    let refreshed = project.ok("sync", &[]);
+    assert_eq!(refreshed["sources"][0]["stale"], true);
+    assert!(
+        refreshed["sources"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("regular file")
+    );
+    let shown = project.show();
+    let task = &shown["record"]["source_tasks"][0];
+    assert_eq!(shown["record"]["source_snapshot"], true);
+    assert_eq!(task["id"], original["id"]);
+    assert_eq!(task["label"], "Keep last good");
+    assert_eq!(task["status"], "active");
+    assert_eq!(task["owner_label"], "Alice");
+    assert_eq!(task["provenance"], original["provenance"]);
+    assert_eq!(task["stale"], true);
+    assert_eq!(project.ok("status", &[])["enabled"], true);
+    assert_eq!(project.ok("disable", &[])["enabled"], false);
 }
 
 #[test]
@@ -452,6 +523,165 @@ fn ticket_set_dependencies_resolve_only_unambiguous_explicit_ids_in_the_same_goa
     let shown = project.show();
     let tasks = shown["record"]["source_tasks"].as_array().unwrap();
     assert_eq!(tasks[1]["depends_on"][0], tasks[0]["id"]);
+}
+
+#[test]
+fn selected_ticket_ids_are_unique_and_colliding_edits_retain_the_last_good_namespace() {
+    let project = Project::new();
+    let first = "# Same title\nID: T1\nStatus: done\nOwner: Alice\nNext: Keep source next\n";
+    project.write("FIRST.md", first);
+    project.write("SECOND.md", "# Other ticket\nID: T1\nStatus: active\n");
+    let selectors = [
+        "--source",
+        "FIRST.md@ticket",
+        "--source",
+        "SECOND.md@ticket",
+    ];
+    let initial = project.ok("enable", &selectors);
+    for source in initial["sources"].as_array().unwrap() {
+        assert_eq!(source["stale"], true);
+        assert!(
+            source["error"]
+                .as_str()
+                .unwrap()
+                .contains("duplicate ticket ID T1")
+        );
+        assert_eq!(source["tasks"], 0);
+    }
+    let shown = project.show();
+    assert_eq!(shown["record"]["source_snapshot"], false);
+    assert!(
+        shown["record"]["source_tasks"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let second = "# Same title\nID: T2\nStatus: planned\n";
+    project.write("SECOND.md", second);
+    project.ok("sync", &[]);
+    let before = project.show()["record"]["source_tasks"].clone();
+    assert_eq!(
+        before.as_array().unwrap().len(),
+        2,
+        "similar titles must not merge"
+    );
+    let supplement = serde_json::json!({"op":"upsert_work_item","expected_revision":0,"item":{
+        "id":before[1]["id"],"label":"Supplemental title","status":"active",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "source":"supplement","next":"Supplemental next"
+    }});
+    let output = Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["state", "--root"])
+        .arg(project.0.join("state"))
+        .args(["apply", "codex", "goal", &supplement.to_string()])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let before = project.show()["record"]["source_tasks"].clone();
+
+    project.write(
+        "FIRST.md",
+        "# Invalid new title\nID: T1\nStatus: active\nOwner: Mallory\n",
+    );
+    project.write(
+        "SECOND.md",
+        "# Invalid colliding edit\nID: T1\nStatus: done\nNext: Invalid ownership addition\n",
+    );
+    let collision = project.ok("sync", &[]);
+    for source in collision["sources"].as_array().unwrap() {
+        assert_eq!(source["stale"], true);
+        assert!(
+            source["error"]
+                .as_str()
+                .unwrap()
+                .contains("duplicate ticket ID T1")
+        );
+        assert_eq!(source["retired"], 0);
+    }
+    let shown = project.show();
+    assert_eq!(shown["record"]["source_snapshot"], true);
+    let after = shown["record"]["source_tasks"].as_array().unwrap();
+    assert_eq!(after.len(), 2);
+    for (old, new) in before.as_array().unwrap().iter().zip(after) {
+        let mut expected = old.clone();
+        expected["stale"] = true.into();
+        assert_eq!(
+            *new, expected,
+            "invalid namespace must preserve values and authority"
+        );
+    }
+    assert!(
+        shown["record"]["source_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic
+                .as_str()
+                .unwrap()
+                .contains("duplicate ticket ID T1"))
+    );
+
+    project.write("FIRST.md", first);
+    project.write("SECOND.md", second);
+    let recovered = project.ok("sync", &[]);
+    for source in recovered["sources"].as_array().unwrap() {
+        assert_eq!(source["stale"], false);
+        assert_eq!(source["error"], Value::Null);
+    }
+    assert_eq!(
+        project.show()["record"]["source_tasks"][1]["next"],
+        "Supplemental next"
+    );
+    let removed = project.ok("enable", &["--source", "SECOND.md@ticket"]);
+    assert_eq!(removed["sources"][0]["stale"], false);
+    assert_eq!(
+        project.show()["record"]["source_tasks"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    for name in ["ONE.md", "TWO.md"] {
+        project.write(
+            name,
+            "## Tasks\n| ID | Task | Status |\n| --- | --- | --- |\n| T1 | Same title | active |\n",
+        );
+    }
+    let namespaced = project.ok(
+        "enable",
+        &[
+            "--source",
+            "FIRST.md@ticket",
+            "--source",
+            "SECOND.md@ticket",
+            "--source",
+            "ONE.md#Tasks",
+            "--source",
+            "TWO.md#Tasks",
+        ],
+    );
+    assert!(
+        namespaced["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|source| source["stale"] == false)
+    );
+    let tasks = project.show()["record"]["source_tasks"].clone();
+    assert_eq!(tasks.as_array().unwrap().len(), 4);
+    let ids: std::collections::BTreeSet<_> = tasks
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|task| task["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 4, "tables retain independent source namespaces");
 }
 
 #[test]

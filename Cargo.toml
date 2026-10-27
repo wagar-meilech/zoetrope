@@ -45,6 +45,7 @@ default = ["native"]
 # feeder asks it to). That is what the browser frontend (`zoetrope-web`) depends on.
 native = [
   "dep:fs2",
+  "dep:libc",
   "dep:tokio",
   "dep:crossterm",
   "dep:futures",
@@ -93,6 +94,10 @@ tungstenite = { version = "0.28", default-features = false, features = ["handsha
 # copying it, which is what makes a snapshot ladder rung O(1).
 imbl = "7.0.1"
 fs2 = { version = "0.4.3", optional = true }
+
+# Unix nonblocking source opens keep special-file replacement from stalling IO.
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }
 
 # The library's own wasm requirement, independent of any frontend: chrono needs
 # its wasm time binding for `Utc::now()` to work in-browser. A browser backend

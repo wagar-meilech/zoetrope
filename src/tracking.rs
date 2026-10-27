@@ -366,8 +366,12 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
             }) {
                 *source = old.clone();
             }
+        }
+        let previous_sources = sources.clone();
+        for source in &mut sources {
             refresh_source(&project, &session, source);
         }
+        reject_duplicate_tickets(&mut sources, &previous_sources);
         let binding = Binding {
             project: project.clone(),
             session: session.clone(),
@@ -734,6 +738,9 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
     let result = (|| -> Result<()> {
         let path = source_path(project, &source.selector)?;
         let metadata = fs::metadata(&path)?;
+        if !metadata.is_file() || metadata.len() > MAX_SOURCE_BYTES {
+            bail!("source must be a regular file of at most 256 KiB");
+        }
         let current_stamp = (metadata.len(), metadata.modified()?);
         static STAMPS: OnceLock<Mutex<SourceStamps>> = OnceLock::new();
         let stamps = STAMPS.get_or_init(Default::default);
@@ -748,8 +755,17 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
         {
             return Ok(());
         }
-        let file = fs::File::open(&path)?;
-        if !file.metadata()?.is_file() || file.metadata()?.len() > MAX_SOURCE_BYTES {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // The path can be replaced after stat; a FIFO must never block open.
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let file = options.open(&path)?;
+        let opened = file.metadata()?;
+        if !opened.is_file() || opened.len() > MAX_SOURCE_BYTES {
             bail!("source must be a regular file of at most 256 KiB");
         }
         let mut bytes = Vec::new();
@@ -816,6 +832,31 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
     }
 }
 
+/// Ticket files share one declared-ID namespace, so publish their refreshed
+/// values and field ownership together only when the namespace is unambiguous.
+fn reject_duplicate_tickets(sources: &mut [Source], previous: &[Source]) {
+    let mut ids = BTreeSet::new();
+    let duplicate = sources
+        .iter()
+        .filter(|source| source.selector.ends_with("@ticket"))
+        .flat_map(|source| &source.tasks)
+        .find_map(|task| (!ids.insert(&task.task_id)).then(|| task.task_id.clone()));
+    let Some(duplicate) = duplicate else {
+        return;
+    };
+    for (source, previous) in sources.iter_mut().zip(previous) {
+        if source.selector.ends_with("@ticket") {
+            source.clone_from(previous);
+            source.error = Some(format!(
+                "duplicate ticket ID {duplicate} in selected ticket files; last-good namespace retained"
+            ));
+            for task in &mut source.tasks {
+                task.stale = true;
+            }
+        }
+    }
+}
+
 /// Run on the inventory worker. Only declared local files are visited.
 pub(crate) fn refresh(root: &Path) -> Result<()> {
     if !root.join("tracking.json").exists() {
@@ -848,15 +889,15 @@ fn refresh_selected(registry: &mut Registry, selected: Option<(&Path, &SessionKe
         {
             continue;
         }
-        for source in &mut binding.sources {
-            let previous = source.clone();
+        let previous_sources = binding.sources.clone();
+        for (source, previous) in binding.sources.iter_mut().zip(&previous_sources) {
             refresh_source(&binding.project, &binding.session, source);
             let population = populations
                 .get_mut(&binding.session)
                 .expect("bound population exists");
             let total = *population - previous.tasks.len() + source.tasks.len();
             if total > 512 {
-                *source = previous;
+                source.clone_from(previous);
                 source.error =
                     Some("goal source set exceeds 512 tasks; last-good snapshot retained".into());
                 for task in &mut source.tasks {
@@ -866,6 +907,21 @@ fn refresh_selected(registry: &mut Registry, selected: Option<(&Path, &SessionKe
                 *population = total;
             }
         }
+        let candidate_count = binding
+            .sources
+            .iter()
+            .map(|source| source.tasks.len())
+            .sum::<usize>();
+        reject_duplicate_tickets(&mut binding.sources, &previous_sources);
+        let population = populations
+            .get_mut(&binding.session)
+            .expect("bound population exists");
+        *population = *population - candidate_count
+            + binding
+                .sources
+                .iter()
+                .map(|source| source.tasks.len())
+                .sum::<usize>();
     }
 }
 

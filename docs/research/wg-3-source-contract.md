@@ -98,9 +98,12 @@ Next: Run checks
 Normal ticket prose stays here.
 ```
 
-Within an explicitly bound ticket-file set, a dependency resolves across ticket
-files only when its declared ID is unambiguous in that exact binding. Unknown or
-ambiguous IDs remain unresolved. Similar task labels never establish identity.
+Declared IDs must be unique across an explicitly bound ticket-file set, even
+without dependency references. A duplicate makes the ticket set stale and retains
+its coherent last-good tasks and field ownership. Independently selected task
+tables keep separate ID namespaces. A ticket dependency resolves across files
+only within that exact binding; unknown IDs remain unresolved. Similar task
+labels never establish identity.
 
 ## Effective plan, authority and failure
 
@@ -130,7 +133,7 @@ allowlisted files, 16 files per binding, 256 KiB per source, 16 table columns,
 64 dependencies per row, 8192 edges per source, 512 retired observations per
 source, 8 MiB serialized tracking cache. Registry snapshots share a bounded
 8 MiB/eight-entry process cache; source stat caches hold at most 64 entries.
-Only resolved files within the selected canonical root are read; symlink escapes
-and directory crawling are rejected. Unchanged files are statted on the worker;
+Only resolved regular files within the selected canonical root are read; symlink
+escapes and directory crawling are rejected. Unchanged files are statted on the worker;
 identical content is a persistent no-op. The existing compact context remains
 at most 64 KiB, paginated with `next_work_offset` and omission counts.
