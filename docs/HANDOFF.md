@@ -78,10 +78,18 @@ claims about the new semantic code. The
 [build-status snapshot](research/zoetrope-build-status.json) also describes that
 earlier installed release.
 
-The semantic iteration is built and checked on Linux. Final [semantic validation](SEMANTIC-CONTEXT-VALIDATION.md) records 319 native and 176 portable tests, both strict Rust lint runs, browser/package checks and the qualified Linux resource observations. The [independent review](research/semantic-context-review.md) is clear on both axes. Per-ticket evidence remains in the research index. No updated global `zoe` command was installed here.
-Use `cargo build --release --locked` and `./target/release/zoe` to run this
-checkout. Existing native Codex compatibility limits still apply; local protocol
-peers verify behavior without claiming universal live runtime compatibility.
+The semantic iteration is built and checked on Linux. Final [semantic validation](SEMANTIC-CONTEXT-VALIDATION.md) records 319 native and 176 portable tests, both strict Rust lint runs, browser/package checks and the qualified Linux resource observations. The [independent review](research/semantic-context-review.md) is clear on both axes. Per-ticket evidence remains in the research index.
+
+The user selected this connected Linux environment for installation. `zoe` and
+`zoe-update` are installed in `~/.local/bin`, already on PATH, from this permanent
+checkout. Launch with `zoe`; after local changes, run `zoe-update` from any
+directory to rebuild and atomically reinstall. It does not pull or change Git
+branches. Keep the checkout in place; updates require Rust/Cargo, while normal
+launch runs the installed binary directly. [Installation evidence](research/local-installation.md)
+records five additional public process tests, both clear review axes, the real
+installed PTY/compact-context check and an actual update from `/tmp`.
+Existing native Codex compatibility limits still apply; local protocol peers
+verify behavior without claiming universal live runtime compatibility.
 
 ## Documents and local artifacts
 

@@ -67,4 +67,4 @@ The additional installation/update request is [issue #14](https://github.com/wag
 These statuses describe verified implementation. Issues remain open until
 PR #8 merges. The user has not requested a merge into main.
 
-Final evidence: [validation](SEMANTIC-CONTEXT-VALIDATION.md), [two-axis review](research/semantic-context-review.md), and [review/bootstrap regressions](research/semantic-context-review-fixes.md). The semantic implementation is complete; the separately requested install/update helper is tracked above.
+Final evidence: [validation](SEMANTIC-CONTEXT-VALIDATION.md), [two-axis review](research/semantic-context-review.md), and [review/bootstrap regressions](research/semantic-context-review-fixes.md). The semantic implementation and separately requested install/update helper are complete. [Installation evidence](research/local-installation.md) records five additional public tests, clear reviews and the real connected-Linux install/update checks.

@@ -95,3 +95,52 @@ whitespace checks passed. The handoff reports the exact checked commit after
 rechecking its tree. Full semantic/native regression validation is owned by
 integration and need not repeat for shell-only installation work. Actual release-build/install evidence is recorded separately
 by root on the persistent connected-Linux checkout.
+
+
+## Persistent connected-environment installation
+
+The user explicitly selected the connected environment after clarification that
+execution is Linux x86_64. Installed from the permanent project checkout at
+`dfd777d49c8bf0579df77f49f0f78fdc3a19b0eb`, using `./scripts/install.sh`.
+No installation on the earlier Mac is claimed.
+
+- Installed compiled `zoe` and checkout-pinned `zoe-update` in `~/.local/bin`,
+  already present on this environment's PATH. No shell startup files were changed.
+- `zoe --version` prints `zoe 0.2.0` even with an empty PATH. The installed
+  executable matches the built release SHA-256:
+  `a8d49f82c3345d7384863f1696b531cadc7a960c8e1f68743c3db1f70bf34001`.
+- The installed release opened the fleet in an owned PTY and exited normally.
+  Its compact CLI context returned the three synthetic work items. Only an
+  isolated disposable fixture was changed; no live session was steered.
+- Running `zoe-update` from `/tmp` succeeded, rebuilt the permanent checkout
+  with locked dependencies, and replaced the installed executable with a new
+  inode while retaining identical release bytes. Rechecking `zoe --version`
+  passed. Existing process/open-artifact preservation is covered by the public
+  installer regression above.
+
+Use `zoe` to launch and `zoe-update` after editing this checkout. The update
+command uses the current checkout contents, including local changes; it does
+not fetch a remote branch. Leave the checkout in place, or reinstall after
+moving it. Updates need Cargo/Rust; normal launch does not.
+
+## Independent review
+
+Reviewed immutable `69e78b2...dfd777d`; the prior semantic application review
+remains clear at `856c565`. The installer introduced no application-source or
+Cargo dependency changes.
+
+### Standards
+
+Zero hard violations and zero useful smell findings. The reviewer checked the
+portable helper, locked build-before-stage, same-filesystem replacement,
+quoted persistent updater, moved-checkout guidance, public process tests and
+repository documentation. No remaining findings.
+
+### Spec
+
+Zero confirmed missing requirements, scope creep or incorrect behavior. The
+reviewer checked all five public regressions and the installation/toolchain/PATH
+instructions. Actual installation was a coordinating-agent action subsequent to
+review and is recorded above. No remaining findings.
+
+Summary: Standards 0 findings; Spec 0 findings.

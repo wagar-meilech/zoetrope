@@ -31,6 +31,9 @@ See `docs/ARCHITECTURE.md` for invariants, `docs/DESIGN.md` for the module map a
 
 ## Running
 
+For local installation, updating the installed command, or moving the checkout,
+follow the Installation section of `README.md`.
+
 Two crates: `zoetrope` at the root (the published lib + the `zoe` binary) and `zoetrope-web` in `web/wasm/` (the browser frontend, `publish = false`, wasm32-only). The browser frontend is **excluded** from the root workspace and resolves as its own — it cannot be compiled for the host at all, so keeping it a member would mean permanent phantom errors in the editor. The commands below therefore only touch `zoetrope`; the browser frontend needs its own manifest path.
 
 ```bash

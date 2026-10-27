@@ -1,6 +1,6 @@
 # Local installation and updates
 
-Approved by the user's 27 October 2026 request to install on this device and make future project changes easy to install. Extends the already approved executable/external-launch testing seam. Tracked as [issue #14](https://github.com/wagar-meilech/zoetrope/issues/14).
+Approved by the user's 27 October 2026 request to install on this device and make future project changes easy to install. Extends the already approved executable/external-launch testing seam. Tracked as [issue #14](https://github.com/wagar-meilech/zoetrope/issues/14). The user clarified that installation targets the connected Linux environment; the helper also supports macOS. [Implementation, installation and review evidence](research/local-installation.md).
 
 - Install this customized fork as `zoe` on the user's command path. Normal launch runs a compiled release binary directly, without invoking Cargo or a background service.
 - Provide `zoe-update` to rebuild and reinstall changes from the same persistent checkout. Use the locked dependency graph. Do not automatically pull, change branches, discard local changes or install the upstream crate.
