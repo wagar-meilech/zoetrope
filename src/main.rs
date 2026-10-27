@@ -107,7 +107,7 @@ fn color_arguments(arguments: impl Iterator<Item = String>) -> Result<Vec<String
         "never" => false,
         "auto" => {
             std::io::stdout().is_terminal()
-                && !std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty())
+                && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
         }
         _ => bail!("invalid --color mode {mode:?}; expected auto, always, or never\n\n{USAGE}"),
     };
