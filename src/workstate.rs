@@ -987,9 +987,9 @@ impl Store {
         let record = fs::metadata(self.path(session))
             .ok()
             .and_then(|metadata| Some((metadata.len(), metadata.modified().ok()?)));
-        match (record, crate::tracking::stamp(&self.root)) {
+        match (record, crate::tracking::stamp(&self.root, session)) {
             (Some((bytes, time)), Some((source_bytes, source_time))) => {
-                Some((bytes + source_bytes, time.max(source_time)))
+                Some((bytes.wrapping_add(source_bytes), time.max(source_time)))
             }
             (record, source) => record.or(source),
         }

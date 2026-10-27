@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,74 @@ const MAX_CACHE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SOURCE_BYTES: u64 = 256 * 1024;
 type Fields = BTreeMap<String, String>;
 type ParsedSource = (Vec<Fields>, BTreeSet<String>);
+type FileStamp = (u64, SystemTime);
+type SourceStamps = BTreeMap<PathBuf, (FileStamp, String)>;
+
+struct Snapshot {
+    registry: Registry,
+    versions: BTreeMap<SessionKey, u64>,
+}
+struct CachedSnapshot {
+    root: PathBuf,
+    stamp: FileStamp,
+    snapshot: Arc<Snapshot>,
+}
+
+fn registry_stamp(root: &Path) -> Option<FileStamp> {
+    let metadata = fs::metadata(root.join("tracking.json")).ok()?;
+    Some((metadata.len(), metadata.modified().ok()?))
+}
+
+fn snapshot(root: &Path) -> Result<Arc<Snapshot>> {
+    static CACHE: OnceLock<Mutex<std::collections::VecDeque<CachedSnapshot>>> = OnceLock::new();
+    let Some(stamp) = registry_stamp(root) else {
+        return Ok(Arc::new(Snapshot {
+            registry: Registry::default(),
+            versions: BTreeMap::new(),
+        }));
+    };
+    let mut cache = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(cached) = cache
+        .iter()
+        .find(|cached| cached.root == root && cached.stamp == stamp)
+    {
+        return Ok(cached.snapshot.clone());
+    }
+    let registry = read(root)?;
+    let mut grouped: BTreeMap<SessionKey, Vec<&Binding>> = BTreeMap::new();
+    for binding in &registry.bindings {
+        grouped
+            .entry(binding.session.clone())
+            .or_default()
+            .push(binding);
+    }
+    let versions = grouped
+        .into_iter()
+        .map(|(key, bindings)| {
+            let digest = digest(&serde_json::to_vec(&bindings).expect("binding serializes"));
+            (
+                key,
+                u64::from_str_radix(&digest, 16).expect("digest is hex"),
+            )
+        })
+        .collect();
+    let snapshot = Arc::new(Snapshot { registry, versions });
+    cache.retain(|cached| cached.root != root);
+    cache.push_back(CachedSnapshot {
+        root: root.to_owned(),
+        stamp,
+        snapshot: snapshot.clone(),
+    });
+    while cache.len() > 8
+        || cache.iter().map(|cached| cached.stamp.0).sum::<u64>() > MAX_CACHE_BYTES
+    {
+        cache.pop_front();
+    }
+    Ok(snapshot)
+}
 
 /// Current local-source observation, separate from supplemental reports/evidence.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -72,6 +142,47 @@ struct Registry {
     bindings: Vec<Binding>,
 }
 
+fn validate(registry: &Registry) -> Result<()> {
+    if registry.bindings.len() > 128
+        || registry.projects.len() > 64
+        || registry
+            .bindings
+            .iter()
+            .map(|binding| binding.sources.len())
+            .sum::<usize>()
+            > 64
+    {
+        bail!(
+            "tracking registry exceeds 128 bindings, 64 projects or 64 total allowlisted sources"
+        );
+    }
+    let mut populations = BTreeMap::new();
+    for binding in &registry.bindings {
+        if binding.sources.len() > 16 {
+            bail!("a binding supports at most 16 source files");
+        }
+        for source in &binding.sources {
+            if source.selector.len() > 512
+                || source.tasks.len() > 512
+                || source.retired.len() > 512
+                || source.authority.len() > 16
+            {
+                bail!("source cache exceeds declared bounds");
+            }
+        }
+        let total = populations.entry(&binding.session).or_insert(0usize);
+        *total += binding
+            .sources
+            .iter()
+            .map(|source| source.tasks.len())
+            .sum::<usize>();
+        if *total > 512 {
+            bail!("a goal supports at most 512 source tasks across its source set");
+        }
+    }
+    Ok(())
+}
+
 fn read(root: &Path) -> Result<Registry> {
     let file = match fs::File::open(root.join("tracking.json")) {
         Ok(file) => file,
@@ -87,12 +198,11 @@ fn read(root: &Path) -> Result<Registry> {
     }
     let registry: Registry =
         serde_json::from_slice(&bytes).context("invalid tracking cache; left unchanged")?;
-    if registry.bindings.len() > 128 || registry.projects.len() > 64 {
-        bail!("tracking registry exceeds bounds");
-    }
+    validate(&registry)?;
     Ok(registry)
 }
 fn write(root: &Path, registry: &Registry) -> Result<()> {
+    validate(registry)?;
     let bytes = serde_json::to_vec(registry)?;
     if bytes.len() as u64 > MAX_CACHE_BYTES {
         bail!("tracking cache exceeds 8 MiB; left unchanged");
@@ -131,7 +241,31 @@ fn lock(root: &Path) -> Result<fs::File> {
     Ok(file)
 }
 
-const USAGE: &str = "zoe tracking enable|status|disable|sync --project DIR --provider codex|claude --session EXACT_ID [--source FILE#HEADING | --source FILE@ticket] [--root STATE_DIR]";
+const USAGE: &str = "zoe tracking enable|status|disable|sync --project DIR --provider codex|claude --session EXACT_ID|auto [--source FILE#HEADING | --source FILE@ticket] [--root STATE_DIR]
+
+enable opts in the project and binds this exact goal to 1..16 explicit relative
+Markdown files. Repeat --source for a source set. disable opts out the project
+and stops all its bindings; cached history/evidence remain. status is a bounded
+JSON inspection; sync refreshes once. Normal console inventory refreshes files
+automatically on its worker every five seconds. No project instructions, native
+messages, network, model or shell content are changed/executed.
+
+FILE#HEADING selects the first pipe table in exactly one named heading section.
+Required columns: ID (or Ticket), Task (or Title), Status. Optional: Owner,
+Depends on (or Blocked by / Dependencies), Purpose, Change, Next, Blocker.
+FILE@ticket reads plain or bold Field: value lines in the first 64 lines, before
+the body heading/prose; a # title supplies Task. ID and Status are required.
+Fenced examples are ignored. IDs use 1..64 ASCII letters/digits/._-.
+Dependencies are comma-separated IDs, None/[] for no blockers, blank for unknown.
+Status: planned/pending/ready-for-agent, active/in_progress/in-progress, blocked,
+done/completed/resolved, cancelled/canceled. Unknown values stay unknown.
+Owners main, /root/path and native:THREAD are scoped native references; other
+labels are nonsteerable. Source status never verifies an outcome.
+
+--session auto requires Codex CODEX_SESSION_ID and CODEX_THREAD_ID, validated
+against exact public root/current-thread headers and ancestry. It never selects
+by cwd, title or recency. --root uses the same local state directory as state.
+Use state context PROVIDER SESSION for bounded effective tasks and supplement IDs.";
 
 /// Public command: exact project/session scope, without modifying project files.
 pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
@@ -211,7 +345,15 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
         }
         let mut seen = BTreeSet::new();
         for source in &mut sources {
-            source_path(&project, &source.selector)?;
+            if let Err(error) = source_path(&project, &source.selector)
+                && !error.chain().any(|cause| {
+                    cause
+                        .downcast_ref::<std::io::Error>()
+                        .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+                })
+            {
+                return Err(error);
+            }
             if !seen.insert(source.selector.clone()) {
                 bail!("duplicate source selector");
             }
@@ -259,9 +401,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) -> Result<()> {
         && let Some(index) = index
         && registry.bindings[index].enabled
     {
-        for source in &mut registry.bindings[index].sources {
-            refresh_source(&project, &session, source);
-        }
+        refresh_selected(&mut registry, Some((&project, &session)));
     }
     if registry != previous {
         write(&root, &registry)?;
@@ -318,7 +458,7 @@ fn source_path(project: &Path, selector: &str) -> Result<PathBuf> {
 }
 fn cells(line: &str) -> Result<Vec<String>> {
     let line = line.trim();
-    if !line.starts_with('|') || !line.ends_with('|') {
+    if line.len() < 2 || !line.starts_with('|') || !line.ends_with('|') {
         bail!("table rows require leading and trailing pipes");
     }
     let mut result = Vec::new();
@@ -363,19 +503,34 @@ fn field(name: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+fn fenced(line: &str, fence: &mut Option<(char, usize)>) -> bool {
+    if let Some((marker, length)) = *fence {
+        let count = line.chars().take_while(|ch| *ch == marker).count();
+        if count >= length && line[count..].trim().is_empty() {
+            *fence = None;
+        }
+        return true;
+    }
+    let Some(marker @ ('`' | '~')) = line.chars().next() else {
+        return false;
+    };
+    let count = line.chars().take_while(|ch| *ch == marker).count();
+    if count < 3 {
+        return false;
+    }
+    *fence = Some((marker, count));
+    true
+}
 fn parse_table(text: &str, heading: &str) -> Result<ParsedSource> {
-    let mut in_fence = false;
+    let mut fence = None;
     let mut lines = Vec::new();
     let mut heading_level = None;
     let mut matches = 0;
     let mut active = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
-            continue;
-        }
-        if in_fence {
+        if fenced(trimmed, &mut fence) {
             continue;
         }
         let level = trimmed.chars().take_while(|ch| *ch == '#').count();
@@ -455,14 +610,10 @@ fn identifier(value: &str) -> bool {
 
 fn parse_ticket(text: &str) -> Result<ParsedSource> {
     let mut values = BTreeMap::new();
-    let mut fenced = false;
+    let mut fence = None;
     for line in text.lines().take(64) {
         let line = line.trim();
-        if line.starts_with("```") || line.starts_with("~~~") {
-            fenced = !fenced;
-            continue;
-        }
-        if fenced || line.is_empty() {
+        if fenced(line, &mut fence) || line.is_empty() {
             continue;
         }
         if let Some(title) = line.strip_prefix("# ") {
@@ -575,7 +726,22 @@ fn task(
 fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
     let result = (|| -> Result<()> {
         let path = source_path(project, &source.selector)?;
-        let file = fs::File::open(path)?;
+        let metadata = fs::metadata(&path)?;
+        let current_stamp = (metadata.len(), metadata.modified()?);
+        static STAMPS: OnceLock<Mutex<SourceStamps>> = OnceLock::new();
+        let stamps = STAMPS.get_or_init(Default::default);
+        if source.error.is_none()
+            && stamps
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .get(&path)
+                .is_some_and(|(stamp, digest)| {
+                    *stamp == current_stamp && *digest == source.fingerprint
+                })
+        {
+            return Ok(());
+        }
+        let file = fs::File::open(&path)?;
         if !file.metadata()?.is_file() || file.metadata()?.len() > MAX_SOURCE_BYTES {
             bail!("source must be a regular file of at most 256 KiB");
         }
@@ -585,6 +751,13 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
             bail!("source exceeds 256 KiB");
         }
         let fingerprint = digest(&bytes);
+        {
+            let mut stamps = stamps.lock().unwrap_or_else(|error| error.into_inner());
+            if stamps.len() >= 64 {
+                stamps.clear();
+            }
+            stamps.insert(path, (current_stamp, fingerprint.clone()));
+        }
         if fingerprint == source.fingerprint && source.error.is_none() {
             return Ok(());
         }
@@ -595,11 +768,12 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
         } else {
             parse_ticket(text)?
         };
-        source.authority.extend(authority);
+        let mut candidate = source.clone();
+        candidate.authority.extend(authority);
         let time = chrono::Utc::now().to_rfc3339();
         let tasks: Vec<_> = rows
             .iter()
-            .map(|values| task(source, session, values, &fingerprint, &time))
+            .map(|values| task(&candidate, session, values, &fingerprint, &time))
             .collect::<Result<_>>()?;
         let ids: BTreeSet<_> = tasks.iter().map(|task| &task.id).collect();
         if ids.len() != tasks.len() {
@@ -624,6 +798,7 @@ fn refresh_source(project: &Path, session: &SessionKey, source: &mut Source) {
             source.retired.drain(..source.retired.len() - 512);
         }
         source.tasks = tasks;
+        source.authority = candidate.authority;
         source.fingerprint = fingerprint;
         source.updated_at = time;
         Ok(())
@@ -642,22 +817,57 @@ pub(crate) fn refresh(root: &Path) -> Result<()> {
     let _lock = lock(root)?;
     let mut registry = read(root)?;
     let previous = registry.clone();
-    for binding in &mut registry.bindings {
-        if binding.enabled {
-            for source in &mut binding.sources {
-                refresh_source(&binding.project, &binding.session, source);
-            }
-        }
-    }
+    refresh_selected(&mut registry, None);
     if registry != previous {
         write(root, &registry)?;
     }
     Ok(())
 }
 
-pub(crate) fn stamp(root: &Path) -> Option<(u64, std::time::SystemTime)> {
-    let metadata = fs::metadata(root.join("tracking.json")).ok()?;
-    Some((metadata.len(), metadata.modified().ok()?))
+fn refresh_selected(registry: &mut Registry, selected: Option<(&Path, &SessionKey)>) {
+    let mut populations = BTreeMap::new();
+    for binding in &registry.bindings {
+        *populations.entry(binding.session.clone()).or_insert(0usize) += binding
+            .sources
+            .iter()
+            .map(|source| source.tasks.len())
+            .sum::<usize>();
+    }
+    for binding in &mut registry.bindings {
+        if !binding.enabled
+            || selected.is_some_and(|(project, session)| {
+                binding.project != project || binding.session != *session
+            })
+        {
+            continue;
+        }
+        for source in &mut binding.sources {
+            let previous = source.clone();
+            refresh_source(&binding.project, &binding.session, source);
+            let population = populations
+                .get_mut(&binding.session)
+                .expect("bound population exists");
+            let total = *population - previous.tasks.len() + source.tasks.len();
+            if total > 512 {
+                *source = previous;
+                source.error =
+                    Some("goal source set exceeds 512 tasks; last-good snapshot retained".into());
+                for task in &mut source.tasks {
+                    task.stale = true;
+                }
+            } else {
+                *population = total;
+            }
+        }
+    }
+}
+
+pub(crate) fn stamp(root: &Path, session: &SessionKey) -> Option<FileStamp> {
+    snapshot(root)
+        .ok()?
+        .versions
+        .get(session)
+        .map(|version| (*version, SystemTime::UNIX_EPOCH))
 }
 
 /// Populate cached source observations; this does not read project files.
@@ -665,16 +875,44 @@ pub(crate) fn project(root: &Path, record: &mut WorkRecord) -> Result<()> {
     record.source_tasks.clear();
     record.source_snapshot = false;
     record.source_diagnostics.clear();
-    for binding in read(root)?
+    for binding in snapshot(root)?
+        .registry
         .bindings
         .iter()
         .filter(|binding| binding.session == record.session)
     {
+        let mut ticket_ids: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for source in binding
+            .sources
+            .iter()
+            .filter(|source| source.selector.ends_with("@ticket"))
+        {
+            for task in &source.tasks {
+                ticket_ids.entry(&task.task_id).or_default().push(&task.id);
+            }
+        }
         for source in &binding.sources {
             record.source_snapshot |= !source.fingerprint.is_empty();
             for observed in &source.tasks {
                 let mut task = observed.clone();
                 task.stale |= !binding.enabled;
+                if source.selector.ends_with("@ticket")
+                    && let Some(dependencies) = &mut task.depends_on
+                {
+                    for dependency in dependencies {
+                        let declared = dependency.rsplit(':').next().unwrap_or("");
+                        if let Some(candidates) = ticket_ids.get(declared) {
+                            if candidates.len() == 1 {
+                                *dependency = candidates[0].to_string();
+                            } else {
+                                record.source_diagnostics.push(format!(
+                                    "Ambiguous ticket dependency {declared} in {}",
+                                    source.selector
+                                ));
+                            }
+                        }
+                    }
+                }
                 if let Some(work) = record
                     .work_items
                     .iter()

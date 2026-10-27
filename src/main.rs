@@ -73,6 +73,7 @@ USAGE:
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
     zoe inspect <file|id>   headless: print the session tree + info
     zoe state --help       local goals, evidence, drafts and questions
+    zoe tracking --help    bind exact goals to local structured task sources
     zoe control --help     explicit controls for the existing local Codex runtime
     zoe --version           print the version and exit
 
