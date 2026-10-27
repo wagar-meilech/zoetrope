@@ -353,6 +353,251 @@ fn guidance_queue_and_stop_reach_the_selected_child_without_parent_routing() {
     peer.finish();
 }
 #[test]
+fn explicitly_selecting_coordinator_keeps_the_child_draft_with_its_owner() {
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Parser goal");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Parser goal");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Parser");
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Keep this draft for Parser");
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    key(&mut ui, KeyCode::Char('C'));
+    wait_text(&mut ui, "Recipient: Coordinator");
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Coordinate the next work item");
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    ui.shutdown();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["state", "--root"])
+        .arg(home.0.join("state"))
+        .args(["show", "codex", "root-goal"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let drafts = record["record"]["drafts"].as_array().unwrap();
+    assert!(
+        drafts
+            .iter()
+            .any(|d| d["target"]["agent_id"] == "child-thread"
+                && d["text"] == "Keep this draft for Parser")
+    );
+    assert!(
+        drafts
+            .iter()
+            .any(|d| d["target"]["agent_id"] == "main"
+                && d["text"] == "Coordinate the next work item")
+    );
+}
+
+#[test]
+fn tracking_is_an_editable_coordinator_draft_and_keeps_existing_feedback() {
+    use zoetrope::console::AgentKey;
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Parser goal");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let store = Store::new(home.0.join("state"));
+    for (agent, draft) in [
+        ("main", "Keep current acceptance criteria"),
+        ("child-thread", "Keep the child draft"),
+    ] {
+        store
+            .apply(
+                &home.key("root-goal"),
+                WorkUpdate::SaveDraft {
+                    target: AgentKey {
+                        session: home.key("root-goal"),
+                        agent_id: agent.into(),
+                    },
+                    text: draft.into(),
+                },
+            )
+            .unwrap();
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Parser goal");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Parser");
+    key(&mut ui, KeyCode::Char('T'));
+    let draft = wait_text(&mut ui, "upsert_work_item");
+    assert!(draft.contains("Recipient: Coordinator"), "{draft}");
+    assert!(
+        draft.contains("Guidance unavailable: Codex disconnected"),
+        "{draft}"
+    );
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    ui.shutdown();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["state", "--root"])
+        .arg(home.0.join("state"))
+        .args(["show", "codex", "root-goal"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let drafts = record["record"]["drafts"].as_array().unwrap();
+    let coordinator = drafts
+        .iter()
+        .find(|d| d["target"]["agent_id"] == "main")
+        .unwrap()["text"]
+        .as_str()
+        .unwrap();
+    assert!(
+        coordinator.starts_with("Keep current acceptance criteria"),
+        "{coordinator}"
+    );
+    assert!(
+        coordinator.contains("context codex 'root-goal'"),
+        "{coordinator}"
+    );
+    assert!(coordinator.contains("upsert_work_item"), "{coordinator}");
+    assert!(
+        coordinator.contains("meaningful transitions"),
+        "{coordinator}"
+    );
+    assert!(
+        coordinator.contains(&home.0.join("state").to_string_lossy().to_string()),
+        "{coordinator}"
+    );
+    assert!(
+        drafts
+            .iter()
+            .any(|d| d["target"]["agent_id"] == "child-thread"
+                && d["text"] == "Keep the child draft")
+    );
+    assert!(record["record"]["outbox"].as_array().unwrap().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn visible_steering_actions_and_control_shortcuts_keep_text_literal() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let peer = Peer::new("control");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Parser goal");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Parser goal");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Parser");
+    let rendered = wait_text(&mut ui, "[Steer f]");
+    let (x, y) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| {
+            line.find("[Steer f]")
+                .map(|x| (unicode_width::UnicodeWidthStr::width(&line[..x]), y))
+        })
+        .unwrap();
+    ui.handle_event(&Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: x as u16,
+        row: y as u16,
+        modifiers: KeyModifiers::NONE,
+    }));
+    type_text(&mut ui, "f T q stays text");
+    wait_text(&mut ui, "f T q stays text");
+    ctrl(&mut ui, 'u');
+    type_text(&mut ui, "Keep the public interface");
+    wait_text(&mut ui, "Guidance available: current turn");
+    ctrl(&mut ui, 's');
+    wait_text(&mut ui, "Accepted by Codex");
+    ctrl(&mut ui, 'u');
+    type_text(&mut ui, "Do docs later");
+    let rendered = text(&mut ui, 150, 42);
+    let (x, y) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| {
+            line.find("[Queue Ctrl-Q]")
+                .map(|x| (unicode_width::UnicodeWidthStr::width(&line[..x]), y))
+        })
+        .expect(&rendered);
+    ui.handle_event(&Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: x as u16,
+        row: y as u16,
+        modifiers: KeyModifiers::NONE,
+    }));
+    wait_text(&mut ui, "Queued by Codex");
+    ctrl(&mut ui, 'x');
+    wait_text(&mut ui, "accepted the interruption");
+    ui.shutdown();
+    peer.finish();
+}
+
+#[cfg(unix)]
+#[test]
+fn restricted_child_explains_input_before_sending_and_keeps_stop_available() {
+    let peer = Peer::new("restricted");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Parser goal");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Parser goal");
+    key(&mut ui, KeyCode::Enter);
+    wait_text(&mut ui, "Agents expanded");
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Down);
+    wait_text(&mut ui, "Recipient: Parser");
+    let restricted = wait_text(
+        &mut ui,
+        "Guidance unavailable: agent does not accept direct input",
+    );
+    assert!(
+        restricted.contains("Queue unavailable: agent does not accept direct input"),
+        "{restricted}"
+    );
+    assert!(
+        restricted.contains("Stop available: current turn"),
+        "{restricted}"
+    );
+    key(&mut ui, KeyCode::F(4));
+    wait_text(&mut ui, "accepted the interruption");
+    ui.shutdown();
+    peer.finish();
+}
+
+#[test]
 fn an_expired_question_keeps_its_answer_draft_and_can_be_copied_to_feedback() {
     use zoetrope::console::AgentKey;
     use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};

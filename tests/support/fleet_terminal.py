@@ -12,6 +12,7 @@ import subprocess
 import sys
 import termios
 import time
+import unicodedata
 
 executable, fixture_root, scenario = sys.argv[1:]
 fixture = pathlib.Path(fixture_root)
@@ -72,6 +73,44 @@ def visible():
     return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
 
 
+def screen_text():
+    # Ratatui emits changed cells only, including skips over unchanged letters.
+    # Reconstruct the owned terminal's visible cells for content assertions.
+    cells = {}
+    row = column = 0
+    for part in re.split(r"(\x1b\[[0-?]*[ -/]*[@-~])", data.decode("utf-8", "replace")):
+        control = re.fullmatch(r"\x1b\[([0-?]*)[ -/]*([@-~])", part)
+        if control:
+            raw, operation = control.groups()
+            if raw.startswith("?"):
+                if raw == "?1049" and operation in "hl":
+                    cells.clear()
+                continue
+            if any(character not in "0123456789;" for character in raw):
+                continue
+            values = [int(value or "0") for value in raw.split(";")]
+            amount = values[0] or 1
+            if operation in "Hf":
+                row, column = amount - 1, (values[1] or 1) - 1 if len(values) > 1 else 0
+            elif operation == "A": row = max(0, row - amount)
+            elif operation == "B": row += amount
+            elif operation == "C": column += amount
+            elif operation == "D": column = max(0, column - amount)
+            elif operation == "J" and values[0] in (2, 3): cells.clear()
+            elif operation == "K":
+                cells = {position: value for position, value in cells.items()
+                         if position[0] != row or (values[0] == 0 and position[1] < column)
+                         or (values[0] == 1 and position[1] > column)}
+            continue
+        for character in part:
+            if character == "\r": column = 0
+            elif character == "\n": row += 1
+            elif character >= " ":
+                cells[row, column] = character
+                column += 0 if unicodedata.combining(character) else (2 if unicodedata.east_asian_width(character) in "WF" else 1)
+    return "\n".join("".join(cells.get((r, c), " ") for c in range(160)) for r in range(40))
+
+
 def expect(text, seconds=5, since=0, compact=False):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -80,7 +119,8 @@ def expect(text, seconds=5, since=0, compact=False):
         # cursor. UI layout is tested separately; here compare emitted words.
         if compact:
             output = re.sub(r"\s", "", output)
-        if (re.sub(r"\s", "", text) if compact else text) in output:
+        expected = re.sub(r"\s", "", text) if compact else text
+        if expected in output or (compact and expected in re.sub(r"\s", "", screen_text())):
             return True
         if not receive():
             return False

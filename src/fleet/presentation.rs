@@ -6,6 +6,92 @@ use ratatui::{
     widgets::{Clear, Gauge},
 };
 
+#[derive(Clone, Copy)]
+pub(super) enum Action {
+    Steer,
+    Tracking,
+    Coordinator,
+    Guidance,
+    Queue,
+    Stop,
+}
+
+fn activate(ui: &mut FleetConsole, action: Action) {
+    if !matches!(ui.pane, Pane::Graph | Pane::Feedback) {
+        return;
+    }
+    match action {
+        Action::Steer if ui.edit.is_none() => ui.open_feedback(),
+        Action::Steer => {}
+        Action::Tracking if ui.edit.is_none() => ui.prepare_tracking(),
+        Action::Tracking => {}
+        Action::Coordinator if ui.edit.is_none() => ui.select_coordinator(),
+        Action::Coordinator => {}
+        Action::Guidance => ui.send_feedback(FeedbackMode::Guidance),
+        Action::Queue => ui.send_feedback(FeedbackMode::Queue),
+        Action::Stop => ui.send_feedback(FeedbackMode::Stop),
+    }
+}
+
+fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect) -> Rect {
+    if !matches!(ui.pane, Pane::Graph | Pane::Feedback) || ui.selected_work.is_none() {
+        return area;
+    }
+    let actions: &[(&str, Action, Option<FeedbackMode>)] =
+        if ui.pane == Pane::Feedback && ui.edit.is_some() {
+            &[
+                (
+                    "[Send Ctrl-S]",
+                    Action::Guidance,
+                    Some(FeedbackMode::Guidance),
+                ),
+                ("[Queue Ctrl-Q]", Action::Queue, Some(FeedbackMode::Queue)),
+                ("[Stop Ctrl-X]", Action::Stop, Some(FeedbackMode::Stop)),
+            ]
+        } else {
+            &[
+                ("[Steer f]", Action::Steer, None),
+                ("[Coordinator C]", Action::Coordinator, None),
+                ("[Enable tracking T]", Action::Tracking, None),
+            ]
+        };
+    let mut x = area.x;
+    let mut y = area.y;
+    for &(label, action, mode) in actions {
+        let width = (label.len() as u16).min(area.width);
+        if x > area.x && x.saturating_add(width) > area.right() {
+            x = area.x;
+            y = y.saturating_add(1);
+        }
+        if width == 0 || y >= area.bottom() {
+            break;
+        }
+        let button = Rect::new(x, y, width, 1);
+        let available = mode.is_none_or(|mode| ui.control_availability(mode).is_ok());
+        frame.render_widget(
+            Paragraph::new(label).style(Style::default().fg(if available {
+                Color::Yellow
+            } else {
+                Color::DarkGray
+            })),
+            button,
+        );
+        ui.action_areas.push((button, action));
+        x = x.saturating_add(width + 1);
+    }
+    let used = if area.height == 0 {
+        0
+    } else {
+        y.saturating_sub(area.y) + 1
+    };
+    Rect::new(
+        area.x,
+        area.y.saturating_add(used),
+        area.width,
+        area.height.saturating_sub(used),
+    )
+}
+
 pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(2),
@@ -102,6 +188,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     let inner = block.inner(panel);
     frame.render_widget(block, panel);
     ui.progress_area = None;
+    ui.action_areas.clear();
     let mut content = inner;
     if let Some(record) = &ui.selected_work {
         let [summary, gauge, rest] = Layout::vertical([
@@ -151,6 +238,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             );
         }
     }
+    content = draw_actions(ui, frame, content);
     if ui.edit.is_some() {
         draw_editor(ui, frame, content);
     } else {
@@ -159,12 +247,17 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             Pane::Documents => ui.documents_text(),
             Pane::Questions => ui.questions_text(),
             Pane::Criteria => ui.criteria_text(),
-            Pane::Feedback => "f edit feedback · F2 Send guidance · F3 Queue · F4 Stop".into(),
+            Pane::Feedback => format!(
+                "{}\n{}\n\nf edit feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop",
+                ui.runtime_word(),
+                ui.steering_text()
+            ),
             Pane::Graph => {
                 if ui.selected_work.is_some() {
                     format!(
-                        "{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
+                        "{}\n{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
                         ui.runtime_word(),
+                        ui.steering_text(),
                         ui.activity_text()
                     )
                 } else {
@@ -198,8 +291,12 @@ fn draw_editor(ui: &FleetConsole, frame: &mut Frame, area: Rect) {
     }
     let (intro, hints) = match ui.edit_kind {
         Some(EditKind::Feedback) => (
-            format!("{} · draft only until you send", ui.runtime_word()),
-            "F2 Send guidance\nF3 Queue · F4 Stop\nEsc saves · Ctrl-U clears",
+            format!(
+                "{} · draft only until you send\n{}",
+                ui.runtime_word(),
+                ui.steering_text()
+            ),
+            "F2 Send guidance · Ctrl-S Send\nF3 Queue · Ctrl-Q · F4 Stop · Ctrl-X\nEsc saves · Ctrl-U clears",
         ),
         Some(EditKind::Answer { .. }) => (
             "Answer draft · saving does not submit it".into(),
@@ -220,7 +317,11 @@ fn draw_editor(ui: &FleetConsole, frame: &mut Frame, area: Rect) {
         2
     };
     let [intro_area, entry, hint_area] = Layout::vertical([
-        Constraint::Length(2),
+        Constraint::Length(if matches!(ui.edit_kind, Some(EditKind::Feedback)) {
+            5
+        } else {
+            2
+        }),
         Constraint::Fill(1),
         Constraint::Length(hint_height),
     ])
@@ -252,7 +353,7 @@ fn draw_help(ui: &FleetConsole, frame: &mut Frame) {
         area.height.saturating_sub(2),
     );
     frame.render_widget(Clear, popup);
-    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F5 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nb saved deliveries · d documents · Enter preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
+    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F5 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nT Enable tracking: prepare coordinator reporting draft\nC explicitly select Coordinator; drafts keep their owner\nb saved deliveries · d documents · Enter preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
     frame.render_widget(
         Paragraph::new(text)
             .block(
@@ -266,10 +367,23 @@ fn draw_help(ui: &FleetConsole, frame: &mut Frame) {
     );
 }
 pub(super) fn mouse(ui: &mut FleetConsole, event: MouseEvent) {
-    if ui.show_help || ui.edit.is_some() || ui.searching {
+    if ui.show_help || ui.searching {
         return;
     }
     let point = Position::new(event.column, event.row);
+    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
+        && let Some((_, action)) = ui
+            .action_areas
+            .iter()
+            .find(|(area, _)| area.contains(point))
+    {
+        let action = *action;
+        activate(ui, action);
+        return;
+    }
+    if ui.edit.is_some() {
+        return;
+    }
     if matches!(event.kind, MouseEventKind::Down(MouseButton::Left))
         && ui.progress_area.is_some_and(|area| area.contains(point))
     {

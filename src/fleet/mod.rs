@@ -279,6 +279,7 @@ pub struct FleetConsole {
     help_scroll: u16,
     canvas_area: Rect,
     progress_area: Option<Rect>,
+    action_areas: Vec<(Rect, presentation::Action)>,
     requested_selection: Option<FleetNodeId>,
     expanding: Option<(SessionKey, bool)>,
     pub(crate) quit: bool,
@@ -334,6 +335,7 @@ impl FleetConsole {
             help_scroll: 0,
             canvas_area: Rect::default(),
             progress_area: None,
+            action_areas: Vec::new(),
             requested_selection: None,
             expanding: None,
             quit: false,
@@ -682,12 +684,14 @@ impl FleetConsole {
             .map(|n| n.content.title.clone())
             .unwrap_or_else(|| "No agent selected".into())
     }
-    fn runtime_snapshot(&self) -> Option<&ThreadSnapshot> {
-        let target = self
-            .feedback_target
+    fn control_target(&self) -> Option<AgentKey> {
+        self.feedback_target
             .clone()
             .filter(|_| self.pane == Pane::Feedback)
-            .or_else(|| self.selected_agent())?;
+            .or_else(|| self.selected_agent())
+    }
+    fn runtime_snapshot(&self) -> Option<&ThreadSnapshot> {
+        let target = self.control_target()?;
         let id = if target.agent_id == "main" {
             &target.session.session_id
         } else {
@@ -710,20 +714,85 @@ impl FleetConsole {
                 "Codex controls unavailable"
             })
     }
+    fn control_availability(&self, mode: FeedbackMode) -> Result<&'static str, &'static str> {
+        use crate::control::RuntimeStatus;
+        let target = self.control_target().ok_or("select a goal or agent")?;
+        if target.session.provider != crate::provider::Provider::Codex {
+            return Err("transcript viewing only");
+        }
+        if !self.control_connected {
+            return Err("Codex disconnected");
+        }
+        if self.control_pending {
+            return Err("waiting for the previous action");
+        }
+        let snapshot = self.runtime_snapshot().ok_or("checking selected agent")?;
+        if snapshot.status == RuntimeStatus::NotLoaded {
+            return Err("not loaded in Codex");
+        }
+        if matches!(
+            snapshot.status,
+            RuntimeStatus::Unknown | RuntimeStatus::Error
+        ) {
+            return Err("runtime state unavailable");
+        }
+        if mode == FeedbackMode::Stop {
+            return if snapshot.active_turn.is_some() {
+                Ok("current turn")
+            } else {
+                Err("no active turn")
+            };
+        }
+        if snapshot.can_accept_direct_input == Some(false) {
+            return Err("agent does not accept direct input");
+        }
+        if mode == FeedbackMode::Queue {
+            return Ok(if snapshot.status == RuntimeStatus::Idle {
+                "idle work may start immediately"
+            } else {
+                "native queue"
+            });
+        }
+        if snapshot.active_turn.is_some() {
+            Ok("current turn")
+        } else if snapshot.status == RuntimeStatus::Idle {
+            Ok("new input starts idle work")
+        } else {
+            Err("active turn unavailable")
+        }
+    }
+    fn steering_text(&self) -> String {
+        [
+            ("Guidance", FeedbackMode::Guidance),
+            ("Queue", FeedbackMode::Queue),
+            ("Stop", FeedbackMode::Stop),
+        ]
+        .into_iter()
+        .map(|(name, mode)| match self.control_availability(mode) {
+            Ok(reason) => format!("{name} available: {reason}"),
+            Err(reason) => format!("{name} unavailable: {reason}"),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+    }
     fn send_feedback(&mut self, mode: FeedbackMode) {
         if self.control_pending {
             self.status = "A control action is still waiting for Codex".into();
             return;
         }
-        let Some(target) = self
-            .feedback_target
-            .clone()
-            .filter(|_| self.pane == Pane::Feedback)
-            .or_else(|| self.selected_agent())
-        else {
+        let Some(target) = self.control_target() else {
             self.status = "Select a goal or agent first".into();
             return;
         };
+        if let Err(reason) = self.control_availability(mode) {
+            let name = match mode {
+                FeedbackMode::Stop => "Stop",
+                FeedbackMode::Queue => "Queue",
+                _ => "Guidance",
+            };
+            self.status = format!("{name} unavailable: {reason}; draft kept");
+            return;
+        }
         let text = self
             .edit
             .as_ref()
@@ -1472,6 +1541,73 @@ impl FleetConsole {
             );
         }
     }
+    fn select_coordinator(&mut self) {
+        let Some(target) = self.control_target() else {
+            self.status = "Select a goal or agent first".into();
+            return;
+        };
+        self.feedback_target = None;
+        self.feedback_open = false;
+        self.pane = Pane::Graph;
+        self.scroll = 0;
+        self.select(FleetNodeId::Session(target.session));
+        self.status =
+            "Coordinator selected explicitly; saved drafts retain their recipients".into();
+    }
+    fn prepare_tracking(&mut self) {
+        let Some(selected) = self.selected_agent() else {
+            self.status = "Select a goal or agent to enable tracking".into();
+            return;
+        };
+        let Some(record) = &self.selected_work else {
+            self.status = "Loading saved work; try Enable tracking again shortly".into();
+            return;
+        };
+        let Some(root) = self.state_root.to_str() else {
+            self.status = "This state folder cannot be represented in a copyable command".into();
+            return;
+        };
+        let target = AgentKey {
+            session: selected.session,
+            agent_id: "main".into(),
+        };
+        let provider = match target.session.provider {
+            crate::provider::Provider::Codex => "codex",
+            crate::provider::Provider::Claude => "claude",
+        };
+        let root = shell_quote(root);
+        let session = shell_quote(&target.session.session_id);
+        let instruction = format!(
+            "Enable Zoetrope work tracking for this goal. Keep a short plan of meaningful work items with stable IDs, actual agent owners, reported status and known outcome/dependency links. Report purpose, important changes, next steps or blockers when useful.\n\nRead compact context:\nzoe state --root {root} context {provider} {session}\n\nPublish changed work with upsert_work_item through:\nzoe state --root {root} apply {provider} {session} '<update JSON>'\nUse zoe state --help for fields and revision checks. Keep outcomes unverified until supported by evidence. Publish only at meaningful transitions: plan/scope changes, work starts/completes, blockers, or verification. Batch changes; routine reads and commands need no report."
+        );
+        let existing = record
+            .drafts
+            .iter()
+            .find(|draft| draft.target == target)
+            .map(|draft| draft.text.as_str())
+            .unwrap_or_default();
+        let text = if existing.contains(&instruction) {
+            existing.to_owned()
+        } else if existing.is_empty() {
+            instruction
+        } else {
+            format!("{existing}\n\n{instruction}")
+        };
+        if text.len() > 65_536 {
+            self.status =
+                "Tracking instruction exceeds the draft limit; existing feedback was kept".into();
+            return;
+        }
+        self.feedback_target = Some(target.clone());
+        self.control.select(Some(target));
+        self.feedback_open = true;
+        self.pane = Pane::Feedback;
+        self.edit_kind = Some(EditKind::Feedback);
+        self.edit = Some(Editor::new(text));
+        self.save_feedback();
+        self.status =
+            "Tracking draft for Coordinator; choose Send guidance or Queue explicitly".into();
+    }
     fn request_criteria(&mut self) {
         let Some(target) = self.selected_agent() else {
             self.status = "Select the intended agent first".into();
@@ -1791,6 +1927,20 @@ impl FleetConsole {
                 && (matches!(self.edit_kind, Some(EditKind::Feedback))
                     || (self.edit.is_none() && matches!(self.pane, Pane::Graph | Pane::Feedback)))
             {
+                if key.modifiers == KeyModifiers::CONTROL {
+                    let mode = match key.code {
+                        KeyCode::Char('s') => Some(FeedbackMode::Guidance),
+                        KeyCode::Char('q') => Some(FeedbackMode::Queue),
+                        KeyCode::Char('x') => Some(FeedbackMode::Stop),
+                        _ => None,
+                    };
+                    if let Some(mode) = mode {
+                        if key.kind != KeyEventKind::Repeat {
+                            self.send_feedback(mode);
+                        }
+                        return false;
+                    }
+                }
                 match key.code {
                     KeyCode::F(2) => {
                         self.send_feedback(FeedbackMode::Guidance);
@@ -1917,6 +2067,8 @@ impl FleetConsole {
                     self.toggle_expansion()
                 }
                 KeyCode::Char('f') => self.open_feedback(),
+                KeyCode::Char('T') => self.prepare_tracking(),
+                KeyCode::Char('C') => self.select_coordinator(),
                 KeyCode::Char('b') => {
                     self.pane = Pane::Deliveries;
                     self.scroll = 0;
