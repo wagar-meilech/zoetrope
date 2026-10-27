@@ -22,6 +22,33 @@ liveness. The approved boundaries and user behavior are described in
 [GOAL-CONSOLE.md](GOAL-CONSOLE.md). Native transcripts remain read-only; local
 records and IPC do not change the portable replay fold described below.
 
+### Reported work and verified outcomes
+
+The selected goal's work view projects bounded explicit reports and recorded
+native plans, while the existing completion contract determines verified
+progress. A work item is an attributed attempt with stable identity, actual
+owner, source/time, status and optional concise context. A reported completion
+is independent from evidence-backed outcome verification. Explicit owner reports
+replace native plan fallback for that producer; plan revisions do not acquire
+stable task identity through title or position matching.
+
+Dependencies are explicit declarations, with unknown, empty and unresolved
+references kept distinct. Outcome links retain the goal revision so scope
+changes make old coverage visibly stale. Local work writes are revision-checked
+inside the existing lock/atomic replacement; partial updates preserve fields
+that were not supplied. A compact context projection excludes feedback,
+questions and delivery history and makes truncation/omission visible.
+
+Providers alone extract recorded plan/public-message/command facts and their
+timestamps. The inventory worker supplies only selected-owner cached activity;
+drawing performs no IO. Work selection determines ordinary steering ownership,
+and an open editor pins its recipient. Capability observations and delivery
+receipts remain separate from progress claims. The bounded work list adds no
+model, background summarizer or alteration to native transcript history.
+
+See [the semantic specification](SEMANTIC-CONTEXT-SPEC.md) for the contract and
+[the agent reporting convention](AGENT-REPORTING.md) for cooperative updates.
+
 ---
 
 ## 0. The provider boundary

@@ -31,8 +31,10 @@ paced by the session's own timestamps. Point it at a running one and it follows 
 Native transcripts stay read-only. This fork adds a global goal console,
 evidence-backed progress, persistent questions and drafts, and explicit local
 Codex controls. Passive monitoring uses no model calls or internet service.
-See the [goal console guide](docs/GOAL-CONSOLE.md) for steering, history,
-completion criteria and document preview. Browser replay remains available.
+See the [goal console guide](docs/GOAL-CONSOLE.md) for work-first goal inspection,
+visible steering, tracking, history and document preview. The optional
+[project reporting convention](docs/AGENT-REPORTING.md) keeps agent updates
+concise. Browser replay remains available.
 
 Built on [ratatui](https://ratatui.rs) and [rataflow](https://github.com/furkankly/rataflow).
 
@@ -141,10 +143,13 @@ session from disk, or drop a transcript on the page. It stays local there too.
 
 **Goal console**
 - One expanding graph across projects, goals and agents, with searchable history
-- Editable completion criteria, evidence and scope revisions; unknown progress
-  stays unknown
-- Persistent recipient-specific feedback and questions, with distinct guidance,
-  queue and stop actions
+- Meaningful work within each goal, including one coordinator's recorded plan,
+  owners, reported status, purpose, next steps and declared dependencies
+- Editable completion criteria, evidence and scope revisions, separate from
+  reported work completion; unknown progress stays unknown
+- Visible recipient-specific steering and capability checks, with distinct
+  guidance, queue and stop actions plus persistent feedback/questions
+- Explicit tracking setup and reusable opt-in project reporting guidance
 - Recorded Markdown documents opened in the user's VS Code MD Reader
 - Local incremental indexing, bounded caches and no monitoring model
 

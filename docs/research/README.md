@@ -8,6 +8,26 @@ validation and final review resolutions take precedence.
 Source links retain the original research's line numbers; use code search if
 subsequent changes have moved a definition.
 
+## Semantic-context continuation — 27 October 2026
+
+Current requirements: [accepted spec](../SEMANTIC-CONTEXT-SPEC.md),
+[answered questionnaire](../SEMANTIC-CONTEXT-QUESTIONS.md), and
+[local task graph](../SEMANTIC-CONTEXT-TICKETS.md). The
+[reporting convention](../AGENT-REPORTING.md) is opt-in for selected projects.
+Remote issue publication, push and PR updates remain pending approval; these
+local records do not imply remote completion.
+
+| Work | Implementation and verification notes |
+| --- | --- |
+| Durable work and compact context | [SEM-1](sem-1-implementation.md) |
+| Steering discovery and tracking setup | [SEM-2](sem-2-implementation.md) |
+| Work-first inspection and owner routing | [SEM-3](sem-3-implementation.md) |
+| Reporting guidance and documentation | [SEM-4](sem-4-implementation.md) |
+
+Semantic checks run on Linux and are distinct from the 25 October installed Mac
+release evidence below. Final combined checks, resource comparison and independent
+review are recorded separately from ticket-level results.
+
 ## Completed implementation and review
 
 - [Build-status snapshot](zoetrope-build-status.json): installed release,

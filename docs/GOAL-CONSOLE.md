@@ -1,16 +1,48 @@
 # Using the goal console
 
 Run `zoe` to see work across local projects. The native app groups projects,
-goals and agents into an expanding graph. `H` switches between Current and All
-history; `/` searches the same graph; `?` shows keyboard help. Selection stays
-with the same work as the inventory refreshes.
+goals and agents into an expanding graph. Selecting a goal shows its meaningful
+work and evidence-backed progress. `H` switches Current / All history, `/`
+searches, and `?` shows help. Selection stays with the same work during refresh.
+
+To run the current source checkout, build with `cargo build --release --locked`
+and launch `./target/release/zoe`. This semantic-context iteration was developed
+and checked on Linux; it has not been installed as a global `zoe` command here.
 
 Current emphasizes working agents and requests needing attention. Without a
 compatible live connection, recent transcript writes are a fallback signal;
 they do not prove that an agent is running or that its goal is finished. All
 history includes locally available archived Codex sessions. Search covers
-indexed names, goals, criteria and recorded document paths, rather than every
-tool output in every transcript.
+indexed names, goals, criteria, explicit work IDs/labels/context/owner IDs,
+recorded plan text and document paths, rather than every tool output.
+
+## Understanding the work
+
+The selected goal shows a work list alongside its verified-outcome count. It
+reuses recorded native plans immediately; explicit reports replace plan fallback
+for the same owner. Work can be planned, in progress, blocked, reported done or
+cancelled. A reported completed step earns no verified outcome credit by itself.
+
+Press `w` or click **Work** to select a work item, then use arrows or `[` / `]`
+to choose another. Its owner becomes the recipient for ordinary `f` steering.
+Before work is focused, arrows navigate the fleet. Press `a` or click **Agents**
+for agent inspection; `x` / **Commands** shows the selected owner's cached public
+message and latest shell command; `R` / **Replay** opens the saved activity graph.
+Enter/Space still expands or collapses agents in the fleet.
+
+Work detail shows its owner, source, recorded time and reported purpose/change/
+next action/blocker. Dependencies are shown only when declared: **not declared**
+means unknown; **none declared** is an explicit empty list. Missing work links
+are unresolved. Outcome links retain their goal revision and become visibly
+stale when scope changes. Older plans or messages can have unknown timestamps.
+Recorded activity is an attributed report, not proof of current runtime activity.
+
+Stable explicit work IDs preserve selection through ordinary edits. Replacing a
+native plan invalidates the old plan selection; choose current work with `w` or
+explicitly select **Coordinator** with `C`. The work view and its detail are
+bounded; omission notices and compact context paging expose larger records.
+On narrow terminals, current owner/purpose/next action and control availability
+appear first; PageUp/PageDown scrolls the remaining detail.
 
 ## Keyboard controls
 
@@ -18,21 +50,28 @@ tool output in every transcript.
 | --- | --- |
 | `H` | Switch Current / All history. |
 | `/` | Search the graph. |
-| Up / Down or `j` / `k` | Select work. |
+| Up / Down or `j` / `k` | Navigate the fleet, or choose work after `w` focuses it. |
+| `w`, then arrows or `[` / `]` | Focus and select meaningful work. |
+| `a` / **Agents** in Work/Agents views | Open agent inspection; `w` returns to work. |
+| `x` / **Commands** in Work/Agents views | Read the selected owner's cached commands/public messages. |
 | Enter or Space | Expand or collapse the selected goal. |
 | Left / Right, `+` / `-`, `o`, `r` | Pan, zoom, fit the overview, restore readable size. |
-| `f` | Open the selected recipient's feedback. |
+| `f` / **Steer** | Edit feedback for the selected recipient. |
+| `C` / **Coordinator** | Explicitly select this goal's coordinator; retain recipient-specific drafts. |
+| `T` / **Enable tracking** | Prepare an editable coordinator reporting instruction. |
 | `Q` | Open persistent questions. |
+| `x` in Questions | Dismiss the selected question locally. |
 | `L` in Questions | Listen for current native questions on the selected live agent. |
 | `c` | Read completion criteria and evidence. |
 | `d` | View recorded documents. |
 | `e` | Edit a question answer or the completion criteria. |
 | F5 in Questions | Copy a closed request's answer into a feedback draft. |
-| F2 / F3 / F4 in Feedback | Send now / queue / stop. |
+| F2 / F3 / F4, or Ctrl-S / Ctrl-Q / Ctrl-X in Feedback | Send guidance / queue / stop. |
 | `b` | Read saved deliveries and their status. |
 | `I` | Reveal internal helpers under their owning work. |
 | Esc | Save feedback or a partial answer and return; cancel a criteria edit. |
-| `R` | Open read-only session replay; `q` returns to the fleet. |
+| `R` / **Replay** | Open read-only session replay; `q` returns to the fleet. |
+| PageUp / PageDown | Scroll selected detail. |
 | `?` | Show context and keyboard help. |
 
 Ordinary characters stay in the editor while you type; they do not trigger
@@ -71,10 +110,35 @@ local preference. Enabling it affects
 the criteria-request draft; sending that guidance asks the agent to check in.
 The preference alone does not pause Codex or change its permission rules.
 
+## Enable tracking
+
+Press `T` or click **Enable tracking** to prepare an editable reporting draft for
+this goal's coordinator. It names the exact provider, session and local state
+location, requests compact work updates only at meaningful transitions, and
+preserves earlier feedback. When completion criteria are missing, it also asks
+for concise editable `set_goal` outcomes including tests and final checks.
+
+The draft is saved locally. Choose Send guidance or Queue deliberately to send
+it; acceptance does not establish that reports will be maintained. Existing
+plans and public messages remain useful without sending a tracking request.
+For selected projects, the [agent reporting guide](AGENT-REPORTING.md) supplies a
+small conditional project-instruction pointer and the reusable convention. The
+operator chooses where to install it; Zoetrope does not edit project/global
+instructions automatically. No helper model is used in this iteration.
+
 ## Steering and questions
 
-The composer belongs to the selected recipient. Drafts and partial answers stay
-available across navigation and restart. Check the recipient before sending.
+Selected work exposes **Steer**, **Coordinator**, **Enable tracking**, **Work**,
+**Agents**, **Commands** and **Replay** actions. Guidance, Queue and Stop show
+separate availability before a send. A child that rejects direct input may
+still accept an exact-turn Stop. Disconnected, unloaded and unavailable runtime
+states are explained; **not loaded in Codex** does not prevent local history
+inspection. A disabled send keeps the draft.
+
+The composer belongs to the displayed recipient. A work item's owner supplies
+that recipient when feedback opens; subsequent work reassignment does not
+retarget an open editor. Drafts and partial answers remain available across
+navigation and restart. Check the recipient before sending.
 Closing a dirty composer waits for its local save to succeed. A storage error
 keeps the text open for retry. An insertion exceeding the 65,536-byte editor
 limit is rejected in full with a visible explanation; the earlier text stays
@@ -134,23 +198,36 @@ zoe SESSION_ID --follow     # open a stored session at its live edge
 zoe inspect SESSION_ID      # print the original session report
 ```
 
-## Local goal updates for agents
+## Local goal and work updates for agents
 
-The terminal and agents share a local record. `zoe state --help` lists the
-supported updates. Use the exact session ID; these commands never edit native
-transcripts or send input to Codex.
+The terminal and agents share a local record. `zoe state --help` is the field
+reference; [the reporting convention](AGENT-REPORTING.md) gives creation and
+partial-update examples. Use the exact provider, full session ID and state
+location supplied by the tracking request. A project path does not identify a
+session. Replace `STATE_DIR`, `SESSION_ID` and `WORK_ID` below before running.
+These commands update local Zoetrope records; they send no native input.
 
 ```bash
-zoe state apply codex SESSION_ID '{"op":"set_goal","title":"Ship the change","criteria":[{"id":"behavior","label":"Requested behavior works"},{"id":"checks","label":"Relevant checks pass"}],"reason":"Initial agreed scope","provenance":"operator"}'
+zoe state --root 'STATE_DIR' apply codex 'SESSION_ID' '{"op":"set_goal","title":"Ship the change","criteria":[{"id":"behavior","label":"Requested behavior works"},{"id":"checks","label":"Relevant checks pass"}],"reason":"Initial agreed scope","provenance":"operator"}'
 
-zoe state apply codex SESSION_ID '{"op":"verify","id":"checks","revision":1,"evidence":[{"kind":"reference","detail":"Relevant checks passed for the inspected commit","provenance":"agent"}]}'
+zoe state --root 'STATE_DIR' apply codex 'SESSION_ID' '{"op":"verify","id":"checks","revision":1,"evidence":[{"kind":"reference","detail":"Relevant checks passed for the inspected commit","provenance":"agent"}]}'
 
-zoe state show codex SESSION_ID
+zoe state --root 'STATE_DIR' context codex 'SESSION_ID'
+
+zoe state --root 'STATE_DIR' apply codex 'SESSION_ID' '{"op":"upsert_work_item","expected_revision":1,"item":{"id":"WORK_ID","status":"done","blocker":null}}'
 ```
 
-Use actual evidence when verifying a criterion. `apply` returns a compact saved
-acknowledgment so routine updates do not echo the entire history into an
-agent's context. `show` explicitly reads the complete local record.
+The partial work update assumes an existing item and the returned revision 1;
+use its actual stable ID and current acknowledgment revision. Omitted fields
+retain prior values; explicit null clears optional context. A reported `done`
+status never verifies a criterion. Record actual evidence through `verify`.
+
+`apply` returns a short acknowledgment. `context` excludes saved feedback,
+questions and delivery history, emits at most 64 KiB, and shows omission/
+truncation counts. Its default work page is 16; follow `next_work_offset` with
+`--offset N --limit N` when needed (maximum limit 32). `show` deliberately reads
+the full local record. These local reads incur no model generation; the working
+agent's new reports still consume input/output/tool tokens.
 
 State lives in `ZOETROPE_STATE_DIR`, or `XDG_STATE_HOME/zoetrope`, or
 `~/.local/state/zoetrope`. `zoe state --root DIR ...` selects another state
@@ -165,11 +242,13 @@ service or telemetry. History metadata uses bounded incremental reads; full
 local records are cached within a byte and entry limit. Full transcript replay
 remains an explicit operation.
 
-The installed release and representative history fixtures were measured on
-this Mac. See [validation results](GOAL-CONSOLE-VALIDATION.md) for test coverage,
-CPU, memory and large-history observations.
+The original Mac installation and resource observations are dated 25 October
+in [the earlier validation record](GOAL-CONSOLE-VALIDATION.md). They do not
+establish installation or measurements for the new semantic-context code.
+Current ticket-level Linux checks are linked from [the research index](research/README.md);
+final combined verification is recorded separately from those historical results.
 
-The installed Codex 0.164 runtime has been checked for shared observation,
+The earlier Mac probes on Codex 0.164 checked shared observation,
 exact-turn steering and interruption, queue operations, and question
 replay/resolution using disposable sessions. Second-client answer arbitration
 and real command/permission approval coexistence have not been established by

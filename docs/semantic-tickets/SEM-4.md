@@ -2,7 +2,7 @@
 
 Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md).
 
-Status: local implementation task; remote publication pending automatic approval review.
+Status: reporting/documentation ready locally; final combined validation and independent review pending. Remote publication remains pending approval.
 
 Blocked by: SEM-3.
 
@@ -12,4 +12,8 @@ Write concise opt-in project reporting guidance and a small conditional instruct
 
 ## Acceptance and process
 
-Follow docs/SEMANTIC-CONTEXT-SPEC.md and the completed questionnaire. Public console and executable/external seams are already approved. Apply /home/dust_60/.agents/skills/tdd/SKILL.md: one red test, one green implementation, then the next behavior. Record meaningful RED/GREEN commands and results in docs/research/sem-N-implementation.md (use your ticket number). Keep Rust, no extra model, preserve native history and controls. Implement in your isolated worktree based on feat/goal-console; merge its current tip before reporting complete. Commit with Conventional Commits. Do not push or publish remotely.
+Follow docs/SEMANTIC-CONTEXT-SPEC.md and the completed questionnaire. Public console and executable/external seams are already approved. Apply the TDD skill: one red test, one green implementation, then the next behavior. Record meaningful RED/GREEN commands and results in docs/research/sem-N-implementation.md (use your ticket number). Keep Rust, no extra model, preserve native history and controls. Implement in your isolated worktree based on feat/goal-console; merge its current tip before reporting complete. Commit with Conventional Commits. Do not push or publish remotely.
+
+## Local result
+
+See [documentation and example verification](../research/sem-4-implementation.md). Root performs final combined tests/resources/review before marking SEM-4 complete.
