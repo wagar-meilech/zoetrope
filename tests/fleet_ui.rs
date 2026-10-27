@@ -2800,3 +2800,47 @@ fn dense_work_graph_reports_omissions_and_navigation_stays_bounded() {
     );
     ui.shutdown();
 }
+
+#[test]
+fn bound_source_tasks_draw_dependencies_and_human_ownership_never_selects_a_recipient() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Source projection");
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("WORK.md"), "## Tasks\n| ID | Task | Status | Owner | Blocked by | Next |\n| --- | --- | --- | --- | --- | --- |\n| T1 | Native implementation | active | main | None | Run checks |\n| T2 | Human approval | planned | Alice | T1 | Review evidence |\n").unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["tracking", "enable", "--project"])
+        .arg(&project)
+        .args([
+            "--provider",
+            "codex",
+            "--session",
+            "goal",
+            "--source",
+            "WORK.md#Tasks",
+            "--root",
+        ])
+        .arg(home.0.join("state"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Native implementation");
+    key(&mut ui, KeyCode::Char('w'));
+    let native = text(&mut ui, 150, 42);
+    assert!(native.contains("1 prerequisite edge"), "{native}");
+    key(&mut ui, KeyCode::Down);
+    let human = text(&mut ui, 150, 42);
+    assert!(human.contains("Selected work: Human approval"), "{human}");
+    assert!(human.contains("Owner: Alice"), "{human}");
+    assert!(human.contains("Selected work unavailable"), "{human}");
+    assert!(!human.contains("Recipient: Coordinator"), "{human}");
+    assert!(human.contains("Source ID:"), "{human}");
+    assert!(human.contains("WORK.md#Tasks"), "{human}");
+    ui.shutdown();
+}

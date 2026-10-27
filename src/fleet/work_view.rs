@@ -12,12 +12,14 @@ pub(super) enum Selection {
 #[derive(Clone, Copy)]
 enum Entry<'a> {
     Report(&'a WorkItem),
+    Source(&'a crate::tracking::SourceTask),
     Plan(&'a PlanProposal, usize),
 }
 impl<'a> Entry<'a> {
     fn selection(self) -> Selection {
         match self {
             Self::Report(work) => Selection::Report(work.report.id.clone()),
+            Self::Source(task) => Selection::Report(task.id.clone()),
             Self::Plan(plan, step) => Selection::Plan {
                 proposal: plan.id.clone(),
                 step,
@@ -27,6 +29,7 @@ impl<'a> Entry<'a> {
     fn matches(self, selected: &Selection) -> bool {
         match (self, selected) {
             (Self::Report(work), Selection::Report(id)) => &work.report.id == id,
+            (Self::Source(task), Selection::Report(id)) => &task.id == id,
             (Self::Plan(plan, index), Selection::Plan { proposal, step }) => {
                 &plan.id == proposal && index == *step
             }
@@ -36,18 +39,21 @@ impl<'a> Entry<'a> {
     fn label(self) -> &'a str {
         match self {
             Self::Report(work) => &work.report.label,
+            Self::Source(task) => &task.label,
             Self::Plan(plan, at) => &plan.steps[at].step,
         }
     }
-    fn owner(self) -> &'a AgentKey {
+    fn owner(self) -> Option<&'a AgentKey> {
         match self {
-            Self::Report(work) => &work.report.owner,
-            Self::Plan(plan, _) => &plan.producer,
+            Self::Report(work) => Some(&work.report.owner),
+            Self::Source(task) => task.owner.as_ref(),
+            Self::Plan(plan, _) => Some(&plan.producer),
         }
     }
     fn status(self) -> Option<WorkStatus> {
         match self {
             Self::Report(work) => Some(work.report.status),
+            Self::Source(task) => task.status,
             Self::Plan(plan, at) => match plan.steps[at].status {
                 PlanStatus::Planned => Some(WorkStatus::Planned),
                 PlanStatus::Active => Some(WorkStatus::Active),
@@ -67,6 +73,7 @@ impl<'a> Entry<'a> {
                 Self::Plan(plan, at) if !plan.steps[at].status.as_str().is_empty() => {
                     plan.steps[at].status.as_str()
                 }
+                Self::Source(task) => &task.status_label,
                 _ => "status unknown",
             },
         }
@@ -74,13 +81,73 @@ impl<'a> Entry<'a> {
     fn source(self) -> &'a str {
         match self {
             Self::Report(work) => &work.report.source,
+            Self::Source(task) => &task.source,
             Self::Plan(plan, _) => &plan.source,
         }
     }
     fn recorded_at(self) -> &'a str {
         match self {
             Self::Report(work) => &work.updated_at,
+            Self::Source(task) => &task.updated_at,
             Self::Plan(plan, _) => plan.recorded_at.as_deref().unwrap_or("unknown"),
+        }
+    }
+    fn owner_label(self, ui: &FleetConsole) -> String {
+        self.owner()
+            .map(|owner| ui.work_owner_label(owner))
+            .unwrap_or_else(|| match self {
+                Self::Source(task) if !task.owner_label.is_empty() => task.owner_label.clone(),
+                _ => "Unassigned".into(),
+            })
+    }
+    fn reference(self) -> Option<&'a str> {
+        match self {
+            Self::Report(work) => Some(&work.report.id),
+            Self::Source(task) => Some(&task.id),
+            Self::Plan(_, _) => None,
+        }
+    }
+    fn parent(self) -> Option<&'a str> {
+        match self {
+            Self::Report(work) => work.report.parent_id.as_deref(),
+            Self::Source(task) => task.parent_id.as_deref(),
+            Self::Plan(_, _) => None,
+        }
+    }
+    fn dependencies(self) -> Option<&'a Vec<String>> {
+        match self {
+            Self::Report(work) => work.report.depends_on.as_ref(),
+            Self::Source(task) => task.depends_on.as_ref(),
+            Self::Plan(_, _) => None,
+        }
+    }
+    fn links(self) -> &'a [crate::workstate::WorkOutcomeLink] {
+        match self {
+            Self::Report(work) => &work.report.outcome_links,
+            Self::Source(task) => &task.outcome_links,
+            Self::Plan(_, _) => &[],
+        }
+    }
+    fn context(self) -> [(&'static str, Option<&'a str>); 4] {
+        match self {
+            Self::Report(work) => [
+                ("Purpose", work.report.purpose.as_deref()),
+                ("Changed", work.report.change.as_deref()),
+                ("Next", work.report.next.as_deref()),
+                ("Blocker", work.report.blocker.as_deref()),
+            ],
+            Self::Source(task) => [
+                ("Purpose", task.purpose.as_deref()),
+                ("Changed", task.change.as_deref()),
+                ("Next", task.next.as_deref()),
+                ("Blocker", task.blocker.as_deref()),
+            ],
+            Self::Plan(_, _) => [
+                ("Purpose", None),
+                ("Changed", None),
+                ("Next", None),
+                ("Blocker", None),
+            ],
         }
     }
 }
@@ -111,7 +178,20 @@ impl FleetConsole {
             .iter()
             .map(|work| &work.report.owner)
             .collect();
-        let mut entries: Vec<_> = record.work_items.iter().map(Entry::Report).collect();
+        let mut entries: Vec<_> = record.source_tasks.iter().map(Entry::Source).collect();
+        entries.extend(
+            record
+                .work_items
+                .iter()
+                .filter(|work| {
+                    !record
+                        .source_tasks
+                        .iter()
+                        .any(|task| task.id == work.report.id)
+                })
+                .map(Entry::Report),
+        );
+        entries.truncate(512);
         for plan in record.plan_drafts.iter().take(512) {
             if reported.contains(&plan.producer) {
                 continue;
@@ -173,7 +253,7 @@ impl FleetConsole {
     pub(super) fn selected_work_owner(&self) -> Option<AgentKey> {
         let selected = self.work_selection.as_ref()?;
         let entries = self.work_entries();
-        current_entry(&entries, Some(selected)).map(|at| entries[at].owner().clone())
+        current_entry(&entries, Some(selected)).and_then(|at| entries[at].owner().cloned())
     }
     pub(super) fn focus_work(&mut self) {
         if self.view.selection.as_ref().and_then(session_key).is_none() {
@@ -279,19 +359,10 @@ impl FleetConsole {
                 id: work_graph::selection_id(&entry.selection()),
                 title: entry.label().into(),
                 status: entry.status_label().into(),
-                owner: self.work_owner_label(entry.owner()),
-                dependencies: match entry {
-                    Entry::Report(work) => work.report.depends_on.clone(),
-                    Entry::Plan(_, _) => None,
-                },
-                reference: match entry {
-                    Entry::Report(work) => Some(work.report.id.clone()),
-                    Entry::Plan(_, _) => None,
-                },
-                parent: match entry {
-                    Entry::Report(work) => work.report.parent_id.clone(),
-                    Entry::Plan(_, _) => None,
-                },
+                owner: entry.owner_label(self),
+                dependencies: entry.dependencies().cloned(),
+                reference: entry.reference().map(str::to_owned),
+                parent: entry.parent().map(str::to_owned),
             })
             .collect();
         self.work_graph.sync(
@@ -343,18 +414,12 @@ impl FleetConsole {
                     ),
                     format!(
                         "Owner: {}",
-                        crate::ui::truncate(&self.work_owner_label(entry.owner()), 120)
+                        crate::ui::truncate(&entry.owner_label(self), 120)
                     ),
                 ];
-                if let Entry::Report(work) = entry {
-                    for (label, value) in [
-                        ("Purpose", &work.report.purpose),
-                        ("Next", &work.report.next),
-                        ("Blocker", &work.report.blocker),
-                    ] {
-                        if let Some(value) = value {
-                            lines.push(format!("{label}: {value}"));
-                        }
+                for (label, value) in entry.context() {
+                    if let Some(value) = value {
+                        lines.push(format!("{label}: {value}"));
                     }
                 }
                 lines.push(self.runtime_word().into());
@@ -391,6 +456,9 @@ impl FleetConsole {
         }
         let entries = self.work_entries();
         let mut text = String::from("Work toward goal\n");
+        for diagnostic in record.source_diagnostics.iter().take(4) {
+            text.push_str(&format!("Source: {diagnostic}\n"));
+        }
         if entries.is_empty() {
             text.push_str("No reported work; Enable tracking to request updates.\n");
             return text;
@@ -424,27 +492,28 @@ impl FleetConsole {
         }
         text.push_str(&format!(
             "Owner: {}\nSource: {}\nRecorded: {}\n",
-            crate::ui::truncate(&self.work_owner_label(current.owner()), 120),
+            crate::ui::truncate(&current.owner_label(self), 120),
             crate::ui::truncate(current.source(), 160),
             crate::ui::truncate(current.recorded_at(), 80)
         ));
-        if self.producer_label(current.owner()) == "Agent" {
+        if let Some(owner) = current.owner()
+            && self.producer_label(owner) == "Agent"
+        {
             text.push_str(&format!(
                 "Owner ID: {}\n",
-                crate::ui::truncate(&current.owner().agent_id, 256)
+                crate::ui::truncate(&owner.agent_id, 256)
             ));
         }
         match current {
-            Entry::Report(work) => {
-                let report = &work.report;
-                if let Some(parent) = &report.parent_id {
+            Entry::Report(_) | Entry::Source(_) => {
+                if let Some(parent) = current.parent() {
                     text.push_str(&format!(
                         "Parent: {} · grouping only\n",
                         self.work_reference(parent)
                     ));
                 }
                 text.push_str("Dependencies: ");
-                match &report.depends_on {
+                match current.dependencies() {
                     None => text.push_str("not declared\n"),
                     Some(dependencies) if dependencies.is_empty() => {
                         text.push_str("none declared\n")
@@ -464,7 +533,7 @@ impl FleetConsole {
                         text.push('\n');
                     }
                 }
-                for link in report.outcome_links.iter().take(4) {
+                for link in current.links().iter().take(4) {
                     let relation = match &record.goal {
                         Some(goal) if goal.revision != link.goal_revision => format!(
                             "{} (stale scope: revision {}; current {})",
@@ -489,19 +558,23 @@ impl FleetConsole {
                         crate::ui::truncate(&relation, 200)
                     ));
                 }
-                if report.outcome_links.len() > 4 {
+                if current.links().len() > 4 {
                     text.push_str(
                         "More outcome links recorded; inspect local context for detail.\n",
                     );
                 }
-                for (label, value) in [
-                    ("Purpose", &report.purpose),
-                    ("Changed", &report.change),
-                    ("Next", &report.next),
-                    ("Blocker", &report.blocker),
-                ] {
+                for (label, value) in current.context() {
                     if let Some(value) = value {
                         text.push_str(&format!("{label}: {}\n", crate::ui::truncate(value, 240)));
+                    }
+                }
+                if let Entry::Source(task) = current {
+                    text.push_str(&format!(
+                        "Source ID: {} / {}\n",
+                        task.source_id, task.task_id
+                    ));
+                    if task.stale {
+                        text.push_str("Source stale · retaining last successful synchronization\n");
                     }
                 }
             }
@@ -512,10 +585,19 @@ impl FleetConsole {
         text
     }
     fn work_reference(&self, id: &str) -> String {
-        self.selected_work
-            .as_ref()
-            .and_then(|record| record.work_items.iter().find(|work| work.report.id == id))
-            .map(|work| format!("{} ({})", crate::ui::truncate(&work.report.label, 120), id))
+        self.work_entries()
+            .into_iter()
+            .find(|entry| entry.reference() == Some(id))
+            .map(|entry| {
+                format!(
+                    "{} ({})",
+                    crate::ui::truncate(entry.label(), 120),
+                    match entry {
+                        Entry::Source(task) => task.task_id.as_str(),
+                        _ => id,
+                    }
+                )
+            })
             .unwrap_or_else(|| format!("{id} (unresolved)"))
     }
 }

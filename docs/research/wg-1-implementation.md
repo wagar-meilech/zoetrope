@@ -47,3 +47,10 @@ creates prerequisites. Separate Fleet and Work flows retain independent cameras.
   1 existing manual resource probe ignored.
 - Strict `cargo clippy --locked --all-targets -- -D warnings` passed.
 - Further source integration and final checks are recorded below.
+
+7. `bound_source_tasks_draw_dependencies_and_human_ownership_never_selects_a_recipient`:
+   after the parent's authorized merge of immutable WG-3 interface `c1c3f07`,
+   RED confirmed source tasks were invisible. GREEN imports a real designated
+   Markdown table through the executable, draws its declared dependency, retains
+   source/task identity and shows Alice's human ownership without selecting a
+   native recipient. Unknown/unassigned source owners never fall back to main.
