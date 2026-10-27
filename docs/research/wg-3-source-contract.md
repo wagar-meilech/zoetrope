@@ -68,6 +68,11 @@ No task status, source link or checkbox executes outcome verification.
 
 Native owner references are `main`, `/root/path` and `native:EXACT_THREAD_ID`.
 Their scoped reference still requires live exact-owner resolution before steering.
+Explicit native thread IDs accept 1..100 ASCII letters/digits/`._-`; the reserved
+`main` token is available only as plain `main`, never `native:main`. Source native
+IDs require the inventory's public metadata proof of the exact provider/root and
+parent chain; a matching runtime thread name/availability alone is insufficient.
+An exact native root ID resolves to that root's canonical `main` identity.
 All other owner text, including people, Unknown and Unassigned, remains a display
 label with `owner: null`; there is no coordinator fallback.
 

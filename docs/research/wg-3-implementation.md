@@ -38,6 +38,11 @@ The concrete command/schema contract for WG-4 and other consumers is
 - `--session auto` checks both exact Codex runtime IDs, their own bounded public
   headers and complete parent chain. It does not infer identity from cwd/title/
   freshness. Header-schema knowledge stays inside `src/provider/`.
+- Final source-owner review found that legacy explicit reports allow direct
+  native IDs without metadata proof. Source entries now require WG-2's added
+  identity-proof entries before selecting/steering a direct native owner. The
+  source-only guard preserves that legacy report interface, preserves the raw
+  source owner label and canonicalizes an exact native root ID to `main`.
 
 ## Vertical RED/GREEN record
 
@@ -62,6 +67,8 @@ the associated minimal implementation. No parser/private-helper tests were added
 | `source_set_growth` | aggregate overflow failed refresh rather than marking stale | last-good source retained with visible stale diagnostic |
 | `invalid_missing` (single pipe) | malformed row panicked the executable | malformed row reports stale without losing last-good data |
 | `fenced_task` | nested unlike fence exposed example tasks | matching fence marker/length keeps examples non-authoritative |
+| `malformed_native_owner` | native:main became a coordinator reference | malformed native/alias tokens stay unavailable |
+| Fleet `source_native_owner` | foreign-root source owner exposed live Guidance/Queue/Stop; proof-unavailable recovery stayed unavailable | absent/foreign identities cannot receive controls; valid parent metadata recovery selects the exact child; native root ID selects its canonical coordinator |
 
 Regression fixtures additionally cover initially invalid fallback, missing/
 malformed/duplicate/oversized sources, recovery, valid empty/removal, unchanged
@@ -72,11 +79,20 @@ provenance, unknown/human/unassigned ownership and no automatic verification.
 
 - `cargo fmt --check` and `git diff --check`: passed.
 - `cargo clippy --locked --all-targets -- -D warnings`: passed.
-- `cargo test --locked`: passed on the source worktree before final integration.
-- `cargo test --locked --test tracking`: 15 public tracking fixtures passed.
+- `cargo test --locked`: passed again after merging integration `55d35bb`
+  (including 59 Fleet UI fixtures plus the 15 tracking fixtures).
+- `cargo test --locked --test tracking`: 16 public tracking fixtures passed after
+  the final native-owner safety change.
+- `cargo test --locked --test fleet_ui source_`: targeted source graph/owner/
+  runtime-peer checks passed after merging the WG-2 identity-proof follow-up
+  `d1d6344`. The peer rejects every steering message in the unavailable-owner
+  fixture; current-scope metadata recovery and exact root normalization are
+  observed without sending any messages. Root owns the final full combined run.
 - `cargo test --locked --no-default-features`: passed (176 portable unit tests and
   10 public Console tests; native-only suites correctly contain no tests).
 - `cargo +1.88.0 check --locked --all-targets`: passed.
+- `cargo clippy --locked --no-default-features --all-targets -- -D warnings`:
+  passed after the integration merge.
 - Browser/frontend integration verification remains WG-6; native-only additions
   are feature-gated and portable tests preserve replay compatibility.
 

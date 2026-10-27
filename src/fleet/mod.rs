@@ -756,6 +756,12 @@ impl FleetConsole {
                 .unwrap_or_else(|| self.work_owner_label(target));
         }
         if self.work_selection.is_some() {
+            if self.selected_work_is_source() {
+                return self
+                    .selected_agent()
+                    .map(|owner| self.work_owner_label(&owner))
+                    .unwrap_or_else(|| "Selected work unavailable".into());
+            }
             return self
                 .selected_work_owner()
                 .map(|owner| self.work_owner_label(&owner))
@@ -938,6 +944,12 @@ impl FleetConsole {
             return Some("selected work has no native owner");
         };
         if !owner.agent_id.starts_with('/') {
+            if self.selected_work_is_source() && owner.agent_id != "main" {
+                return match self.view.owner_resolutions.get(&owner) {
+                    Some(crate::console::OwnerResolution::Resolved(_)) => None,
+                    _ => Some("source owner lacks native scope"),
+                };
+            }
             return None;
         }
         match self.view.owner_resolutions.get(&owner) {
@@ -957,9 +969,17 @@ impl FleetConsole {
     }
     fn selected_agent(&self) -> Option<AgentKey> {
         if self.work_selection.is_some() {
-            return self
-                .selected_work_owner()
-                .and_then(|owner| self.resolved_owner(&owner));
+            let owner = self.selected_work_owner()?;
+            if self.selected_work_is_source()
+                && owner.agent_id != "main"
+                && !owner.agent_id.starts_with('/')
+            {
+                return match self.view.owner_resolutions.get(&owner) {
+                    Some(crate::console::OwnerResolution::Resolved(native)) => Some(native.clone()),
+                    _ => None,
+                };
+            }
+            return self.resolved_owner(&owner);
         }
         match self.view.selection.as_ref()? {
             FleetNodeId::Session(key) => Some(AgentKey {

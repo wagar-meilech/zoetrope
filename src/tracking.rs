@@ -676,7 +676,14 @@ fn task(
     } else {
         owner_label
             .strip_prefix("native:")
-            .filter(|id| !id.is_empty() && id.len() <= 100 && !id.chars().any(char::is_control))
+            .filter(|id| {
+                !id.is_empty()
+                    && *id != "main"
+                    && id.len() <= 100
+                    && id
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+            })
             .map(str::to_owned)
     };
     let owner = native.map(|agent_id| AgentKey {

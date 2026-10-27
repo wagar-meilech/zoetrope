@@ -466,6 +466,16 @@ fn fenced_task_examples_cannot_become_authoritative_tables() {
 }
 
 #[test]
+fn malformed_native_owner_references_remain_unavailable_without_becoming_coordinator() {
+    let project = Project::new();
+    project.write("WORK.md", "## Tasks\n| ID | Task | Status | Owner |\n| --- | --- | --- | --- |\n| A | Invalid native root token | planned | native:main |\n| B | Invalid native alias token | planned | native:/root/worker |\n");
+    project.ok("enable", &["--source", "WORK.md#Tasks"]);
+    for task in project.show()["record"]["source_tasks"].as_array().unwrap() {
+        assert_eq!(task["owner"], Value::Null);
+    }
+}
+
+#[test]
 fn source_set_growth_beyond_goal_bounds_is_stale_and_preserves_last_good_tasks() {
     let project = Project::new();
     let table = |prefix: &str| {
