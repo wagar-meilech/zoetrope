@@ -45,4 +45,4 @@ Complementary retained regressions cover a missing alias with a deceptively simi
 - `cargo fmt --all -- --check` and `git diff --check`: pass.
 - Existing public large-history probe: `cargo test --locked --test fleet_ui large_fleet_placement_resource_probe -- --exact --ignored --nocapture`: pass. 1,000 histories loaded in 333 ms with 32,026 µs peak UI poll; 4,000 loaded in 818 ms with 80,493 µs peak UI poll. These observations describe this fixture/machine and impose no timing threshold; full record IO remains on the inventory worker.
 
-Final integration merge and probe observations are recorded with the handoff commit.
+Merged the latest integration tip `679f8b9` into this isolated branch with merge commit `80e2901`. That merge contains documentation only; the checked implementation is unchanged. `git merge-base --is-ancestor feat/goal-console HEAD` and a clean worktree verify the handoff baseline. No repeated broad checks were needed after the documentation merge.
