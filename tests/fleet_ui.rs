@@ -59,6 +59,55 @@ impl Home {
             )
             .unwrap();
     }
+    #[cfg(unix)]
+    fn enable_unrelated_tracking(&self) {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+            .args(["tracking", "enable", "--project"])
+            .arg(&self.0)
+            .args([
+                "--provider",
+                "codex",
+                "--session",
+                "unrelated",
+                "--source",
+                "MISSING.md#Tasks",
+                "--root",
+            ])
+            .arg(self.0.join("state"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    #[cfg(unix)]
+    fn hold_goal(&self, session: &str) -> HeldLock {
+        // Select the fixture's public record by identity. The state directory
+        // may also contain tracking.lock or another goal's lock.
+        let identity = serde_json::to_value(self.key(session)).unwrap();
+        let records = std::fs::read_dir(self.0.join("state"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .filter(|path| {
+                serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap()
+                    ["session"]
+                    == identity
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 1, "expected one goal record for {session}");
+        let lock = records[0].with_extension("lock");
+        assert!(
+            lock.exists(),
+            "goal record must have its own contention lock"
+        );
+        HeldLock::acquire(&lock)
+    }
     fn ui(&self) -> FleetConsole {
         FleetConsole::new(FleetConfig {
             roots: DiscoveryRoots {
@@ -1475,18 +1524,13 @@ impl Drop for HeldLock {
 fn feedback_stays_in_the_composer_when_the_save_queue_is_full_then_saves_on_exit() {
     let home = Home::new();
     home.session("goal", "/projects/compiler", false);
+    home.enable_unrelated_tracking();
     home.goal("goal", "Busy save");
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Busy save");
     key(&mut ui, KeyCode::Char('c'));
     wait_text(&mut ui, "Build passes");
-    let lock_path = std::fs::read_dir(home.0.join("state"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .find(|p| p.extension().is_some_and(|s| s == "lock"))
-        .unwrap();
-    let lock = HeldLock::acquire(&lock_path);
+    let lock = home.hold_goal("goal");
     key(&mut ui, KeyCode::Char('c'));
     for _ in 0..48 {
         key(&mut ui, KeyCode::Char('p'));
@@ -1594,6 +1638,7 @@ fn an_answer_stays_editable_under_save_backpressure_and_flushes_on_orderly_shutd
     use zoetrope::workstate::{QuestionOption, QuestionPrompt, QuestionRecord, QuestionState};
     let home = Home::new();
     home.session("goal", "/projects/compiler", false);
+    home.enable_unrelated_tracking();
     home.goal("goal", "Busy answer save");
     let store = Store::new(home.0.join("state"));
     store
@@ -1628,13 +1673,7 @@ fn an_answer_stays_editable_under_save_backpressure_and_flushes_on_orderly_shutd
     let mut ui = home.ui();
     wait_text(&mut ui, "Selected: Busy answer save");
     key(&mut ui, KeyCode::Char('Q'));
-    let lock_path = std::fs::read_dir(home.0.join("state"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .find(|p| p.extension().is_some_and(|s| s == "lock"))
-        .unwrap();
-    let lock = HeldLock::acquire(&lock_path);
+    let lock = home.hold_goal("goal");
     for _ in 0..48 {
         key(&mut ui, KeyCode::Char('1'));
     }
@@ -1818,6 +1857,7 @@ fn a_delayed_answer_copy_preserves_a_newer_feedback_composer_and_its_target() {
     use zoetrope::workstate::{QuestionPrompt, QuestionRecord, QuestionState};
     let home = Home::new();
     home.session("goal", "/projects/compiler", false);
+    home.enable_unrelated_tracking();
     home.goal("goal", "Copy acknowledgment");
     let target = AgentKey {
         session: home.key("goal"),
@@ -1851,13 +1891,7 @@ fn a_delayed_answer_copy_preserves_a_newer_feedback_composer_and_its_target() {
     wait_text(&mut ui, "Selected: Copy acknowledgment");
     key(&mut ui, KeyCode::Char('Q'));
     wait_text(&mut ui, "OLDER_COPIED_ANSWER");
-    let lock_path = std::fs::read_dir(home.0.join("state"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .find(|p| p.extension().is_some_and(|s| s == "lock"))
-        .unwrap();
-    let lock = HeldLock::acquire(&lock_path);
+    let lock = home.hold_goal("goal");
     key(&mut ui, KeyCode::F(5));
     key(&mut ui, KeyCode::Char('f'));
     ui.handle_event(&Event::Paste("KEEP_NEWER_DRAFT".into()));
