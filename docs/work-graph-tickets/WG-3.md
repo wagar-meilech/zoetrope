@@ -2,7 +2,7 @@
 
 ## Parent
 
-[Approved work graph specification](../WORK-GRAPH-SPEC.md).
+[Approved work graph specification](../WORK-GRAPH-SPEC.md), [issue #15](https://github.com/wagar-meilech/zoetrope/issues/15). This ticket is [#18](https://github.com/wagar-meilech/zoetrope/issues/18).
 
 ## What to build
 
