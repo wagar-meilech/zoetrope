@@ -249,18 +249,18 @@ fn run(
             notify.notify_one();
         }
         if Instant::now() >= discover {
-            if let Some(runtime) = controller.as_mut() {
-                if let Ok(ids) = runtime.loaded_threads() {
-                    let loaded: BTreeSet<_> = ids.iter().cloned().collect();
-                    output
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .snapshots
-                        .retain(|id, _| loaded.contains(id));
-                    observe.retain(|id| loaded.contains(id));
-                    let queued: BTreeSet<_> = observe.iter().cloned().collect();
-                    observe.extend(ids.into_iter().filter(|id| !queued.contains(id)));
-                }
+            if let Some(runtime) = controller.as_mut()
+                && let Ok(ids) = runtime.loaded_threads()
+            {
+                let loaded: BTreeSet<_> = ids.iter().cloned().collect();
+                output
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .snapshots
+                    .retain(|id, _| loaded.contains(id));
+                observe.retain(|id| loaded.contains(id));
+                let queued: BTreeSet<_> = observe.iter().cloned().collect();
+                observe.extend(ids.into_iter().filter(|id| !queued.contains(id)));
             }
             discover = Instant::now() + Duration::from_secs(10);
         }
@@ -405,30 +405,30 @@ fn run(
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
         if Instant::now() >= refresh {
-            if let (Some(runtime), Some(target)) = (controller.as_mut(), selected.as_ref()) {
-                if target.session.provider == crate::provider::Provider::Codex {
-                    let id = thread_id(target);
-                    let snapshot = runtime.snapshot(id).unwrap_or_else(|_| ThreadSnapshot {
-                        thread_id: id.into(),
-                        name: None,
-                        cwd: None,
-                        status: RuntimeStatus::Unknown,
-                        active_turn: None,
-                        can_accept_direct_input: None,
-                    });
+            if let (Some(runtime), Some(target)) = (controller.as_mut(), selected.as_ref())
+                && target.session.provider == crate::provider::Provider::Codex
+            {
+                let id = thread_id(target);
+                let snapshot = runtime.snapshot(id).unwrap_or_else(|_| ThreadSnapshot {
+                    thread_id: id.into(),
+                    name: None,
+                    cwd: None,
+                    status: RuntimeStatus::Unknown,
+                    active_turn: None,
+                    can_accept_direct_input: None,
+                });
+                {
+                    let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
+                    let changed = out.snapshots.get(&snapshot.thread_id) != Some(&snapshot);
+                    if out.snapshots.len() >= 4096
+                        && let Some(key) = out.snapshots.keys().next().cloned()
                     {
-                        let mut out = output.lock().unwrap_or_else(|e| e.into_inner());
-                        let changed = out.snapshots.get(&snapshot.thread_id) != Some(&snapshot);
-                        if out.snapshots.len() >= 4096 {
-                            if let Some(key) = out.snapshots.keys().next().cloned() {
-                                out.snapshots.remove(&key);
-                            }
-                        }
-                        out.snapshots.insert(snapshot.thread_id.clone(), snapshot);
-                        drop(out);
-                        if changed {
-                            notify.notify_one();
-                        }
+                        out.snapshots.remove(&key);
+                    }
+                    out.snapshots.insert(snapshot.thread_id.clone(), snapshot);
+                    drop(out);
+                    if changed {
+                        notify.notify_one();
                     }
                 }
             }
@@ -525,28 +525,28 @@ fn run(
                     thread_id,
                     request_id,
                 } => {
-                    if let Some(target) = targets.get(&thread_id) {
-                        if let Ok(record) = store.read(&target.session) {
-                            for question in record.questions.iter().filter(|q| {
-                                q.target == *target
-                                    && q.request_id.as_ref() == Some(&request_id)
-                                    && q.state == QuestionState::Pending
-                            }) {
-                                let _ = store.apply(
-                                    &target.session,
-                                    WorkUpdate::ResolveQuestion {
-                                        question_id: question.id.clone(),
-                                        state: QuestionState::Resolved,
-                                    },
-                                );
-                            }
-                            output
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .dirty
-                                .insert(target.session.clone());
-                            notify.notify_one();
+                    if let Some(target) = targets.get(&thread_id)
+                        && let Ok(record) = store.read(&target.session)
+                    {
+                        for question in record.questions.iter().filter(|q| {
+                            q.target == *target
+                                && q.request_id.as_ref() == Some(&request_id)
+                                && q.state == QuestionState::Pending
+                        }) {
+                            let _ = store.apply(
+                                &target.session,
+                                WorkUpdate::ResolveQuestion {
+                                    question_id: question.id.clone(),
+                                    state: QuestionState::Resolved,
+                                },
+                            );
                         }
+                        output
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .dirty
+                            .insert(target.session.clone());
+                        notify.notify_one();
                     }
                 }
                 RuntimeEvent::ThreadStatus { thread_id, status } => {

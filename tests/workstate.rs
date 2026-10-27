@@ -364,7 +364,10 @@ fn recorded_plans_are_drafts_and_supported_changes_and_questions_keep_their_sour
     };
     let work = console.work(&key).unwrap();
     assert_eq!(work.progress().percent, None);
-    assert_eq!(work.plan_drafts[0].steps[0].status, "completed");
+    assert_eq!(
+        work.plan_drafts[0].steps[0].status,
+        zoetrope::workstate::PlanStatus::Done
+    );
     assert_eq!(work.documents.len(), 1);
     assert_eq!(
         work.documents[0].path,
@@ -671,7 +674,7 @@ fn compact_context_reads_current_work_and_plans_without_echoing_private_history(
     let owner = json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
     home.apply(json!({"op":"save_draft","target":owner,"text":"PRIVATE DRAFT ".repeat(2048)}));
     home.apply(json!({"op":"verify","id":"target","evidence":[{"kind":"reference","detail":"VERBOSE EVIDENCE ".repeat(2048),"provenance":"operator"}]}));
-    home.apply(json!({"op":"import_plan","proposal":{"id":"native-plan","producer":owner,"steps":[{"step":"Inspect runtime","status":"in_progress"}],"source":"recorded native plan"}}));
+    home.apply(json!({"op":"import_plan","proposal":{"id":"native-plan","producer":owner,"steps":[{"step":"Inspect runtime","status":"inProgress"},{"step":"External review","status":"provider-new-status"},{"step":"Undated status"}],"source":"recorded native plan"}}));
     home.apply(
         json!({"op":"upsert_work_item","expected_revision":0,"item":{
             "id":"steering","label":"Expose steering","owner":owner,
@@ -699,6 +702,11 @@ fn compact_context_reads_current_work_and_plans_without_echoing_private_history(
     assert_eq!(context["work_items"][0]["id"], "steering");
     assert_eq!(context["work_items"][0]["next"], "Show input capability");
     assert_eq!(context["plans"][0]["steps"][0]["status"], "in_progress");
+    assert_eq!(
+        context["plans"][0]["steps"][1]["status"],
+        "provider-new-status"
+    );
+    assert_eq!(context["plans"][0]["steps"][2]["status"], "");
 }
 
 #[test]

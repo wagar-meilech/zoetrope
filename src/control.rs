@@ -295,10 +295,11 @@ impl Controller {
             active_turn,
             can_accept_direct_input: thread["canAcceptDirectInput"].as_bool(),
         };
-        if self.snapshots.len() >= 4096 && !self.snapshots.contains_key(thread_id) {
-            if let Some(key) = self.snapshots.keys().next().cloned() {
-                self.snapshots.remove(&key);
-            }
+        if self.snapshots.len() >= 4096
+            && !self.snapshots.contains_key(thread_id)
+            && let Some(key) = self.snapshots.keys().next().cloned()
+        {
+            self.snapshots.remove(&key);
         }
         self.snapshots.insert(thread_id.into(), snapshot.clone());
         Ok(snapshot)
@@ -702,10 +703,10 @@ impl Controller {
 
     fn call(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
         let result = self.call_inner(method, params);
-        if let Err(error) = &result {
-            if error.downcast_ref::<RuntimeRejection>().is_none() {
-                self.disconnect(error.to_string());
-            }
+        if let Err(error) = &result
+            && error.downcast_ref::<RuntimeRejection>().is_none()
+        {
+            self.disconnect(error.to_string());
         }
         result
     }

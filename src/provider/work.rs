@@ -4,11 +4,21 @@
 use crate::console::{AgentKey, SessionKey};
 use crate::provider::Provider;
 use crate::workstate::{
-    DocumentChange, DocumentRecord, PlanProposal, PlanStep, QuestionOption, QuestionPrompt,
-    QuestionRecord, QuestionState, WorkUpdate,
+    DocumentChange, DocumentRecord, PlanProposal, PlanStatus, PlanStep, QuestionOption,
+    QuestionPrompt, QuestionRecord, QuestionState, WorkUpdate,
 };
 use serde_json::Value;
 use std::path::PathBuf;
+
+/// Normalize native and legacy saved spellings at the provider boundary.
+pub(crate) fn plan_status(value: String) -> PlanStatus {
+    match value.as_str() {
+        "pending" => PlanStatus::Planned,
+        "in_progress" | "inProgress" => PlanStatus::Active,
+        "completed" => PlanStatus::Done,
+        _ => PlanStatus::Unknown(value),
+    }
+}
 
 pub(crate) struct WorkStream {
     provider: Provider,
@@ -82,9 +92,6 @@ impl WorkStream {
                     }) else {
                         return;
                     };
-                    if steps.is_empty() {
-                        return;
-                    }
                     self.pending.push(WorkUpdate::ImportPlan {
                         proposal: PlanProposal {
                             id: format!("{}:{call}", self.producer.agent_id),
@@ -175,24 +182,25 @@ impl WorkStream {
                 _ => {}
             }
         }
-        if record["type"] == "response_item" && payload["type"] == "function_call_output" {
-            if let Some(call) = payload["call_id"].as_str() {
-                let output = payload["output"]
-                    .as_str()
-                    .and_then(|text| serde_json::from_str::<Value>(text).ok())
-                    .unwrap_or_else(|| payload["output"].clone());
-                if let Some(answers) = output["answers"].as_object() {
-                    let answered = answers.values().any(|value| {
-                        value["answers"].as_array().is_some_and(|a| {
-                            a.iter()
-                                .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty()))
-                        })
-                    });
-                    self.pending.push(WorkUpdate::ObserveQuestionResolution {
-                        question_id: format!("transcript:{}:{call}", self.producer.agent_id),
-                        answered,
-                    });
-                }
+        if record["type"] == "response_item"
+            && payload["type"] == "function_call_output"
+            && let Some(call) = payload["call_id"].as_str()
+        {
+            let output = payload["output"]
+                .as_str()
+                .and_then(|text| serde_json::from_str::<Value>(text).ok())
+                .unwrap_or_else(|| payload["output"].clone());
+            if let Some(answers) = output["answers"].as_object() {
+                let answered = answers.values().any(|value| {
+                    value["answers"].as_array().is_some_and(|a| {
+                        a.iter()
+                            .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty()))
+                    })
+                });
+                self.pending.push(WorkUpdate::ObserveQuestionResolution {
+                    question_id: format!("transcript:{}:{call}", self.producer.agent_id),
+                    answered,
+                });
             }
         }
         if record["type"] == "event_msg" && payload["type"] == "item_completed" {

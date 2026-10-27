@@ -401,6 +401,61 @@ fn explicitly_selecting_coordinator_keeps_the_child_draft_with_its_owner() {
 }
 
 #[test]
+fn tracking_and_criteria_commands_share_the_ui_store_across_project_directories() {
+    let home = Home::new();
+    let agent_cwd = home.0.join("agent-project");
+    std::fs::create_dir_all(&agent_cwd).unwrap();
+    home.session("goal", agent_cwd.to_str().unwrap(), false);
+    let relative_root = PathBuf::from(format!(
+        ".{}-state",
+        home.0.file_name().unwrap().to_str().unwrap()
+    ));
+    let state_home = Home(std::env::current_dir().unwrap().join(&relative_root));
+    let config = FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: relative_root,
+        socket: home.0.join("no-runtime.sock"),
+        ..FleetConfig::default()
+    };
+    for (action, command) in [('T', " context "), ('A', " show ")] {
+        let mut ui = FleetConsole::new(config.clone());
+        wait_text(&mut ui, "No reported work");
+        key(&mut ui, KeyCode::Char(action));
+        ui.try_shutdown().unwrap();
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+            .current_dir(&agent_cwd)
+            .args(["state", "--root"])
+            .arg(&state_home.0)
+            .args(["show", "codex", "goal"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let saved: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let draft = saved["record"]["drafts"][0]["text"].as_str().unwrap();
+        let read_command = draft.lines().find(|line| line.contains(command)).unwrap();
+        assert!(
+            read_command.contains(&format!("--root '{}'", state_home.0.display())),
+            "{read_command}"
+        );
+        assert!(
+            draft
+                .lines()
+                .find(|line| line.contains(" apply "))
+                .unwrap()
+                .contains(&format!("--root '{}'", state_home.0.display())),
+            "{draft}"
+        );
+    }
+}
+
+#[test]
 fn tracking_is_an_editable_coordinator_draft_and_keeps_existing_feedback() {
     use zoetrope::console::AgentKey;
     let home = Home::new();
@@ -1808,8 +1863,9 @@ fn opening_a_goal_shows_recorded_plan_work_status_owner_and_source_time() {
         "type":"function_call","name":"update_plan","call_id":"plan-one",
         "arguments":serde_json::json!({"plan":[
             {"step":"Inspect navigation","status":"completed"},
-            {"step":"Expose steering","status":"in_progress"},
-            {"step":"Check delivery","status":"pending"}
+            {"step":"Expose steering","status":"inProgress"},
+            {"step":"Check delivery","status":"pending"},
+            {"step":"External review","status":"provider-new-status"}
         ]}).to_string()
     }});
     writeln!(
@@ -1823,12 +1879,57 @@ fn opening_a_goal_shows_recorded_plan_work_status_owner_and_source_time() {
     assert!(shown.contains("reported done"), "{shown}");
     assert!(shown.contains("in progress"), "{shown}");
     assert!(shown.contains("planned"), "{shown}");
+    assert!(shown.contains("provider-new-status"), "{shown}");
     assert!(shown.contains("Inspect navigation"), "{shown}");
     assert!(shown.contains("Expose steering"), "{shown}");
     assert!(shown.contains("Check delivery"), "{shown}");
     assert!(shown.contains("Coordinator"), "{shown}");
     assert!(shown.contains("2026-10-27T12:00:00Z"), "{shown}");
     assert!(shown.contains("0 of 2 verified"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn withdrawing_a_native_plan_clears_work_and_expires_its_selected_entry() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Withdraw native work");
+    let path = home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl");
+    let append_plan = |call: &str, plan: serde_json::Value| {
+        let record = serde_json::json!({"timestamp":"2026-10-27T13:00:00Z","type":"response_item","payload":{
+            "type":"function_call","name":"update_plan","call_id":call,
+            "arguments":serde_json::json!({"plan":plan}).to_string()
+        }});
+        writeln!(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap(),
+            "{record}"
+        )
+        .unwrap();
+    };
+    append_plan(
+        "active",
+        serde_json::json!([{"step":"Withdrawn work","status":"in_progress"}]),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Withdrawn work");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Selected work: Withdrawn work");
+
+    append_plan("withdrawn", serde_json::json!([]));
+    let cleared = wait_text(&mut ui, "No reported work");
+    assert!(!cleared.contains("Withdrawn work"), "{cleared}");
+    assert!(cleared.contains("Selected work unavailable"), "{cleared}");
+    append_plan(
+        "replacement",
+        serde_json::json!([{"step":"New work","status":"in_progress"}]),
+    );
+    let expired = wait_text(&mut ui, "Selected work is no longer recorded");
+    assert!(!expired.contains("Selected work: New work"), "{expired}");
+    assert!(expired.contains("Selected work unavailable"), "{expired}");
     ui.shutdown();
 }
 

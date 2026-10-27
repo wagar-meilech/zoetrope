@@ -40,26 +40,25 @@ impl PublicActivity {
                         Some(channel) => matches!(channel, "commentary" | "final" | "final_answer"),
                         None => matches!(p["phase"].as_str(), Some("commentary" | "final_answer")),
                     }
+                    && let Some(parts) = p["content"].as_array()
                 {
-                    if let Some(parts) = p["content"].as_array() {
-                        let text = parts
-                            .iter()
-                            .filter(|part| part["type"] == "output_text")
-                            .filter_map(|part| part["text"].as_str())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        if !text.trim().is_empty() {
-                            self.text = Some(short(&text));
-                            self.text_at = recorded_at(&record);
-                            self.text_source = Some(
-                                if p["channel"] == "commentary" || p["phase"] == "commentary" {
-                                    "Codex commentary"
-                                } else {
-                                    "Codex final answer"
-                                }
-                                .into(),
-                            );
-                        }
+                    let text = parts
+                        .iter()
+                        .filter(|part| part["type"] == "output_text")
+                        .filter_map(|part| part["text"].as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !text.trim().is_empty() {
+                        self.text = Some(short(&text));
+                        self.text_at = recorded_at(&record);
+                        self.text_source = Some(
+                            if p["channel"] == "commentary" || p["phase"] == "commentary" {
+                                "Codex commentary"
+                            } else {
+                                "Codex final answer"
+                            }
+                            .into(),
+                        );
                     }
                 }
                 if record["type"] == "response_item"
@@ -68,13 +67,11 @@ impl PublicActivity {
                         p["name"].as_str(),
                         Some("exec_command" | "functions.exec_command" | "Bash" | "bash" | "shell")
                     )
-                {
-                    if let Some(input) = p["arguments"]
+                    && let Some(input) = p["arguments"]
                         .as_str()
                         .and_then(|s| serde_json::from_str::<Value>(s).ok())
-                    {
-                        self.shell(&input, recorded_at(&record));
-                    }
+                {
+                    self.shell(&input, recorded_at(&record));
                 }
                 if record["type"] == "event_msg"
                     && matches!(p["type"].as_str(), Some("item_started" | "item_completed"))
@@ -100,20 +97,20 @@ impl PublicActivity {
                 }
             }
             Provider::Claude => {
-                if record["type"] == "assistant" {
-                    if let Some(parts) = record["message"]["content"].as_array() {
-                        for part in parts {
-                            if part["type"] == "text" {
-                                if let Some(text) =
-                                    part["text"].as_str().filter(|s| !s.trim().is_empty())
-                                {
-                                    self.text = Some(short(text));
-                                    self.text_at = recorded_at(&record);
-                                    self.text_source = Some("Claude assistant message".into());
-                                }
-                            } else if part["type"] == "tool_use" && part["name"] == "Bash" {
-                                self.shell(&part["input"], recorded_at(&record));
+                if record["type"] == "assistant"
+                    && let Some(parts) = record["message"]["content"].as_array()
+                {
+                    for part in parts {
+                        if part["type"] == "text" {
+                            if let Some(text) =
+                                part["text"].as_str().filter(|s| !s.trim().is_empty())
+                            {
+                                self.text = Some(short(text));
+                                self.text_at = recorded_at(&record);
+                                self.text_source = Some("Claude assistant message".into());
                             }
+                        } else if part["type"] == "tool_use" && part["name"] == "Bash" {
+                            self.shell(&part["input"], recorded_at(&record));
                         }
                     }
                 }

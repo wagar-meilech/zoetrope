@@ -185,11 +185,52 @@ pub struct DocumentRecord {
     pub changed_at: Option<String>,
 }
 
+/// Attributed native-plan status; completion remains separate from verification.
+/// The string codec also accepts earlier saved provider spellings.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(from = "String", into = "String")]
+pub enum PlanStatus {
+    Planned,
+    Active,
+    Done,
+    Unknown(String),
+}
+impl Default for PlanStatus {
+    fn default() -> Self {
+        Self::Unknown(String::new())
+    }
+}
+impl PlanStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Planned => "pending",
+            Self::Active => "in_progress",
+            Self::Done => "completed",
+            Self::Unknown(value) => value,
+        }
+    }
+}
+impl From<String> for PlanStatus {
+    fn from(value: String) -> Self {
+        crate::provider::work::plan_status(value)
+    }
+}
+impl From<&str> for PlanStatus {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+impl From<PlanStatus> for String {
+    fn from(value: PlanStatus) -> Self {
+        value.as_str().to_owned()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlanStep {
     pub step: String,
     #[serde(default)]
-    pub status: String,
+    pub status: PlanStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -639,7 +680,7 @@ impl WorkRecord {
             let (source, source_truncated) = short(&plan.source);
             let steps: Vec<_> = plan.steps.iter().take(8).map(|step| {
                 let (text, text_truncated) = short(&step.step);
-                let (status, status_truncated) = short(&step.status);
+                let (status, status_truncated) = short(step.status.as_str());
                 serde_json::json!({"step":text,"status":status,"text_truncated":text_truncated || status_truncated})
             }).collect();
             let step_count = steps.len();
@@ -1251,14 +1292,13 @@ impl Store {
                     *known |= answered;
                     if let Some(question) =
                         record.questions.iter_mut().find(|q| q.id == question_id)
+                        && question.state != QuestionState::Dismissed
                     {
-                        if question.state != QuestionState::Dismissed {
-                            question.state = if *known {
-                                QuestionState::Answered
-                            } else {
-                                QuestionState::Resolved
-                            };
-                        }
+                        question.state = if *known {
+                            QuestionState::Answered
+                        } else {
+                            QuestionState::Resolved
+                        };
                     }
                 }
                 WorkUpdate::ResolveQuestion { question_id, state } => {
