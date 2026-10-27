@@ -127,7 +127,8 @@ impl FleetConsole {
         entries
     }
     pub(super) fn work_owner_label(&self, owner: &AgentKey) -> String {
-        let name = self.producer_label(owner);
+        let resolved = self.resolved_owner(owner);
+        let name = self.producer_label(resolved.as_ref().unwrap_or(owner));
         if name == "Agent" {
             format!("Agent {}", crate::ui::truncate(&owner.agent_id, 20))
         } else {

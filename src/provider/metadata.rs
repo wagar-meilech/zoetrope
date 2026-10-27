@@ -15,6 +15,8 @@ pub(crate) struct Metadata {
     pub cwd: Option<String>,
     pub agent: String,
     pub parent: Option<String>,
+    pub owner_path: Option<String>,
+    pub owner_parent: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub goal: Option<String>,
@@ -136,6 +138,8 @@ impl Indexed {
             .and_then(|meta| meta.subagent_history_start_ordinal);
         if let Some(meta) = codex_meta {
             metadata.cwd = meta.cwd.clone();
+            metadata.owner_path = meta.path().map(str::to_owned);
+            metadata.owner_parent = meta.parent().map(str::to_owned);
             metadata.internal = meta.is_internal();
             if file.role != FileRole::Root {
                 metadata.agent = meta.id.clone().unwrap_or_default();

@@ -442,3 +442,102 @@ fn search_finds_collapsed_work_and_recorded_plan_text_without_changing_selection
     );
     assert_eq!(console.selection(), Some(&FleetNodeId::Session(current)));
 }
+
+#[test]
+fn owner_paths_use_exact_root_and_native_ancestry_even_when_goals_are_collapsed() {
+    use zoetrope::console::OwnerResolution;
+    let home = Home::new();
+    for root in ["first", "second"] {
+        home.write(
+            &format!("codex/sessions/2026/10/23/rollout-{root}.jsonl"),
+            &codex_meta(root, "/same/project"),
+        );
+    }
+    for (native, root, parent, alias) in [
+        ("first-parent", "first", "first", "/root/parser"),
+        ("second-parent", "second", "second", "/root/parser"),
+        ("first-tests", "first", "first-parent", "/root/parser/tests"),
+        (
+            "wrong-ancestry",
+            "first",
+            "second-parent",
+            "/root/parser/tests",
+        ),
+        (
+            "missing-parent",
+            "first",
+            "not-recorded",
+            "/root/absent/tests",
+        ),
+    ] {
+        let header = serde_json::json!({"type":"session_meta","payload":{
+            "id":native,"session_id":root,"thread_source":"subagent",
+            "source":{"subagent":{"thread_spawn":{"parent_thread_id":parent,"agent_path":alias}}}
+        }});
+        home.write(
+            &format!("codex/sessions/2026/10/23/rollout-{native}.jsonl"),
+            &format!("{header}\n"),
+        );
+    }
+    let mut console = home.console();
+    console.refresh(SystemTime::now());
+    let key = |root: &str, agent: &str| AgentKey {
+        session: SessionKey {
+            provider: Provider::Codex,
+            session_id: root.into(),
+        },
+        agent_id: agent.into(),
+    };
+    let owners = console.owner_resolutions();
+    assert_eq!(
+        owners.get(&key("first", "/root/parser")),
+        Some(&OwnerResolution::Resolved(key("first", "first-parent")))
+    );
+    assert_eq!(
+        owners.get(&key("second", "/root/parser")),
+        Some(&OwnerResolution::Resolved(key("second", "second-parent")))
+    );
+    assert_eq!(
+        owners.get(&key("first", "/root/parser/tests")),
+        Some(&OwnerResolution::Resolved(key("first", "first-tests")))
+    );
+    assert!(!owners.contains_key(&key("first", "/root/absent/tests")));
+    assert!(!owners.contains_key(&AgentKey {
+        session: SessionKey {
+            provider: Provider::Claude,
+            session_id: "first".into()
+        },
+        agent_id: "/root/parser".into()
+    }));
+}
+
+#[test]
+fn oversized_public_headers_do_not_supply_owner_identity() {
+    let home = Home::new();
+    home.write(
+        "codex/sessions/2026/10/23/rollout-root.jsonl",
+        &codex_meta("root", "/project"),
+    );
+    for (id, bytes) in [("ordinary", 96 * 1024), ("oversized", 4 * 1024 * 1024)] {
+        let header = serde_json::json!({"type":"session_meta","payload":{
+            "id":id,"session_id":"root","thread_source":"subagent","instructions":"x".repeat(bytes),
+            "parent_thread_id":"root","agent_path":format!("/root/{id}")
+        }});
+        home.write(
+            &format!("codex/sessions/2026/10/23/rollout-{id}.jsonl"),
+            &format!("{header}\n"),
+        );
+    }
+    let mut console = home.console();
+    console.refresh(SystemTime::now());
+    let owners = console.owner_resolutions();
+    let alias = |id: &str| AgentKey {
+        session: SessionKey {
+            provider: Provider::Codex,
+            session_id: "root".into(),
+        },
+        agent_id: format!("/root/{id}"),
+    };
+    assert!(owners.contains_key(&alias("ordinary")));
+    assert!(!owners.contains_key(&alias("oversized")));
+}

@@ -50,11 +50,19 @@ pub fn thread_id_from_path(path: &Path) -> Option<String> {
 }
 
 /// Read a rollout's own `session_meta`: the first line, when it is one.
+/// Instructions may make a header large; reject headers over 4 MiB rather than
+/// allowing one local file to allocate unbounded discovery memory.
 pub fn read_meta(path: &Path) -> Option<SessionMeta> {
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Read};
+    const MAX_HEADER_BYTES: u64 = 4 * 1024 * 1024;
     let file = std::fs::File::open(path).ok()?;
     let mut first = String::new();
-    BufReader::new(file).read_line(&mut first).ok()?;
+    BufReader::new(file.take(MAX_HEADER_BYTES + 1))
+        .read_line(&mut first)
+        .ok()?;
+    if first.len() as u64 > MAX_HEADER_BYTES {
+        return None;
+    }
     match parse_line(&first)?.payload {
         Payload::SessionMeta(m) => Some(*m),
         _ => None,
