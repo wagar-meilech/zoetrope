@@ -109,8 +109,9 @@ impl Indexed {
             agent: "main".into(),
             ..Metadata::default()
         };
-        if provider == Provider::Claude && file.role != FileRole::Root {
-            if let Some(agent) = path
+        if provider == Provider::Claude
+            && file.role != FileRole::Root
+            && let Some(agent) = path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .and_then(|n| n.strip_prefix("agent-"))
@@ -118,9 +119,8 @@ impl Indexed {
                     n.strip_suffix(".meta.json")
                         .or_else(|| n.strip_suffix(".jsonl"))
                 })
-            {
-                metadata.agent = agent.to_string();
-            }
+        {
+            metadata.agent = agent.to_string();
         }
         if let FileRole::Agent { parent } = &file.role {
             metadata.parent = Some(if parent == &file.session {
@@ -147,14 +147,14 @@ impl Indexed {
             }
             // A real session_meta can itself exceed the preview budget because
             // it embeds instructions. Seed from its parsed header, not a cut line.
-            if let Stream::Codex(parser) = &mut stream {
-                if let Some(statement) = parser.push_line(&super::codex::wire::Line {
+            if let Stream::Codex(parser) = &mut stream
+                && let Some(statement) = parser.push_line(&super::codex::wire::Line {
                     timestamp: None,
                     ordinal: None,
                     payload: super::codex::wire::Payload::SessionMeta(Box::new(meta)),
-                }) {
-                    metadata.apply(statement);
-                }
+                })
+            {
+                metadata.apply(statement);
             }
         }
         #[cfg(feature = "native")]

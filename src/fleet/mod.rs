@@ -104,23 +104,22 @@ impl Inventory {
                     console.refresh(SystemTime::now());
                     refresh = Instant::now() + Duration::from_secs(5);
                 }
-                if console.selection().is_none() {
-                    if let Some(node) = console
+                if console.selection().is_none()
+                    && let Some(node) = console
                         .graph()
                         .nodes
                         .iter()
                         .find(|n| matches!(n.id, FleetNodeId::Session(_)))
-                    {
-                        let id = node.id.clone();
-                        console.command(ConsoleCommand::Select(id));
-                    }
+                {
+                    let id = node.id.clone();
+                    console.command(ConsoleCommand::Select(id));
                 }
                 let mut summaries = BTreeMap::new();
                 for node in &console.graph().nodes {
-                    if let Some(key) = session_key(&node.id) {
-                        if let Some(summary) = console.work_summary(key) {
-                            summaries.insert(key.clone(), summary.clone());
-                        }
+                    if let Some(key) = session_key(&node.id)
+                        && let Some(summary) = console.work_summary(key)
+                    {
+                        summaries.insert(key.clone(), summary.clone());
                     }
                 }
                 let activity = activity_target
@@ -311,7 +310,18 @@ pub struct FleetConsole {
     status: String,
 }
 impl FleetConsole {
-    pub fn new(config: FleetConfig) -> Self {
+    pub fn new(mut config: FleetConfig) -> Self {
+        let root_error = if config.state_root.is_relative() {
+            match std::env::current_dir() {
+                Ok(cwd) => {
+                    config.state_root = cwd.join(&config.state_root);
+                    None
+                }
+                Err(error) => Some(format!("Cannot resolve state folder: {error}")),
+            }
+        } else {
+            None
+        };
         let notify = Arc::new(tokio::sync::Notify::new());
         let inventory = Inventory::start(&config, notify.clone());
         let state = StateWorker::start(config.state_root.clone(), notify.clone());
@@ -368,7 +378,7 @@ impl FleetConsole {
             requested_selection: None,
             expanding: None,
             quit: false,
-            status: "Reading local work…".into(),
+            status: root_error.unwrap_or_else(|| "Reading local work…".into()),
         }
     }
     /// Apply cached worker output. Returns whether the display changed.
@@ -409,22 +419,21 @@ impl FleetConsole {
                 || selection_changed
                 || self.view.errors != view.errors;
             self.view = view;
-            if let Some((key, expanded)) = &self.expanding {
-                if self
+            if let Some((key, expanded)) = &self.expanding
+                && self
                     .view
                     .graph
                     .nodes
                     .iter()
                     .any(|n| n.id == FleetNodeId::Session(key.clone()) && n.expanded == *expanded)
-                {
-                    self.status = if *expanded {
-                        "Agents expanded".into()
-                    } else {
-                        "Goal collapsed".into()
-                    };
-                    self.expanding = None;
-                    changed = true;
-                }
+            {
+                self.status = if *expanded {
+                    "Agents expanded".into()
+                } else {
+                    "Goal collapsed".into()
+                };
+                self.expanding = None;
+                changed = true;
             }
             if selection_changed || work_changed || self.selected_work.is_none() {
                 if let Some(key) = self.view.selection.as_ref().and_then(session_key) {
@@ -449,52 +458,51 @@ impl FleetConsole {
         let output =
             std::mem::take(&mut *self.state.output.lock().unwrap_or_else(|e| e.into_inner()));
         let mut kept_editor = false;
-        if let Some((key, record)) = output.record {
-            if self.view.selection.as_ref().and_then(session_key) == Some(&key) {
-                if self.selected_work.as_ref() != Some(&record) {
-                    changed = true;
-                }
-                if let Some(id) = self.pending_feedback.as_ref() {
-                    if let Some(item) = record.outbox.iter().find(|item| &item.id == id) {
-                        // Copy is local and durable in the outbox. Its late
-                        // completion must never replace a composer opened or
-                        // edited while the disk worker was busy.
-                        if self.edit.is_none() {
-                            self.feedback_target = Some(item.target.clone());
-                            self.select_recipient(Some(item.target.clone()));
-                            self.feedback_open = true;
-                            self.pane = Pane::Feedback;
-                            self.edit_kind = Some(EditKind::Feedback);
-                            self.edit = Some(Editor::new(item.text.clone()));
-                            self.dirty_since = Some(Instant::now());
-                        } else {
-                            kept_editor = true;
-                        }
-                        self.pending_feedback = None;
-                    }
-                }
-                self.view.summaries.insert(key.clone(), record.summary());
-                if let Some(goal) = &record.goal {
-                    if let Some(node) = self
-                        .view
-                        .graph
-                        .nodes
-                        .iter_mut()
-                        .find(|n| n.id == FleetNodeId::Session(key.clone()))
-                    {
-                        node.label = goal.title.clone();
-                    }
-                }
-                let previous_target = self.control_target();
-                self.selected_work = Some(record);
-                if self.control_target() != previous_target {
-                    self.select_recipient(self.control_target());
-                }
-                if self.feedback_requested {
-                    self.open_feedback();
-                }
-                self.sync_graph();
+        if let Some((key, record)) = output.record
+            && self.view.selection.as_ref().and_then(session_key) == Some(&key)
+        {
+            if self.selected_work.as_ref() != Some(&record) {
+                changed = true;
             }
+            if let Some(id) = self.pending_feedback.as_ref()
+                && let Some(item) = record.outbox.iter().find(|item| &item.id == id)
+            {
+                // Copy is local and durable in the outbox. Its late
+                // completion must never replace a composer opened or
+                // edited while the disk worker was busy.
+                if self.edit.is_none() {
+                    self.feedback_target = Some(item.target.clone());
+                    self.select_recipient(Some(item.target.clone()));
+                    self.feedback_open = true;
+                    self.pane = Pane::Feedback;
+                    self.edit_kind = Some(EditKind::Feedback);
+                    self.edit = Some(Editor::new(item.text.clone()));
+                    self.dirty_since = Some(Instant::now());
+                } else {
+                    kept_editor = true;
+                }
+                self.pending_feedback = None;
+            }
+            self.view.summaries.insert(key.clone(), record.summary());
+            if let Some(goal) = &record.goal
+                && let Some(node) = self
+                    .view
+                    .graph
+                    .nodes
+                    .iter_mut()
+                    .find(|n| n.id == FleetNodeId::Session(key.clone()))
+            {
+                node.label = goal.title.clone();
+            }
+            let previous_target = self.control_target();
+            self.selected_work = Some(record);
+            if self.control_target() != previous_target {
+                self.select_recipient(self.control_target());
+            }
+            if self.feedback_requested {
+                self.open_feedback();
+            }
+            self.sync_graph();
         }
         if let Some(status) = output.status {
             self.status = if kept_editor {
@@ -505,37 +513,37 @@ impl FleetConsole {
             changed = true;
             let _ = self.inventory.tx.try_send(InventoryCommand::Reload);
         }
-        if let Some((id, result)) = output.saved {
-            if self.pending_save.as_ref().is_some_and(|save| save.id == id) {
-                let saved = self.pending_save.take().unwrap();
-                match result {
-                    Ok(()) => {
-                        let unchanged = self.edit.as_ref().is_some_and(|e| e.text == saved.text);
-                        if unchanged && self.close_after_save {
-                            self.close_editor();
-                            if self.quit_after_save {
-                                self.quit = true;
+        if let Some((id, result)) = output.saved
+            && self.pending_save.as_ref().is_some_and(|save| save.id == id)
+        {
+            let saved = self.pending_save.take().unwrap();
+            match result {
+                Ok(()) => {
+                    let unchanged = self.edit.as_ref().is_some_and(|e| e.text == saved.text);
+                    if unchanged && self.close_after_save {
+                        self.close_editor();
+                        if self.quit_after_save {
+                            self.quit = true;
+                        }
+                    } else if !unchanged {
+                        if self.draft_update().is_some() {
+                            self.dirty_since = Some(Instant::now());
+                            if self.close_after_save {
+                                self.save_feedback();
                             }
-                        } else if !unchanged {
-                            if self.draft_update().is_some() {
-                                self.dirty_since = Some(Instant::now());
-                                if self.close_after_save {
-                                    self.save_feedback();
-                                }
-                            } else if self.close_after_save {
-                                self.commit_edit();
-                            }
+                        } else if self.close_after_save {
+                            self.commit_edit();
                         }
                     }
-                    Err(error) => {
-                        self.dirty_since = None;
-                        self.quit_after_save = false;
-                        self.status =
-                            format!("Could not save draft: {error}. Draft retained; Esc retries.");
-                    }
                 }
-                changed = true;
+                Err(error) => {
+                    self.dirty_since = None;
+                    self.quit_after_save = false;
+                    self.status =
+                        format!("Could not save draft: {error}. Draft retained; Esc retries.");
+                }
             }
+            changed = true;
         }
         let mut native = self
             .control
@@ -582,10 +590,10 @@ impl FleetConsole {
             self.status = message;
             changed = true;
         }
-        if let Some(key) = self.view.selection.as_ref().and_then(session_key) {
-            if dirty.contains(key) {
-                self.work_reload = Some(key.clone());
-            }
+        if let Some(key) = self.view.selection.as_ref().and_then(session_key)
+            && dirty.contains(key)
+        {
+            self.work_reload = Some(key.clone());
         }
         if changed {
             self.sync_graph();
@@ -595,11 +603,10 @@ impl FleetConsole {
             if let Some(text) = receipt.cleared_text.as_ref() {
                 if self.feedback_target.as_ref() == Some(&receipt.target)
                     && matches!(self.edit_kind, Some(EditKind::Feedback))
+                    && let Some(editor) = self.edit.as_mut().filter(|e| &e.text == text)
                 {
-                    if let Some(editor) = self.edit.as_mut().filter(|e| &e.text == text) {
-                        *editor = Editor::new(String::new());
-                        self.dirty_since = None;
-                    }
+                    *editor = Editor::new(String::new());
+                    self.dirty_since = None;
                 }
                 if let Some(work) = self.selected_work.as_mut() {
                     for draft in &mut work.drafts {
@@ -615,15 +622,14 @@ impl FleetConsole {
             }
             changed = true;
         }
-        if let Some(key) = self.work_reload.as_ref() {
-            if self
+        if let Some(key) = self.work_reload.as_ref()
+            && self
                 .state
                 .tx
                 .try_send(StateCommand::Load(key.clone()))
                 .is_ok()
-            {
-                self.work_reload = None;
-            }
+        {
+            self.work_reload = None;
         }
         if let Some(message) = self
             .documents
@@ -636,15 +642,14 @@ impl FleetConsole {
             self.document_pending = false;
             changed = true;
         }
-        if let Some(target) = self.activity_request.as_ref() {
-            if self
+        if let Some(target) = self.activity_request.as_ref()
+            && self
                 .inventory
                 .tx
                 .try_send(InventoryCommand::Activity(target.clone()))
                 .is_ok()
-            {
-                self.activity_request = None;
-            }
+        {
+            self.activity_request = None;
         }
         changed
     }
@@ -694,30 +699,30 @@ impl FleetConsole {
         text
     }
     fn recipient_label(&self) -> String {
-        if self.pane == Pane::Feedback {
-            if let Some(target) = &self.feedback_target {
-                if target.agent_id == "main" {
-                    return "Coordinator".into();
-                }
-                if let Some(node) = self
-                    .view
-                    .graph
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == FleetNodeId::Agent(target.clone()))
-                {
-                    return if node.label == target.agent_id {
-                        self.work_owner_label(target)
-                    } else {
-                        node.label.clone()
-                    };
-                }
-                return self
-                    .snapshots
-                    .get(&target.agent_id)
-                    .and_then(|s| s.name.clone())
-                    .unwrap_or_else(|| self.work_owner_label(target));
+        if self.pane == Pane::Feedback
+            && let Some(target) = &self.feedback_target
+        {
+            if target.agent_id == "main" {
+                return "Coordinator".into();
             }
+            if let Some(node) = self
+                .view
+                .graph
+                .nodes
+                .iter()
+                .find(|n| n.id == FleetNodeId::Agent(target.clone()))
+            {
+                return if node.label == target.agent_id {
+                    self.work_owner_label(target)
+                } else {
+                    node.label.clone()
+                };
+            }
+            return self
+                .snapshots
+                .get(&target.agent_id)
+                .and_then(|s| s.name.clone())
+                .unwrap_or_else(|| self.work_owner_label(target));
         }
         if self.work_selection.is_some() {
             return self
@@ -1076,17 +1081,16 @@ impl FleetConsole {
         }
     }
     fn edit_evidence(&mut self) {
-        if let Some(record) = &self.selected_work {
-            if let Some(goal) = &record.goal {
-                if let Some(criterion) = goal.criteria.get(self.item_index) {
-                    self.edit_kind = Some(EditKind::Evidence {
-                        key: record.session.clone(),
-                        id: criterion.id.clone(),
-                        revision: goal.revision,
-                    });
-                    self.edit = Some(Editor::new(String::new()));
-                }
-            }
+        if let Some(record) = &self.selected_work
+            && let Some(goal) = &record.goal
+            && let Some(criterion) = goal.criteria.get(self.item_index)
+        {
+            self.edit_kind = Some(EditKind::Evidence {
+                key: record.session.clone(),
+                id: criterion.id.clone(),
+                revision: goal.revision,
+            });
+            self.edit = Some(Editor::new(String::new()));
         }
     }
     fn commit_edit(&mut self) {
@@ -1254,16 +1258,15 @@ impl FleetConsole {
         if self.control_pending {
             return;
         }
-        if let Some(target) = self.selected_agent() {
-            if self
+        if let Some(target) = self.selected_agent()
+            && self
                 .control
                 .tx
                 .try_send(ControlCommand::Join(target))
                 .is_ok()
-            {
-                self.control_pending = true;
-                self.status = "Checking current native questions…".into();
-            }
+        {
+            self.control_pending = true;
+            self.status = "Checking current native questions…".into();
         }
     }
     fn submit_question(&mut self) {
@@ -1653,6 +1656,11 @@ impl FleetConsole {
             self.status = "Loading saved work; try Enable tracking again shortly".into();
             return;
         };
+        if !self.state_root.is_absolute() {
+            self.status =
+                "State folder could not be resolved; restart from a valid working directory".into();
+            return;
+        }
         let Some(root) = self.state_root.to_str() else {
             self.status = "This state folder cannot be represented in a copyable command".into();
             return;
@@ -1710,6 +1718,11 @@ impl FleetConsole {
             self.status = "Select the intended agent first".into();
             return;
         };
+        if !self.state_root.is_absolute() {
+            self.status =
+                "State folder could not be resolved; restart from a valid working directory".into();
+            return;
+        }
         let Some(root) = self.state_root.to_str() else {
             self.status="This state folder cannot be represented in a copyable command; edit criteria locally".into();
             return;
@@ -1779,18 +1792,17 @@ impl FleetConsole {
         if self.expanding.is_some() {
             return;
         }
-        if let Some(key) = self.view.selection.as_ref().and_then(session_key).cloned() {
-            if let Some(node) = self
+        if let Some(key) = self.view.selection.as_ref().and_then(session_key).cloned()
+            && let Some(node) = self
                 .view
                 .graph
                 .nodes
                 .iter()
                 .find(|n| n.id == FleetNodeId::Session(key.clone()))
-            {
-                self.expanding = Some((key.clone(), !node.expanded));
-                self.status = "Loading this goal's agents…".into();
-                self.navigate(ConsoleCommand::ToggleExpanded(key));
-            }
+        {
+            self.expanding = Some((key.clone(), !node.expanded));
+            self.status = "Loading this goal's agents…".into();
+            self.navigate(ConsoleCommand::ToggleExpanded(key));
         }
     }
     pub(super) fn request_replay(&mut self) {
@@ -2073,10 +2085,8 @@ impl FleetConsole {
                     KeyCode::Backspace => {
                         self.query.pop();
                     }
-                    KeyCode::Char(ch) => {
-                        if self.query.len() < 512 {
-                            self.query.push(ch);
-                        }
+                    KeyCode::Char(ch) if self.query.len() < 512 => {
+                        self.query.push(ch);
                     }
                     _ => {}
                 }
