@@ -242,19 +242,32 @@ impl NodeContent for Card {
             self.cue.color
         };
         let width = ctx.area.width.saturating_sub(2) as usize;
-        let mut lines = vec![Line::from(vec![
-            Span::styled(
-                format!("{} ", self.cue.glyph),
-                Style::default().fg(self.cue.color),
-            ),
-            Span::styled(
-                crate::ui::truncate(&self.title, width.saturating_sub(2)),
+        let compact_card = ctx.area.width < 24;
+        let mut lines = vec![if compact_card {
+            Line::styled(
+                crate::ui::truncate(&self.title, width),
                 Style::default().add_modifier(Modifier::BOLD),
-            ),
-        ])];
+            )
+        } else {
+            Line::from(vec![
+                Span::styled(
+                    format!("{} ", self.cue.glyph),
+                    Style::default().fg(self.cue.color),
+                ),
+                Span::styled(
+                    crate::ui::truncate(&self.title, width.saturating_sub(2)),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ])
+        }];
         if !self.detail.is_empty() {
+            let detail = if compact_card {
+                format!("{} {}", self.cue.glyph, self.detail)
+            } else {
+                self.detail.clone()
+            };
             lines.push(Line::styled(
-                crate::ui::truncate(&self.detail, width),
+                crate::ui::truncate(&detail, width),
                 Style::default().fg(self.cue.color),
             ));
         }
@@ -2312,14 +2325,30 @@ impl FleetConsole {
                     self.show_help = true;
                     self.help_scroll = 0;
                 }
-                KeyCode::Char('+') | KeyCode::Char('=') => self.active_flow().zoom_in(),
-                KeyCode::Char('-') => self.active_flow().zoom_out(),
+                KeyCode::Char('+') | KeyCode::Char('=') => {
+                    if self.work_canvas {
+                        self.work_graph.overview = false;
+                    }
+                    self.active_flow().zoom_in();
+                }
+                KeyCode::Char('-') => {
+                    if self.work_canvas {
+                        self.work_graph.overview = false;
+                    }
+                    self.active_flow().zoom_out();
+                }
                 KeyCode::Char('o') => {
+                    if self.work_canvas {
+                        self.work_graph.overview = true;
+                    }
                     self.active_flow().request_fit_view();
                     self.pending_center = false;
                     self.work_graph.pending_center = false;
                 }
                 KeyCode::Char('r') => {
+                    if self.work_canvas {
+                        self.work_graph.overview = false;
+                    }
                     self.active_flow().zoom_to(1.0);
                     self.work_graph.pending_center = self.work_canvas;
                     self.pending_center = !self.work_canvas;

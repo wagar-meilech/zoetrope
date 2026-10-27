@@ -621,10 +621,21 @@ impl FleetConsole {
                 }
             }
         }
+        let recorded = if self.work_canvas {
+            chrono::DateTime::parse_from_rfc3339(current.recorded_at())
+                .map(|time| {
+                    time.with_timezone(&chrono::Utc)
+                        .format("%Y-%m-%d %H:%M UTC")
+                        .to_string()
+                })
+                .unwrap_or_else(|_| crate::ui::truncate(current.recorded_at(), 80))
+        } else {
+            crate::ui::truncate(current.recorded_at(), 80)
+        };
         text.push_str(&format!(
             "Source: {}\nRecorded: {}\n",
             crate::ui::truncate(current.source(), 160),
-            crate::ui::truncate(current.recorded_at(), 80)
+            recorded
         ));
         if let Some(owner) = current.owner()
             && self.producer_label(owner) == "Agent"

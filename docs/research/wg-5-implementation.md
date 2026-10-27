@@ -57,6 +57,23 @@ the same test to GREEN. UI invocation:
    limit/cycle/unresolved summaries displace `? unknown`. GREEN reserves rows for
    the complete legend independently of the bounded summary/omission notice.
 
+10. `tall_work_overview_retains_meaningful_labels_across_a_twelve_task_branching_plan`:
+    RED showed 3–7-character title fragments across a mostly empty tall canvas.
+    GREEN layers prerequisites vertically on tall canvases and retains horizontal
+    flow on short canvases. Isolated work fills otherwise unused side slots
+    without creating edges. A 12-task fixture at 106×48 keeps meaningful labels
+    across both branches. Adaptation happens only on topology/actual terminal
+    changes, retaining dragged positions and ordinary refresh camera stability.
+    Compact cards prioritize title space; edge labels stay at reading zoom and
+    larger prerequisite gaps keep arrows visible. Selected recorded times use
+    a single UTC line. Actual terminal captures, then the root's visual review,
+    confirmed the improvement.
+
+The public `cyclic_missing_and_disconnected_work_remain_visible_and_selectable`
+regression also exposed an `o` request being overridden during first draw/resize.
+Its RED/GREEN fix retains explicit overview state while adapting, including when
+fitting a small imperfect graph increases zoom above 1.0.
+
 The public `agents_back_returns_to_the_selected_work_and_its_camera` regression
 also caught an over-eager recenter after changing views. Its RED/GREEN fix keys
 recentering to actual terminal dimensions rather than a changed panel layout.
@@ -79,9 +96,11 @@ are QA-only dependencies. Capture dimensions were checked: 150×42, 106×48 and
 
 The initial captures exposed dark blue/red contrast and a hidden Back action
 when searching. Brighter blue/red shades and the retained breadcrumb corrected
-those observations. The narrow capture retains a full task card and focused
-context; the overview retains branching, status glyphs and selected context
-without overlapping command/edge-label walls.
+those observations. Root visual review additionally identified the horizontal
+chain's unused height and short labels. Adaptive vertical layering now fills the
+tall overview with meaningful task labels and visible branching; root inspected
+and accepted the improved 106×48 capture. The narrow capture retains a full task
+card and focused context. Neither view exposes full command walls.
 
 Reproduce after building the executable:
 

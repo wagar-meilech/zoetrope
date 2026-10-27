@@ -29,8 +29,11 @@ pub(super) struct WorkGraph {
     goal: Option<SessionKey>,
     topology: Topology,
     positions: BTreeMap<String, (f64, f64)>,
+    vertical: bool,
+    terminal_area: Option<Rect>,
     cyclic: BTreeSet<String>,
     pub pending_center: bool,
+    pub overview: bool,
     pub summary: String,
 }
 impl WorkGraph {
@@ -43,9 +46,60 @@ impl WorkGraph {
             goal: None,
             topology: Topology::default(),
             positions: BTreeMap::new(),
+            vertical: false,
+            terminal_area: None,
             cyclic: BTreeSet::new(),
             pending_center: true,
+            overview: false,
             summary: String::new(),
+        }
+    }
+    /// Reorient only when the actual canvas changes shape. Status refreshes
+    /// retain both dragged positions and camera; a tall canvas can spend its
+    /// height on prerequisite layers instead of shrinking a long horizontal line.
+    pub fn adapt_to(&mut self, area: Rect, terminal: Rect) {
+        if self.terminal_area == Some(terminal) {
+            return;
+        }
+        self.terminal_area = Some(terminal);
+        let vertical = u32::from(area.height) * 4 >= u32::from(area.width);
+        if vertical == self.vertical {
+            return;
+        }
+        self.vertical = vertical;
+        let ids = self
+            .flow
+            .nodes()
+            .map(|node| node.id.clone())
+            .collect::<Vec<_>>();
+        let edges = self
+            .flow
+            .edges()
+            .iter()
+            .map(|edge| (edge.source.clone(), edge.target.clone()))
+            .collect::<Vec<_>>();
+        self.positions = layout(&ids, &edges, vertical);
+        let nodes = self
+            .flow
+            .nodes()
+            .cloned()
+            .map(|mut node| {
+                node.position = self
+                    .positions
+                    .get(&node.id)
+                    .copied()
+                    .unwrap_or_default()
+                    .into();
+                node.handles = handles(vertical);
+                node
+            })
+            .collect();
+        let _ = self.flow.set_nodes(nodes);
+        if self.overview {
+            self.flow.request_fit_view();
+            self.pending_center = false;
+        } else {
+            self.pending_center = true;
         }
     }
     pub fn remember_drag(&mut self, id: &str) {
@@ -111,7 +165,7 @@ impl WorkGraph {
             )
             .collect();
         if self.topology != topology {
-            self.positions = layout(&all_ids, &edges);
+            self.positions = layout(&all_ids, &edges, self.vertical);
             self.cyclic = cyclic_tasks(&all_ids, &analysis_edges);
             self.topology = topology;
         }
@@ -146,10 +200,7 @@ impl WorkGraph {
                 )
                 .with_deletable(false)
                 .with_connectable(false)
-                .with_handles(vec![
-                    Handle::source(HandlePosition::Right).with_hidden(true),
-                    Handle::target(HandlePosition::Left).with_hidden(true),
-                ])
+                .with_handles(handles(self.vertical))
             })
             .collect();
         for reference in &missing {
@@ -171,10 +222,7 @@ impl WorkGraph {
                 )
                 .with_deletable(false)
                 .with_connectable(false)
-                .with_handles(vec![
-                    Handle::source(HandlePosition::Right).with_hidden(true),
-                    Handle::target(HandlePosition::Left).with_hidden(true),
-                ]),
+                .with_handles(handles(self.vertical)),
             );
         }
         self.summary = format!(
@@ -215,16 +263,39 @@ impl WorkGraph {
 
 /// Linear bounded layering includes isolated vertices; cyclic residuals get
 /// explicit finite slots rather than asking a DAG algorithm to converge.
-fn layout(ids: &[String], edges: &[(String, String)]) -> BTreeMap<String, (f64, f64)> {
+fn handles(vertical: bool) -> Vec<Handle> {
+    vec![
+        Handle::source(if vertical {
+            HandlePosition::Bottom
+        } else {
+            HandlePosition::Right
+        })
+        .with_hidden(true),
+        Handle::target(if vertical {
+            HandlePosition::Top
+        } else {
+            HandlePosition::Left
+        })
+        .with_hidden(true),
+    ]
+}
+fn layout(
+    ids: &[String],
+    edges: &[(String, String)],
+    vertical: bool,
+) -> BTreeMap<String, (f64, f64)> {
     let indices: BTreeMap<_, _> = ids.iter().enumerate().map(|(at, id)| (id, at)).collect();
     let mut children = vec![Vec::new(); ids.len()];
     let mut degree = vec![0usize; ids.len()];
+    let mut connected = vec![false; ids.len()];
     for (source, target) in edges {
         let (Some(&source), Some(&target)) = (indices.get(source), indices.get(target)) else {
             continue;
         };
         children[source].push(target);
         degree[target] += 1;
+        connected[source] = true;
+        connected[target] = true;
     }
     let mut queue: std::collections::VecDeque<_> = degree
         .iter()
@@ -240,6 +311,33 @@ fn layout(ids: &[String], edges: &[(String, String)]) -> BTreeMap<String, (f64, 
                 queue.push_back(child);
             }
         }
+    }
+    if vertical {
+        let mut columns = BTreeMap::<usize, usize>::new();
+        let mut occupied = BTreeSet::new();
+        let mut positions = BTreeMap::new();
+        for (at, id) in ids.iter().enumerate().filter(|(at, _)| connected[*at]) {
+            let rank = ranks[at].min(512);
+            let column = columns.entry(rank).or_default();
+            occupied.insert((rank, *column));
+            positions.insert(id.clone(), (*column as f64 * 36.0, rank as f64 * 10.0));
+            *column += 1;
+        }
+        // Isolated work shares otherwise empty space alongside the dependency
+        // layers. It remains edge-free; its placement declares no prerequisite.
+        let mut slot = 0usize;
+        for (_, id) in ids.iter().enumerate().filter(|(at, _)| !connected[*at]) {
+            while occupied.contains(&(slot / 2, slot % 2)) {
+                slot += 1;
+            }
+            occupied.insert((slot / 2, slot % 2));
+            positions.insert(
+                id.clone(),
+                ((slot % 2) as f64 * 36.0, (slot / 2) as f64 * 10.0),
+            );
+            slot += 1;
+        }
+        return positions;
     }
     let mut rows = BTreeMap::<usize, usize>::new();
     ids.iter()

@@ -102,7 +102,7 @@ impl rataflow::EdgeContent for SemanticEdge {
     fn render(&self, ctx: &rataflow::EdgeRenderContext, buf: &mut Buffer) {
         let a = ctx.world_to_terminal(rataflow::Position::new(0.0, 0.0));
         let b = ctx.world_to_terminal(rataflow::Position::new(10.0, 0.0));
-        let label = if b.0 - a.0 >= 7 {
+        let label = if b.0 - a.0 >= 9 {
             ctx.label.map(ratatui::text::Text::raw)
         } else {
             None

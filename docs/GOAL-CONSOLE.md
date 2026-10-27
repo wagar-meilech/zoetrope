@@ -28,7 +28,10 @@ immediately; explicit reports replace the same owner's native plan fallback.
 The legend uses ○ blue planned, ● cyan active, ! red blocked, ✓ green reported
 done, × gray cancelled and ? magenta unknown. A gold border and **› selected**
 identify selection. `o` fits the overview, retaining status/selection cues at
-small zoom; `r` restores the selected task at readable size. Reported counts and
+small zoom; `r` restores the selected task at readable size. Tall canvases layer
+prerequisites vertically to retain meaningful overview labels; short canvases
+keep horizontal flow. Ordinary status updates preserve placement and camera.
+Reported counts and
 verified outcomes are separate: a completed task earns no outcome credit by itself.
 
 A selected task's owner becomes the recipient for ordinary `f` steering. Before

@@ -257,8 +257,19 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
     } else {
         canvas
     };
-    if ui.work_canvas && ui.frame_area != frame.area() {
-        ui.work_graph.pending_center = true;
+    if ui.work_canvas {
+        let overview = ui.work_graph.overview;
+        if ui.pane == Pane::Graph && ui.edit.is_none() {
+            ui.work_graph.adapt_to(canvas, frame.area());
+        }
+        if ui.frame_area != frame.area() {
+            if overview {
+                ui.work_graph.flow.request_fit_view();
+                ui.work_graph.pending_center = false;
+            } else {
+                ui.work_graph.pending_center = true;
+            }
+        }
     }
     ui.frame_area = frame.area();
     ui.canvas_area = canvas;

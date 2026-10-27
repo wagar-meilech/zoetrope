@@ -3629,3 +3629,69 @@ fn source_native_owner_requires_exact_root_metadata_before_selecting_or_sending(
     ui.shutdown();
     peer.finish(); // Its public protocol fixture rejects every native control message.
 }
+
+#[test]
+fn tall_work_overview_retains_meaningful_labels_across_a_twelve_task_branching_plan() {
+    let home = Home::new();
+    home.session("goal", "/projects/readable-overview", false);
+    home.goal("goal", "Read the whole approach");
+    for (id, label, deps) in [
+        ("plan", "Plan approved", vec![]),
+        ("checkout", "Checkout", vec!["plan"]),
+        ("menus", "Choose menus", vec!["checkout"]),
+        ("custom", "Customize", vec!["menus"]),
+        ("locations", "Locations", vec!["menus"]),
+        ("closing", "Close order", vec!["custom", "locations"]),
+        ("payment", "Payment", vec!["closing"]),
+        ("reminders", "Reminders", vec!["payment"]),
+        ("corrections", "Corrections", vec!["payment"]),
+        ("deploy", "Deploy", vec!["reminders", "corrections"]),
+        ("cancelled", "Cancelled step", vec![]),
+    ] {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":id,"label":label,"status":if id=="closing" {"active"} else if id=="cancelled" {"cancelled"} else {"planned"},
+                "source":"coordinator","depends_on":deps,
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+            }),
+        );
+    }
+    Store::new(home.0.join("state")).apply(&home.key("goal"),serde_json::from_value(serde_json::json!({
+        "op":"import_plan","proposal":{"id":"unknown-plan",
+        "producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"external-worker"},
+        "steps":[{"step":"External review","status":"awaiting-review"}],"source":"native plan"}
+    })).unwrap()).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Close order");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 106, 48);
+    key(&mut ui, KeyCode::Char('o'));
+    let shown = text(&mut ui, 106, 48);
+    let graph = shown
+        .lines()
+        .skip(2)
+        .take(44)
+        .map(|line| line.chars().take(63).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for label in [
+        "Plan approved",
+        "Choose menus",
+        "Customize",
+        "Locations",
+        "Close order",
+        "Payment",
+        "Reminders",
+        "Corrections",
+        "Deploy",
+    ] {
+        assert!(
+            graph.contains(label),
+            "the overview must retain meaningful task labels, including both branches; missing {label}: {shown}"
+        );
+    }
+    ui.shutdown();
+}
