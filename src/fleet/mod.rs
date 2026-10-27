@@ -2253,7 +2253,8 @@ impl FleetConsole {
                 }
                 KeyCode::Char('r') => {
                     self.active_flow().zoom_to(1.0);
-                    self.pending_center = true;
+                    self.work_graph.pending_center = self.work_canvas;
+                    self.pending_center = !self.work_canvas;
                 }
                 KeyCode::Left => {
                     self.active_flow().pan(8.0, 0.0);

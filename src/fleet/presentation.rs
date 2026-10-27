@@ -148,7 +148,9 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             ui.query
         )
     };
-    let breadcrumb = if ui.work_canvas {
+    let breadcrumb = if !ui.query.is_empty() || ui.searching {
+        description.clone()
+    } else if ui.work_canvas {
         let project = ui
             .view
             .selection

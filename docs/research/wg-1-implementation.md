@@ -64,3 +64,40 @@ creates prerequisites. Separate Fleet and Work flows retain independent cameras.
    RED showed full public shell commands in default Work details. GREEN places
    purpose/next/blocker before source metadata and exposes full activity only
    through the explicit Commands route.
+
+10. `readable_work_view_restores_the_selected_task_after_panning_offscreen`:
+    RED showed `r` only recentered Fleet's camera. GREEN restores the selected
+    task in the active Work canvas. The existing orphan-agent/search regression
+    also exposed a breadcrumb hiding search state; the header now shows the
+    current search while retaining its view label.
+11. `reordering_source_rows_preserves_task_identity_placement_and_camera`:
+    RED moved stable tasks after a table row reorder. GREEN compares topology
+    as IDs and prerequisite sets, preserving placement/camera for row order and
+    ordinary context updates. The test waits for the changed context to appear
+    through normal public background refresh.
+12. `a_resolved_logical_report_suppresses_its_owners_native_plan_fallback`:
+    after merging the latest integration/WG-2 via `3319deb`, RED duplicated an
+    explicit alias report and the same native owner's fallback plan. GREEN uses
+    the scoped public owner mapping for fallback suppression as well as steering.
+
+## Integration and final validation
+
+- Preserved WG-3 ancestry via merges of the parent's explicitly authorized green
+  interface commits `c1c3f07` and `55c0115`; later source hardening remains WG-3.
+- Merged current `feat/goal-console` (`05938ec`) via `3319deb`, including WG-2.
+  The only conflict was appended public tests; both sets were retained.
+- Full public fleet/control suite: `cargo test --locked --test fleet_ui`.
+- Strict lint: `cargo clippy --locked --all-targets -- -D warnings`.
+- Formatting: `cargo fmt --all -- --check`.
+- All Cargo commands use the isolated target directory above. Root owns broader
+  native/portable/browser/MSRV validation and final combined review.
+
+WG-5 retains the planned status palette, semantic overview/progress styling and
+broader compact-layout polish. No new dependencies, source discovery/network
+polling, live-project edits or native input were introduced by the canvas.
+
+Final results on the integrated WG-1 tree: **59 fleet/control tests passed, 1
+existing manual probe ignored**, in 10.45 seconds. Strict all-target Clippy,
+formatting check and `git diff --check` all passed. The dense 80-task graph test
+passed with its interaction budget; its full fixture/test invocation took about
+1.4 seconds in the isolated debug build. No broader root checks were duplicated.

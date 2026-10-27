@@ -184,7 +184,7 @@ impl FleetConsole {
         let reported: BTreeSet<_> = record
             .work_items
             .iter()
-            .map(|work| &work.report.owner)
+            .filter_map(|work| self.resolved_owner(&work.report.owner))
             .collect();
         let mut entries: Vec<_> = record.source_tasks.iter().map(Entry::Source).collect();
         entries.extend(
@@ -201,7 +201,10 @@ impl FleetConsole {
         );
         entries.truncate(512);
         for plan in record.plan_drafts.iter().take(512) {
-            if reported.contains(&plan.producer) {
+            if self
+                .resolved_owner(&plan.producer)
+                .is_some_and(|owner| reported.contains(&owner))
+            {
                 continue;
             }
             entries.extend(

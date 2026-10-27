@@ -3055,3 +3055,131 @@ fn missing_work_owner_is_explained_without_matching_a_similar_agent_name() {
     ui.shutdown();
     peer.finish();
 }
+
+#[test]
+fn readable_work_view_restores_the_selected_task_after_panning_offscreen() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Readable navigation");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"readable","label":"Find this task", "status":"active", "source":"report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"}
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Find this task");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 150, 42);
+    let canvas = |screen: String| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for _ in 0..30 {
+        key(&mut ui, KeyCode::Right);
+    }
+    assert!(!canvas(text(&mut ui, 150, 42)).contains("Find this task"));
+    key(&mut ui, KeyCode::Char('r'));
+    assert!(canvas(text(&mut ui, 150, 42)).contains("Find this task"));
+    ui.shutdown();
+}
+
+#[test]
+fn reordering_source_rows_preserves_task_identity_placement_and_camera() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Stable source order");
+    let project = home.0.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let first = "| T1 | First stable task | active | main | Original order |\n";
+    let second = "| T2 | Second stable task | planned | main | |\n";
+    let write_source = |rows: String| {
+        std::fs::write(project.join("WORK.md"), format!("## Tasks\n| ID | Task | Status | Owner | Next |\n| --- | --- | --- | --- | --- |\n{rows}")).unwrap()
+    };
+    let sync = |operation: &str| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"));
+        command
+            .args(["tracking", operation, "--project"])
+            .arg(&project)
+            .args(["--provider", "codex", "--session", "goal", "--root"])
+            .arg(home.0.join("state"));
+        if operation == "enable" {
+            command.args(["--source", "WORK.md#Tasks"]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    write_source(format!("{first}{second}"));
+    sync("enable");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "First stable task");
+    key(&mut ui, KeyCode::Char('w'));
+    text(&mut ui, 150, 42);
+    key(&mut ui, KeyCode::Right);
+    let canvas = |screen: String| {
+        screen
+            .lines()
+            .skip(3)
+            .take(37)
+            .map(|row| row.chars().take(90).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let before = canvas(text(&mut ui, 150, 42));
+    write_source(format!(
+        "{second}{}",
+        first.replace("Original order", "Rows reordered")
+    ));
+    sync("sync");
+    let after = wait_text(&mut ui, "Rows reordered");
+    assert!(
+        after.contains("Selected work: First stable task"),
+        "{after}"
+    );
+    assert_eq!(canvas(after), before, "row order is not a topology change");
+    ui.shutdown();
+}
+
+#[test]
+fn a_resolved_logical_report_suppresses_its_owners_native_plan_fallback() {
+    let home = Home::new();
+    home.session("goal", "/projects/graph", false);
+    home.goal("goal", "Owner fallback");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_path":"/root/parser","agent_nickname":"Parser"}}
+"#).unwrap();
+    let plan: WorkUpdate = serde_json::from_value(serde_json::json!({"op":"import_plan", "proposal":{
+        "id":"native-plan","producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "steps":[{"step":"Old native fallback","status":"in_progress"}],"source":"native"
+    }})).unwrap();
+    Store::new(home.0.join("state"))
+        .apply(&home.key("goal"), plan)
+        .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"report","label":"Reported parser task","status":"active","source":"report",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"/root/parser"}
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Reported parser task");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 150, 42);
+    assert!(!shown.contains("Old native fallback"), "{shown}");
+    assert!(shown.contains("Work graph · 1 tasks"), "{shown}");
+    ui.shutdown();
+}

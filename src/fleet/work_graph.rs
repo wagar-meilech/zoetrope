@@ -23,7 +23,7 @@ pub(super) struct Task {
     pub parent: Option<String>,
 }
 #[derive(Default, PartialEq, Eq)]
-struct Topology(Vec<(String, Option<Vec<String>>)>);
+struct Topology(BTreeMap<String, Option<BTreeSet<String>>>);
 pub(super) struct WorkGraph {
     pub flow: Flow<Card, StepEdge>,
     goal: Option<SessionKey>,
@@ -62,7 +62,14 @@ impl WorkGraph {
         let topology = Topology(
             tasks
                 .iter()
-                .map(|task| (task.id.clone(), task.dependencies.clone()))
+                .map(|task| {
+                    (
+                        task.id.clone(),
+                        task.dependencies
+                            .as_ref()
+                            .map(|dependencies| dependencies.iter().cloned().collect()),
+                    )
+                })
                 .collect(),
         );
         let references: BTreeMap<_, _> = tasks
