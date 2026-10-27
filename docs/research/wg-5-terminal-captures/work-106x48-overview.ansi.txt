@@ -17,7 +17,7 @@
 [39m              [38;5;2m│[1m[39mChoose menus[0m  [38;5;2m│[39m                                  [38;5;178m│[1m[39mPurpose:[0m Close the sale safely          [38;5;178m│
 [39m              [38;5;2m│✓ reported do…│[39m                                  [38;5;178m│[1m[39mNext:[0m Review callback expiry            [38;5;178m│
 [39m              [38;5;2m└──────────────┘[39m                                  [38;5;178m│[39mSource: coordinator · local report      [38;5;178m│
-[39m                      [38;5;237m▼[39m                  [38;5;237m▼[39m                      [38;5;178m│[39mRecorded: 2026-10-27 22:20 UTC          [38;5;178m│
+[39m                      [38;5;237m▼[39m                  [38;5;237m▼[39m                      [38;5;178m│[39mRecorded: 2026-10-27 23:08 UTC          [38;5;178m│
 [39m              [38;5;2m┌──────────────┐[38;5;237m───[38;5;2m┌──────────────┐[39m               [38;5;178m│[39mDependencies: Customize order (custom), [38;5;178m│
 [39m              [38;5;2m│[1m[39mCustomize ord…[0m[38;5;2m│[39m   [38;5;2m│[1m[39mDelivery loca…[0m[38;5;2m│[39m               [38;5;178m│[39mDelivery locations (locations)          [38;5;178m│
 [39m              [38;5;2m│✓ reported do…│[39m   [38;5;2m│✓ reported do…│[39m               [38;5;178m│[39m                                        [38;5;178m│

@@ -1,9 +1,11 @@
 # Synthetic Work graph terminal captures
 
-Captured from the real integrated `zoe` executable at topic code revision
-`5887980` on 27 October 2026, using an owned disposable tmux server and synthetic
-local reports. These are captured terminal cells rendered as PNG with Pillow and
-DejaVu Sans Mono, not browser designs. All six views were visually inspected.
+Captured from the final installed release, application revision `2a65e315`,
+on 28 October 2026 Europe/Amsterdam (27 October UTC), using an owned disposable
+tmux server and synthetic local reports. These are captured terminal cells rendered as PNG with Pillow and
+DejaVu Sans Mono, not browser designs. All six views were visually inspected during WG-5; final installed-release QA
+rechecked narrow readable and wide/tall overview views. The capture helper
+isolates both HOME and CODEX_HOME.
 
 The 12-task fixture includes two fork/merge branches, cancelled and unknown work,
 5 reported done tasks and 0 of 5 verified outcomes. Its child environment uses

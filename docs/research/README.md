@@ -13,8 +13,9 @@ subsequent changes have moved a definition.
 The [approved specification](../WORK-GRAPH-SPEC.md),
 [answered questions](../WORK-GRAPH-QUESTIONS.md) and
 [live task frontier](../WORK-GRAPH-PLAN.md) describe issues #15–21.
-Implementation is integrated; final review fixes/checks and installation remain
-under WG-6 until the frontier is marked complete.
+All six tickets are integrated. [Final validation](../WORK-GRAPH-VALIDATION.md)
+records passing checks, clear independent reviews, qualified resource samples,
+installed app/skill and a read-only live demonstration. Issue closure follows PR #8.
 
 | Work | Evidence |
 | --- | --- |
@@ -24,6 +25,7 @@ under WG-6 until the frontier is marked complete.
 | Tracking skill and installer | [WG-4](wg-4-implementation.md) |
 | Visual flow and color modes | [WG-5](wg-5-implementation.md), [synthetic terminal captures](wg-5-terminal-captures/README.md) |
 | Integration and independent review | [integration](work-graph-integration.md), [review](work-graph-review.md), [fixes](work-graph-review-fixes.md) |
+| Final checks and resources | [validation](../WORK-GRAPH-VALIDATION.md), [resource observations](work-graph-resource-results.json), [reproduction](probes/work-graph-resource.py) |
 
 The [tracking skill](../../skills/zoetrope-tracking/SKILL.md) is the authoritative
 entrypoint for project setup/continuation. Source imports use configured local

@@ -72,7 +72,7 @@ appear first; PageUp/PageDown scrolls the remaining detail.
 | Left / Right, `+` / `-`, `o`, `r` | Pan, zoom, fit the overview, restore readable size. |
 | `f` / **Steer** | Edit feedback for the selected recipient. |
 | `C` / **Coordinator** | Explicitly select this goal's coordinator; retain recipient-specific drafts. |
-| `T` / **Enable tracking** | Prepare an editable coordinator reporting instruction. |
+| `T` / **Enable tracking** | Prepare an editable coordinator request for one-time project tracking setup. |
 | `Q` | Open persistent questions. |
 | `x` in Questions | Dismiss the selected question locally. |
 | `L` in Questions | Listen for current native questions on the selected live agent. |

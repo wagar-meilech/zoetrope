@@ -28,5 +28,4 @@ Use an isolated worktree from the integration branch, merge its current tip befo
 
 [RED/GREEN, integrated checks and visual QA](../research/wg-5-implementation.md)
 record the completed behavior. The [synthetic terminal captures](../research/wg-5-terminal-captures/README.md)
-include the live-sized 106×48 overview plus 150×42 and 60×28 views. Root integration
-and combined review remain WG-6.
+include the live-sized 106×48 overview plus 150×42 and 60×28 views. [Root integration and combined review](../WORK-GRAPH-VALIDATION.md) are complete.

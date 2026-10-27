@@ -28,4 +28,4 @@ Use an isolated worktree from the integration branch, merge its current tip befo
 
 See [WG-4 implementation](../research/wg-4-implementation.md) for the public
 command interface, RED/GREEN slices, independent disposable-project exercises
-and checks. Final combined validation and live installation remain WG-6.
+and checks. [Final combined validation and installation](../WORK-GRAPH-VALIDATION.md) are complete.

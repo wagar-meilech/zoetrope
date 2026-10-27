@@ -17,7 +17,7 @@ unknown                                                         │Recipient: Co
                  │1 prerequisite(s)           │      │1 prerequi│Purpose: Close the sale safely          │
                  │                            │      │          │Next: Review callback expiry            │
                  └────────────────────────────┘      └──────────│Source: coordinator · local report      │
-                                │                               │Recorded: 2026-10-27 22:20 UTC          │
+                                │                               │Recorded: 2026-10-27 23:08 UTC          │
                             requires──────────requires──────────│Dependencies: Customize order (custom), │
                                 ▼                               │Delivery locations (locations)          │
                  ┌› selected──────────────────┐                 │                                        │

@@ -86,8 +86,8 @@ with tempfile.TemporaryDirectory(prefix='wg5-synthetic-') as raw:
     try:
         for width,height in [(150,42),(106,48),(60,28)]:
             target=f'view-{width}'
-            environment=dict(os.environ,CODEX_HOME=str(fixture/'codex'),ZOETROPE_STATE_DIR=str(state),TERM='tmux-256color',NO_COLOR='1')
-            launch=shlex.join(['env',*map(lambda pair:f'{pair[0]}={pair[1]}',[(k,environment[k]) for k in ['CODEX_HOME','ZOETROPE_STATE_DIR','TERM','NO_COLOR']]),executable,'--color','always'])
+            environment=dict(os.environ,HOME=str(fixture/'home'),CODEX_HOME=str(fixture/'codex'),ZOETROPE_STATE_DIR=str(state),TERM='tmux-256color',NO_COLOR='1')
+            launch=shlex.join(['env',*map(lambda pair:f'{pair[0]}={pair[1]}',[(k,environment[k]) for k in ['HOME','CODEX_HOME','ZOETROPE_STATE_DIR','TERM','NO_COLOR']]),executable,'--color','always'])
             tmux('new-session','-d','-s',target,'-x',width,'-y',height,'-c',project,launch)
             until(target,'Current work')
             tmux('send-keys','-t',target,'/')

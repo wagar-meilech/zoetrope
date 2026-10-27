@@ -17,7 +17,7 @@ unknown                                                         │Recipient: Co
               │Choose menus  │                                  │Purpose: Close the sale safely          │
               │✓ reported do…│                                  │Next: Review callback expiry            │
               └──────────────┘                                  │Source: coordinator · local report      │
-                      ▼                  ▼                      │Recorded: 2026-10-27 22:20 UTC          │
+                      ▼                  ▼                      │Recorded: 2026-10-27 23:08 UTC          │
               ┌──────────────┐───┌──────────────┐               │Dependencies: Customize order (custom), │
               │Customize ord…│   │Delivery loca…│               │Delivery locations (locations)          │
               │✓ reported do…│   │✓ reported do…│               │                                        │

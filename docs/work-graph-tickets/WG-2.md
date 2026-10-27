@@ -10,10 +10,10 @@ Deliver the approved vertical behavior described by this ticket, following the s
 
 ## Acceptance criteria
 
-- [ ] Logical owner paths resolve through exact provider/root-scoped public native metadata rather than cwd/title/recency.
-- [ ] Guidance, queue and stop target the unique native thread; unavailable and ambiguous identities are explained without coordinator rerouting.
-- [ ] Open feedback drafts retain their native recipient across owner reassignment, metadata refresh and graph navigation.
-- [ ] Public console and independent runtime-peer tests demonstrate exact targeting and preserve historical/non-steerable ownership.
+- [x] Logical owner paths resolve through exact provider/root-scoped public native metadata rather than cwd/title/recency.
+- [x] Guidance, queue and stop target the unique native thread; unavailable and ambiguous identities are explained without coordinator rerouting.
+- [x] Open feedback drafts retain their native recipient across owner reassignment, metadata refresh and graph navigation.
+- [x] Public console and independent runtime-peer tests demonstrate exact targeting and preserve historical/non-steerable ownership.
 
 ## Blocked by
 
@@ -22,3 +22,8 @@ None.
 ## Implementation process
 
 Use an isolated worktree from the integration branch, merge its current tip before handoff, and apply vertical TDD at the already approved public console and executable/external seams. Record RED/GREEN and checks in a ticket implementation note. Commit with Conventional Commits; merger integration and final independent review follow. Do not change another live project or merge into main.
+
+## Implementation evidence
+
+See [ticket implementation](../research/wg-2-implementation.md) and the
+[final combined validation](../WORK-GRAPH-VALIDATION.md).

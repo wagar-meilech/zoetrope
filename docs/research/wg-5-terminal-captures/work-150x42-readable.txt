@@ -16,7 +16,7 @@ Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ? unknown   
                                              │                                   │        │Purpose: Close the sale safely                            │
                                              │                                   │        │Next: Review callback expiry                              │
                                          requ▼res──────────requires──────────────╯        │Source: coordinator · local report                        │
-                              ┌› selected──────────────────┐                              │Recorded: 2026-10-27 22:20 UTC                            │
+                              ┌› selected──────────────────┐                              │Recorded: 2026-10-27 23:08 UTC                            │
                               │● Close the order           │                              │Dependencies: Customize order (custom), Delivery locations│
                               │in progress                 │                              │(locations)                                               │
                               │Owner: Coordinator          │                              │                                                          │
