@@ -149,3 +149,38 @@ tests (one existing resource probe ignored), strict Clippy on Rust 1.99 and
 The coordinator retains final portable tests, browser/rustdoc/package/release
 checks, resource measurements and independent reviewer follow-up. This merge
 performed no remote or native runtime actions.
+
+## Bootstrap and compact criteria follow-up
+
+The clean follow-up branch at exact commit
+`c318c1c8dab04eb265c5a09ef0ec168eb376b480` included `a63850a` and merged
+conflict-free as `fc41671`. `git diff --exit-code` against that exact ready
+commit passed immediately after merging; there was no content drift.
+
+Native tracking/criteria/help/apply commands now pin the running executable,
+with an optional embedding configuration default preserved. Criteria requests
+use compact context rather than the complete operator record. The implementation
+and RED/GREEN evidence are appended in
+[the review-fix notes](semantic-context-review-fixes.md).
+
+Integration checks passed:
+
+```text
+cargo test --locked --test fleet_runtime tracking_commands_use_the_running_executable_even_with_an_incompatible_cli_on_path -- --exact
+1 passed
+
+cargo test --locked --test fleet_ui criteria_requests_read_compact_context_without_saved_private_material -- --exact
+1 passed
+
+cargo fmt --check
+passed
+
+git diff --check
+passed
+```
+
+No additional source edits were made during the merge. The implementer reported
+319 native tests passing with one existing ignored probe, plus strict Rust 1.99
+and 1.88 Clippy on this exact committed tree; the merger did not repeat those
+full checks. The coordinator retains release/package/docs/resource follow-up
+for the changed native source. No remote or real native-session action occurred.
