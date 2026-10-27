@@ -88,3 +88,28 @@ revision recovery, narrow inspection, source times and stale scope links.
 These are public fixture/protocol-peer checks; no real native session was
 steered. SEM-4 and final independent review/whole-suite/resource verification
 remain with the coordinating agent.
+
+## SEM-4 documentation
+
+The clean `feat/semantic-reporting-docs` branch at `ea40ca5`, based on
+`ec35ad3`, merged conflict-free as `6ddb419` after explicit branch readiness.
+The branch changes only Markdown documentation: reporting guidance, usage,
+handoff, architectural distinctions, contributor pointers and local ticket
+evidence. No project/global reporting instructions were installed automatically.
+
+Integration verification:
+
+- Compared the documented `w` / `a` / `x` / `R`, `C` / `T`, F-key and Ctrl-key
+  routes with `src/fleet/mod.rs` and the visible/mouse actions in
+  `src/fleet/presentation.rs`.
+- Checked compact context paging, revision acknowledgment and partial work
+  update documentation against the integrated CLI contract.
+- Checked 100 relative document paths across the 14 changed files; all exist.
+- `cargo fmt --check` and `git diff --check` passed.
+
+The documentation implementer separately exercised eight CLI examples in
+disposable local state; details are in [SEM-4 notes](sem-4-implementation.md).
+Source tests were not repeated for this documentation-only merge. The single
+review-fix implementer and coordinating agent retain final review resolutions,
+strict lint checks, combined test counts and resource measurements. No remote
+publication or native runtime actions were performed.
