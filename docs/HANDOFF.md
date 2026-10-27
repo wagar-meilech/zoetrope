@@ -1,62 +1,94 @@
 # Zoetrope project handoff
 
-Use the `feat/goal-console` branch in this repository. Its `origin` remote is
-[wagar-meilech/zoetrope](https://github.com/wagar-meilech/zoetrope); the
-implementation is tracked in [PR #8](https://github.com/wagar-meilech/zoetrope/pull/8).
-The original implementation and installed-release verification completed on
-25 October 2026. Documentation was consolidated here on 27 October.
+Continue on `feat/goal-console`. Its `origin` is
+[wagar-meilech/zoetrope](https://github.com/wagar-meilech/zoetrope); the original
+console is in [PR #8](https://github.com/wagar-meilech/zoetrope/pull/8).
+The semantic-context continuation was authorized on 27 October 2026 through the
+completed questionnaire and “Answered, proceed.” It is integrated locally;
+remote publication, push and PR updates remain pending approval after automatic
+review rejected publishing the new specification. Merging into main still
+requires a user request.
 
 ## Read first
 
-1. [CLAUDE.md](../CLAUDE.md): contributor instructions, constraints and commands.
-2. [Goal-console specification](GOAL-CONSOLE-SPEC.md): agreed requirements.
-3. [Answered questionnaire](CUSTOMIZATION-QUESTIONS.md) and
-   [implementation approvals](IMPLEMENTATION-REVIEW.md): the user's decisions
-   and approved public testing seams.
-4. [Usage guide](GOAL-CONSOLE.md) and
-   [validation results](GOAL-CONSOLE-VALIDATION.md): implemented controls,
-   verification and compatibility limits.
-5. [Research archive](research/README.md): supporting implementation notes,
-   reviews, measurements and exact protocol schemas. The
-   [build-status snapshot](research/zoetrope-build-status.json) records the
-   completed implementation and installation details.
+1. [CLAUDE.md](../CLAUDE.md): contributor constraints and commands.
+2. [Semantic-context specification](SEMANTIC-CONTEXT-SPEC.md),
+   [answered questionnaire](SEMANTIC-CONTEXT-QUESTIONS.md), and
+   [task graph](SEMANTIC-CONTEXT-TICKETS.md): accepted behavior and local status.
+3. [Usage guide](GOAL-CONSOLE.md): current work/agent/command/replay navigation,
+   steering availability, criteria and tracking.
+4. [Agent reporting convention](AGENT-REPORTING.md): compact updates for an
+   explicitly tracked goal and an opt-in selected-project pointer.
+5. [Research index](research/README.md): current ticket handoffs, RED/GREEN
+   evidence and dated verification. The original
+   [goal-console spec](GOAL-CONSOLE-SPEC.md) and
+   [implementation approvals](IMPLEMENTATION-REVIEW.md) record the existing
+   public console and executable testing seams.
 
-Use [ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) when changing
-the code. The [ticket graph](GOAL-CONSOLE-TICKETS.md) and
-[issue-tracker instructions](agents/issue-tracker.md) describe the approved
-GitHub workflow. Check GitHub for current PR state before taking further action;
-merging into main requires a user request.
+Use [ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) for code changes.
+[Issue-tracker instructions](agents/issue-tracker.md) retain GitHub as the
+configured tracker; the new local task copies are pending publication, not a
+claim that issues were created.
 
-## Product direction
+## Current behavior
 
-The app is a terminal-first graph across projects, goals and agents. Steering,
-persistent questions/drafts, evidence-based progress and readable descriptions
-are the priorities. The main app stays Rust; the VS Code preview bridge is
-small and dependency-free. Passive monitoring invokes no model. Preserve the
-bounded caches, background IO, portable replay core and ordinary Codex access.
+A selected goal shows a bounded list of meaningful work and its verified-outcome
+count. Explicit reports supply stable work IDs, actual owners, status, context,
+source/time, declared dependencies and revision-qualified outcome links. Native
+plans are an attributed fallback per producer. Reported done never verifies a
+criterion; missing dependencies/context and stale links remain explicit.
 
-The recorded validation includes 290 native tests, 176 portable tests, editor
-host checks, an installed terminal flow and real MD Reader preview. The
-validation document dates and qualifies the resource observations. These are
-results of the completed implementation, rather than a claim that checks ran
-again during this documentation move.
+- Press `w` or click **Work** to focus work; arrows or `[` / `]` choose entries.
+  Without work focus, arrows navigate the fleet.
+- `a` / **Agents** opens agent inspection. Enter/Space retains agent expansion.
+- `x` / **Commands** reads the chosen owner's cached public message and command.
+- `f` / **Steer** opens feedback for the selected recipient; an open editor keeps
+  its recipient even if work ownership changes. Separate guidance/queue/stop
+  availability is shown before sending.
+- `C` / **Coordinator** explicitly selects the goal's coordinator. Child drafts
+  stay with their original recipients.
+- `T` / **Enable tracking** prepares an editable coordinator draft with exact
+  local state/session identity and transition-only reporting. Missing criteria
+  trigger a request for `set_goal` outcomes including tests/final checks.
+- F2/F3/F4 or Ctrl-S/Ctrl-Q/Ctrl-X deliberately send guidance / queue / stop.
+  Saving a draft does not send it; runtime acceptance does not prove completion.
+- `R` / **Replay** opens saved activity read-only; `q` returns to the same fleet.
+  In replay, `g` or End jumps to the latest recorded state.
+- **Not loaded in Codex** concerns live runtime availability. Local historical
+  inspection remains available when its recording exists.
 
-## Latest user discussion
+Labeled Work/Agents/Commands/Replay actions now expose the inspection routes
+involved in the earlier discovery feedback. No helper model was added. The agreed next
+step for any future helper is to assess the no-model flow first, then settle its
+role/trigger/budget with explicit global or per-project opt-in.
 
-The user found historical inspection difficult to discover: pressing Enter or
-Space on a coordinator showed its overview/status rather than the detailed
-past activity graph. Current behavior is:
+## Runtime, verification and installation
 
-- Enter/Space expand or collapse the fleet overview.
-- Shift+R opens the selected goal's saved activity graph and timeline.
-- In replay, `g` or End jumps to the latest recorded state; `q` returns.
-- “Not loaded in Codex” describes live runtime availability. Local historical
-  inspection can still work when its recording exists.
+The app remains Rust with bounded incremental metadata, selected-owner activity
+loading, lazy detail and background IO. Passive monitoring calls no model.
+Working-agent reports do consume tokens; partial updates, compact context and
+short acknowledgments reduce that overhead. The reusable project convention is
+operator-installed and conditional, rather than an automatic instruction edit.
 
-No subsequent navigation change has been implemented for that feedback. The
-discussion did not request restoration of an actual Git checkout.
+The original installed-release verification and
+[validation record](GOAL-CONSOLE-VALIDATION.md) are from 25 October 2026 on the
+original Apple Silicon Mac. Its 290 native / 176 portable tests, installed
+terminal/editor flows and resource observations are historical evidence, not
+claims about the new semantic code. The
+[build-status snapshot](research/zoetrope-build-status.json) also describes that
+earlier installed release.
+
+The semantic iteration is built and checked on Linux. Current per-ticket checks
+are linked from the research index; final combined validation and review must
+remain separately dated. No updated global `zoe` command was installed here.
+Use `cargo build --release --locked` and `./target/release/zoe` to run this
+checkout. Existing native Codex compatibility limits still apply; local protocol
+peers verify behavior without claiming universal live runtime compatibility.
 
 ## Documents and local artifacts
+
+The following records the earlier Mac documentation migration; those local-only
+artifacts and compatibility links are not guaranteed on this Linux checkout.
 
 The project documents and supporting research now live in this repository.
 Former research and temporary-artifact paths on this Mac redirect to the new

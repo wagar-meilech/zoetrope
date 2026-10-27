@@ -45,3 +45,16 @@ SEM-1 and SEM-2 proceed independently; SEM-3 consumes their integrated interface
 ## Publication status
 
 Automatic approval review rejected publishing the full specification to GitHub without explicit payload/destination approval. GitHub remains the configured tracker. [SEM-1](semantic-tickets/SEM-1.md), [SEM-2](semantic-tickets/SEM-2.md), [SEM-3](semantic-tickets/SEM-3.md) and [SEM-4](semantic-tickets/SEM-4.md) are local task copies pending publication. Implementation proceeds locally; no remote issue creation, push or PR update is claimed.
+
+## Local integration evidence
+
+| Ticket | Local status | Evidence |
+| --- | --- | --- |
+| SEM-1 | Integrated in `1e5fba5` | [Executable RED/GREEN and CLI contract](research/sem-1-implementation.md) |
+| SEM-2 | Integrated in `fc06c2b` | [Console/control/terminal RED/GREEN](research/sem-2-implementation.md) |
+| SEM-3 | Integrated in `e6a6d52`, detail correction `ec35ad3` | [Work/owner/navigation RED/GREEN](research/sem-3-implementation.md) |
+| SEM-4 | Reporting/docs ready locally; final combined checks and independent review pending | [Documentation/example verification](research/sem-4-implementation.md) |
+
+These statuses describe local implementation. Remote issue creation, push and PR
+updates remain pending the publication approval above. No task is remotely closed
+and no merge into main is claimed.

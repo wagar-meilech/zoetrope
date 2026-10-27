@@ -1,14 +1,19 @@
 # zoetrope — Design Document (v1)
 
-**zoetrope** is a terminal UI that visualizes Claude Code agent sessions as a live flow graph: the main agent, its subagents, workflows, and tool activity — rendered with [rataflow](../../rataflow). Synthesized from a multi-agent research pass over rwy (`/Users/furkan/personal/projects/rwy`), rataflow (`/Users/furkan/personal/projects/rataflow`), and real transcripts under `~/.claude/projects/`. Full research: see the workflow output referenced in the repo history.
+**zoetrope** is a terminal UI that visualizes Claude Code agent sessions as a live flow graph: the main agent, its subagents, workflows, and tool activity — rendered with [rataflow](https://github.com/furkankly/rataflow). Synthesized from a multi-agent research pass over rwy (`/Users/furkan/personal/projects/rwy`), rataflow (`/Users/furkan/personal/projects/rataflow`), and real transcripts under `~/.claude/projects/`. Full research: see the workflow output referenced in the repo history.
 
 > **This is the v1 structural spec** (module map, transcript format, type shapes). For the *invariants and principles* the implementation now follows — order-independence, the content-vs-presentation clocks, ground-truth-over-heuristics, and the derived-state heuristics catalogue — see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 The native goal console extends this replay design with global discovery,
 Zoetrope-owned local state and explicit control of the existing local Codex
-runtime. See [the goal-console spec](GOAL-CONSOLE-SPEC.md) and
+runtime. Selected-goal work now combines attributed native plans and explicit
+reports alongside evidence-backed outcomes; ownership drives discoverable
+steering. See [the original goal-console spec](GOAL-CONSOLE-SPEC.md),
+[semantic-context specification](SEMANTIC-CONTEXT-SPEC.md), and
 [usage guide](GOAL-CONSOLE.md). The original replay model and browser frontend
-remain separate from live control.
+remain separate from live control. Native console behavior is tested at the
+approved public console and executable seams in the semantic specification;
+the v1 replay-oriented test notes below describe the earlier design.
 
 ## Hard constraints
 
