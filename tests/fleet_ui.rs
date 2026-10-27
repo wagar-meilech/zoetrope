@@ -2057,14 +2057,14 @@ fn explicit_work_is_default_and_explains_its_context_dependencies_and_outcomes()
 
 #[cfg(unix)]
 #[test]
-fn selected_work_keeps_its_identity_and_open_feedback_keeps_its_recipient() {
+fn logical_work_owner_targets_its_native_thread_and_pins_an_open_draft() {
     let peer = Peer::new("control");
     let home = Home::new();
     home.session("root-goal", "/projects/parser", false);
     home.goal("root-goal", "Parser work");
-    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root-goal","agent_path":"/root/parser","agent_nickname":"Parser"}}}}}
 "#).unwrap();
-    let owner = serde_json::json!({"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"child-thread"});
+    let owner = serde_json::json!({"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/parser"});
     save_work_report(
         &home,
         "root-goal",
@@ -2099,6 +2099,10 @@ fn selected_work_keeps_its_identity_and_open_feedback_keeps_its_recipient() {
     assert!(refreshed.contains("Recipient: Parser"), "{refreshed}");
     key(&mut ui, KeyCode::Char('f'));
     type_text(&mut ui, "Keep the public interface");
+    // A refreshed duplicate makes the reported alias ambiguous while the
+    // already-open draft keeps the exact recipient chosen before that change.
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-conflict.jsonl"), r#"{"type":"session_meta","payload":{"id":"conflicting-child","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_path":"/root/parser"}}
+"#).unwrap();
     save_work_report(
         &home,
         "root-goal",
@@ -2222,7 +2226,7 @@ fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration()
     home.session("goal", "/projects/steering", false);
     home.goal("goal", "Understand steering");
     let child = home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl");
-    std::fs::write(&child, r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
+    std::fs::write(&child, r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser","agent_path":"/root/parser"}}
 "#).unwrap();
     let message = serde_json::json!({"timestamp":"2026-10-27T10:00:00Z","type":"response_item","payload":{"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":"Checking child input"}]}});
     let command = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"child-command","arguments":serde_json::json!({"cmd":"cargo test --parser","description":"Check child delivery"}).to_string()}});
@@ -2245,7 +2249,7 @@ fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration()
         "goal",
         0,
         serde_json::json!({"id":"steering","label":"Inspect child command",
-        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"/root/parser"},
         "status":"active","source":"worker"}),
     );
     let mut ui = home.ui();
@@ -2945,4 +2949,109 @@ fn work_details_prioritize_task_context_and_keep_full_commands_behind_commands()
     key(&mut ui, KeyCode::Char('x'));
     wait_text(&mut ui, "cargo test --known-public-command");
     ui.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn ambiguous_work_owner_disables_controls_without_rerouting_to_coordinator() {
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Ambiguous ownership");
+    for native in ["child-thread", "other-child"] {
+        let meta = serde_json::json!({"type":"session_meta","payload":{
+            "id":native,"session_id":"root-goal","thread_source":"subagent",
+            "source":{"subagent":{"thread_spawn":{"parent_thread_id":"root-goal","agent_path":"/root/parser"}}}
+        }});
+        std::fs::write(
+            home.0
+                .join(format!("codex/sessions/2026/10/23/rollout-{native}.jsonl")),
+            format!("{meta}\n"),
+        )
+        .unwrap();
+    }
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({
+            "id":"parser","label":"Resolve parser ownership","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/parser"}
+        }),
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Resolve parser ownership");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = wait_text(&mut ui, "Guidance unavailable: owner path is ambiguous");
+    assert!(shown.contains("Owner ID: /root/parser"), "{shown}");
+    assert!(
+        shown.contains("Queue unavailable: owner path is ambiguous"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Stop unavailable: owner path is ambiguous"),
+        "{shown}"
+    );
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(&mut ui, "Feedback unavailable: owner path is ambiguous");
+    for action in [KeyCode::F(2), KeyCode::F(3), KeyCode::F(4)] {
+        key(&mut ui, action);
+        wait_text(&mut ui, "owner path is ambiguous");
+    }
+    ui.shutdown();
+    peer.finish();
+}
+
+#[cfg(unix)]
+#[test]
+fn missing_work_owner_is_explained_without_matching_a_similar_agent_name() {
+    let peer = Peer::new("observe");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Missing ownership");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_path":"/root/different","agent_nickname":"/root/missing"}}
+"#).unwrap();
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({
+            "id":"parser","label":"Missing parser ownership","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"/root/missing"}
+        }),
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Missing parser ownership");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = wait_text(
+        &mut ui,
+        "Guidance unavailable: owner path has no native match",
+    );
+    assert!(shown.contains("Owner ID: /root/missing"), "{shown}");
+    key(&mut ui, KeyCode::Char('f'));
+    wait_text(
+        &mut ui,
+        "Feedback unavailable: owner path has no native match",
+    );
+    for action in [KeyCode::F(2), KeyCode::F(3), KeyCode::F(4)] {
+        key(&mut ui, action);
+    }
+    ui.shutdown();
+    peer.finish();
 }

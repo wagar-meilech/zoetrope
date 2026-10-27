@@ -4,6 +4,10 @@ Terminal UI for a global goal/agent graph, persistent local steering and Claude 
 
 ## Approved goal-console work
 
+For the current visual work graph and persistent tracking iteration, follow
+`docs/WORK-GRAPH-SPEC.md` and the approved frontier in `docs/WORK-GRAPH-PLAN.md`
+(issues #15–21). Keep the existing integration branch and PR #8.
+
 For continuation, start with `docs/HANDOFF.md`. Supporting research,
 implementation notes, review evidence and schema exports are consolidated in
 `docs/research/`; its README is the archive index. `docs/PAUSED-CHECKPOINT.md`

@@ -75,6 +75,7 @@ struct InventoryView {
     summaries: BTreeMap<SessionKey, WorkSummary>,
     versions: BTreeMap<SessionKey, Option<(u64, SystemTime)>>,
     agent_names: BTreeMap<AgentKey, String>,
+    owner_resolutions: BTreeMap<AgentKey, crate::console::OwnerResolution>,
     activity: Option<(AgentKey, Option<crate::console::RecordedActivity>)>,
     sources: BTreeMap<SessionKey, PathBuf>,
     selection: Option<FleetNodeId>,
@@ -144,6 +145,7 @@ impl Inventory {
                 let view = InventoryView {
                     ready: true,
                     agent_names: console.agent_names(),
+                    owner_resolutions: console.owner_resolutions(),
                     activity,
                     graph: console.graph().clone(),
                     query: query.clone(),
@@ -434,7 +436,9 @@ impl FleetConsole {
                 .as_ref()
                 .and_then(session_key)
                 .is_some_and(|key| self.view.versions.get(key) != view.versions.get(key));
-            changed = self.view.activity != view.activity
+            let owners_changed = self.view.owner_resolutions != view.owner_resolutions;
+            changed = owners_changed
+                || self.view.activity != view.activity
                 || self.view.agent_names != view.agent_names
                 || self.view.ready != view.ready
                 || self.view.query != view.query
@@ -443,6 +447,9 @@ impl FleetConsole {
                 || selection_changed
                 || self.view.errors != view.errors;
             self.view = view;
+            if owners_changed {
+                self.select_recipient(self.control_target());
+            }
             if let Some((key, expanded)) = &self.expanding
                 && self
                     .view
@@ -784,6 +791,9 @@ impl FleetConsole {
         self.snapshots.get(id)
     }
     fn runtime_word(&self) -> &str {
+        if let Some(reason) = self.owner_unavailable_reason() {
+            return reason;
+        }
         if self
             .selected_agent()
             .is_some_and(|agent| agent.session.provider == crate::provider::Provider::Claude)
@@ -800,7 +810,10 @@ impl FleetConsole {
     }
     fn control_availability(&self, mode: FeedbackMode) -> Result<&'static str, &'static str> {
         use crate::control::RuntimeStatus;
-        let target = self.control_target().ok_or("select a goal or agent")?;
+        let target = self.control_target().ok_or_else(|| {
+            self.owner_unavailable_reason()
+                .unwrap_or("select a goal or agent")
+        })?;
         if target.session.provider != crate::provider::Provider::Codex {
             return Err("transcript viewing only");
         }
@@ -865,7 +878,11 @@ impl FleetConsole {
             return;
         }
         let Some(target) = self.control_target() else {
-            self.status = "Select a goal or agent first".into();
+            self.status = format!(
+                "Control unavailable: {}",
+                self.owner_unavailable_reason()
+                    .unwrap_or("select a goal or agent")
+            );
             return;
         };
         if let Err(reason) = self.control_availability(mode) {
@@ -912,9 +929,37 @@ impl FleetConsole {
             self.status = "Control queue is busy; nothing was sent".into();
         }
     }
+    fn owner_unavailable_reason(&self) -> Option<&'static str> {
+        if self.pane == Pane::Feedback && self.feedback_target.is_some() {
+            return None;
+        }
+        self.work_selection.as_ref()?;
+        let Some(owner) = self.selected_work_owner() else {
+            return Some("selected work has no native owner");
+        };
+        if !owner.agent_id.starts_with('/') {
+            return None;
+        }
+        match self.view.owner_resolutions.get(&owner) {
+            Some(crate::console::OwnerResolution::Resolved(_)) => None,
+            Some(crate::console::OwnerResolution::Ambiguous) => Some("owner path is ambiguous"),
+            None => Some("owner path has no native match"),
+        }
+    }
+    fn resolved_owner(&self, reported: &AgentKey) -> Option<AgentKey> {
+        if !reported.agent_id.starts_with('/') {
+            return Some(reported.clone());
+        }
+        match self.view.owner_resolutions.get(reported) {
+            Some(crate::console::OwnerResolution::Resolved(owner)) => Some(owner.clone()),
+            _ => None,
+        }
+    }
     fn selected_agent(&self) -> Option<AgentKey> {
         if self.work_selection.is_some() {
-            return self.selected_work_owner();
+            return self
+                .selected_work_owner()
+                .and_then(|owner| self.resolved_owner(&owner));
         }
         match self.view.selection.as_ref()? {
             FleetNodeId::Session(key) => Some(AgentKey {
@@ -1071,6 +1116,12 @@ impl FleetConsole {
             self.edit_kind = Some(EditKind::Feedback);
             self.edit = Some(Editor::new(text));
             self.status = "Editing feedback · Esc saves draft".into();
+        } else {
+            self.status = format!(
+                "Feedback unavailable: {}",
+                self.owner_unavailable_reason()
+                    .unwrap_or("select a goal or agent")
+            );
         }
     }
     fn update_state(&mut self, key: SessionKey, update: WorkUpdate, message: &str) -> bool {

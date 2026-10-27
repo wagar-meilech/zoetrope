@@ -13,7 +13,35 @@ Status: approved by “Approved, proceed.” All six tickets, blocking edges, me
 - Source-managed fields stay attributable; supplemental reports fill gaps. Invalid source edits retain the last good view and show a warning. No source status automatically verifies an outcome.
 - Passive monitoring stays local under the existing no-internet constraint. No additional model is introduced.
 
-## Proposed vertical tickets
+## Live task frontier
+
+This table is the working-status source; numbered tickets below define acceptance.
+Statuses are coordinator reports, distinct from outcome verification and issue closure.
+
+| ID | Task | Status | Owner | Depends on | Next |
+| --- | --- | --- | --- | --- | --- |
+| WG-1 | Navigate a real work/dependency graph | active | /root/wg1_canvas | None | Finish public graph/navigation regressions and integrate. |
+| WG-2 | Steer the actual work owner | done | /root/wg2_owner | None | Integrated. |
+| WG-3 | Follow structured project artifacts locally | active | /root/wg3_sources | None | Complete automatic refresh, source recovery and bounded imports. |
+| WG-4 | Activate the reusable tracking skill | planned | main | WG-3 | Package the skill and project setup using the integrated tracking commands. |
+| WG-5 | Make the graph and controls visually legible | planned | main | WG-1 | Apply status styling, compact layout, progress and color controls. |
+| WG-6 | Integrate, review and update the live installation | planned | main | WG-2, WG-4, WG-5 | Run combined reviews/checks and update the app/skill. |
+
+## Published issues
+
+The [spec is #15](https://github.com/wagar-meilech/zoetrope/issues/15).
+All six tickets are native sub-issues; blocking edges are also native GitHub dependencies.
+
+| Ticket | Issue | Blocked by |
+| --- | --- | --- |
+| WG-1 | [#16](https://github.com/wagar-meilech/zoetrope/issues/16) | None |
+| WG-2 | [#17](https://github.com/wagar-meilech/zoetrope/issues/17) | None |
+| WG-3 | [#18](https://github.com/wagar-meilech/zoetrope/issues/18) | None |
+| WG-4 | [#19](https://github.com/wagar-meilech/zoetrope/issues/19) | #18 |
+| WG-5 | [#20](https://github.com/wagar-meilech/zoetrope/issues/20) | #16 |
+| WG-6 | [#21](https://github.com/wagar-meilech/zoetrope/issues/21) | #17, #19, #20 |
+
+## Approved vertical tickets
 
 1. **WG-1 — Navigate a real work/dependency graph**
    - **Blocked by:** None.
@@ -56,4 +84,4 @@ Yes, looks good
 
 <!-- Write here. -->
 
-The exact instruction is in [to-tickets](/home/dust_60/.codex/.tmp/marketplaces/mattpocock/skills/engineering/to-tickets/SKILL.md): “Iterate until the user approves the breakdown.” After that approval, proceed through issue publication, isolated TDD implementation worktrees, merger integration, independent review, installation and live observation without requesting the same approval again.
+The user approved the breakdown and its dependencies. Continue issue publication, isolated TDD worktrees, merger integration, independent review, installation and live observation without requesting the same approval again.
