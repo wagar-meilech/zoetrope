@@ -1,19 +1,61 @@
 # Reporting tracked Zoetrope work
 
-## Opt in for a project
+## Project tracking
 
-Copy this guide into a chosen project as `docs/ZOETROPE-REPORTING.md`, then add this small pointer to that project's existing `AGENTS.md` or `CLAUDE.md`:
+The source installer ships [zoetrope-tracking](../skills/zoetrope-tracking/SKILL.md)
+into `${CODEX_HOME:-$HOME/.codex}/skills/zoetrope-tracking`. Enable tracking (`T`)
+in the console prepares an editable exact-target request; the operator explicitly
+sends or queues it. Installation and draft preparation do not opt in a project.
 
-> Tracked Zoetrope work: when a tracking request supplies the provider, full session ID and state root, read `docs/ZOETROPE-REPORTING.md` once and report meaningful transitions.
+The skill owns authorized setup through the project's existing instruction/tracker
+convention, including Matt-style ticket workflows. It selects the current goal's
+existing task artifacts, adds only missing structured fields and a small managed
+conditional pointer, and leaves upstream skills intact. Its
+[setup reference](../skills/zoetrope-tracking/references/project-setup.md) is the
+authority for setup, continuation and managed-pointer removal; its
+[source reference](../skills/zoetrope-tracking/references/sources.md) describes
+supported tables/tickets and the minimal non-Matt fallback.
 
-The operator chooses the projects. Keep their existing instructions intact. With the convention installed, a tracking request can supply the exact identity/root and refer to this guide instead of repeating the full reporting procedure.
+Project opt-in persists separately from each exact native goal/source binding.
+On later coordinator startup, check local status using the current validated
+identity; an old committed pointer cannot override `project_opt_in: false`.
+For Codex, `--session auto` validates `CODEX_SESSION_ID` and `CODEX_THREAD_ID`
+against their public metadata/ancestry. Explicit UI-supplied roots also work.
+Runtime paths/session IDs remain local rather than in project instructions.
 
-## Agent convention
+```bash
+zoe tracking status --project '/absolute/project' --provider codex --session 'EXACT_ROOT' --root '/exact/state/root'
+zoe tracking disable --project '/absolute/project' --provider codex --session 'EXACT_ROOT' --root '/exact/state/root'
+```
 
-1. Use the CLI executable, provider, full native session ID and exact state root supplied by the tracking request. If any is missing, obtain it before writing. A project path or title does not establish a session identity.
-2. Read compact context when tracking begins, and after a conflict or scope change. Reuse returned revisions between reports. If criteria are missing, propose concise editable `set_goal` outcomes for the agreed scope, including tests and final checks; keep them unverified until evidence exists.
-3. Publish short, stable work items at meaningful transitions: plan or scope changes, work starting/completing, a blocker, an important finding, or verification. Batch related changes; routine commands and file operations need no separate report.
-4. Describe the actual owner and useful purpose/change/next/blocker. Record dependencies and outcome links only when known. Keep reported work status separate from verified goal evidence.
+Use the supplied executable and actual values. Disable stops every binding for
+that project while preserving history/evidence; the skill removes only managed
+instruction additions. `zoe tracking --help` documents enable/source selectors
+and optional one-shot sync. Normal console refresh imports ordinary artifact
+edits locally on its worker every five seconds. Sources are attributed local
+projections, not freshly fetched remote issue state; source status never verifies
+outcomes.
+
+Workers maintain assigned tasks in their usual artifacts at meaningful
+transitions. They need not reload this guide or repeat setup/report JSON for
+supported sources. Keep owner/dependencies honest. Source-managed fields require
+source edits; optional reports enrich fields outside that source's schema.
+
+## Compact reporting fallback
+
+If the installed skill is unavailable or no suitable source is selected, retain
+existing native plans and compact work reports. Use the CLI executable, provider,
+full native root and state root supplied by the tracking request. Missing identity
+must be resolved before writing; project names, cwd and recency do not establish
+it. Read compact context at tracking start and after conflicts/scope changes.
+Propose editable completion criteria when missing, including relevant tests and
+final checks; keep them unverified until actual evidence exists.
+
+Use short stable work items at meaningful plan/scope/status/blocker transitions.
+Describe actual owner and useful purpose/change/next context; batch related
+changes. The examples below apply to fallback or optional supplements, not every
+routine source edit. For source tasks, obtain the stable `source:...` ID and field
+provenance from context before supplementing; never merge by label.
 
 ## Compact read and partial reports
 
@@ -23,7 +65,7 @@ These are syntax examples. Replace `zoe` with the supplied CLI executable (prese
 zoe state --root '/exact/state/root' context codex 'SESSION_ID'
 ```
 
-The response contains the current goal/revision, compact criteria/progress, work reports and recorded plans. It excludes feedback, questions and delivery history. If relevant work is omitted, continue from `next_work_offset`:
+The response contains the current goal/revision, compact criteria/progress, effective source tasks, work reports and recorded plans. It excludes feedback, questions and delivery history. If relevant work is omitted, continue from `next_work_offset`:
 
 ```bash
 zoe state --root '/exact/state/root' context codex 'SESSION_ID' --offset 16 --limit 8

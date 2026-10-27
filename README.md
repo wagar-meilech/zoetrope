@@ -64,8 +64,10 @@ cd zoetrope
 ```
 
 The installer builds a locked release and places `zoe` and `zoe-update` in
-`~/.local/bin` on Linux or macOS. If that directory is not on your `PATH`, add
-this line to your shell startup file and open a new terminal:
+`~/.local/bin` on Linux or macOS. It also installs the normally discoverable
+`zoetrope-tracking` skill into `${CODEX_HOME:-$HOME/.codex}/skills`. Installation
+alone does not enable tracking in any project. If `~/.local/bin` is not on your
+`PATH`, add this line to your shell startup file and open a new terminal:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -80,10 +82,11 @@ zoe-update   # rebuild and reinstall changes from this checkout
 
 Keep the checkout in a permanent location. Updates need the Rust toolchain and
 Cargo; normal launch runs the installed binary without Cargo or a background
-service. `zoe-update` uses the same checkout, branch and locked dependencies. It
-does not pull Git changes or switch branches. A failed build keeps the installed
-commands usable; successful updates replace the binary atomically, allowing
-already running processes to continue.
+service. `zoe-update` uses the same checkout, branch, locked dependencies and skill
+destination, updating the app and packaged skill together. It does not pull Git
+changes or switch branches. Unrelated user skills and extra files are preserved.
+A failed build keeps the installed commands and skill usable; successful updates
+replace the binary atomically, allowing already running processes to continue.
 
 For another destination, run `./scripts/install.sh --bin-dir "$HOME/bin"` and add
 that directory to `PATH`. The updater remembers the chosen directory and works
@@ -160,6 +163,18 @@ Give it a directory, or use `--project`, and it finds the newest session in that
 project and follows it live. File/ID/project views retain the replay controls:
 scrub, follow, pause and jump back to live. Bare `zoe` opens the fleet console:
 `H` switches current/history, `/` searches and `?` shows help.
+
+In a selected goal, **Enable tracking** (`T`) prepares an editable request for
+its coordinator; send or queue it explicitly. The request supplies the installed
+skill/executable and exact local identity. Authorized setup reuses the project
+tracker and task artifacts, adding only missing structured fields and a small
+managed pointer. Normal task edits then refresh the Work graph locally without
+repeated JSON reports. Later goals bind their own native identity and source
+subset; a local project disable takes precedence over committed instructions.
+Projects without a tracker can keep native plans/reports or establish one minimal
+task document seeded with known work. Source completion remains separate from
+verified outcome evidence. See [tracking and reporting](docs/AGENT-REPORTING.md)
+for status/disable commands and the fallback when the skill is unavailable.
 
 The same engine also runs [in the browser](https://zoetrope.furkankly.dev/app),
 compiled to WebAssembly via [ratzilla](https://github.com/ratatui/ratzilla). Open a

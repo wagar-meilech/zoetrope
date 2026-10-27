@@ -42,6 +42,10 @@ impl Fixture {
         )
         .unwrap();
         std::fs::write(checkout.join("Cargo.lock"), "version = 4\n").unwrap();
+        let skill = checkout.join("skills/zoetrope-tracking/references");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.parent().unwrap().join("SKILL.md"), "packaged-v1\n").unwrap();
+        std::fs::write(skill.join("sources.md"), "source-contract-v1\n").unwrap();
         executable(
             &checkout.join("candidate"),
             "#!/bin/sh\nif [ \"${1:-}\" = --hold ]; then printf '%s\\n' ready; read ignored; fi\nprintf '%s\\n' installed-v1\n",
@@ -86,6 +90,7 @@ chmod 755 "$target/release/zoe"
         command
             .current_dir(&self.elsewhere)
             .env("HOME", &self.home)
+            .env("CODEX_HOME", self.root.join("codex home"))
             .env(
                 "PATH",
                 std::env::join_paths(std::iter::once(self.tools.clone()).chain(
@@ -258,4 +263,91 @@ fn an_existing_command_directory_is_rejected_before_installed_files_change() {
         "existing updater"
     );
     assert!(!destination.join("zoe/zoe").exists());
+}
+
+#[test]
+fn installation_and_updates_ship_the_skill_without_replacing_unrelated_content() {
+    let fixture = Fixture::new();
+    let skill = fixture.root.join("codex home/skills/zoetrope-tracking");
+    let unrelated = fixture
+        .root
+        .join("codex home/skills/another-skill/SKILL.md");
+    std::fs::create_dir_all(unrelated.parent().unwrap()).unwrap();
+    std::fs::write(&unrelated, "user-owned skill").unwrap();
+    let destination = fixture.root.join("installed bin");
+    succeeds(&fixture.install(Some(&destination)));
+    assert_eq!(
+        std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        "packaged-v1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(skill.join("references/sources.md")).unwrap(),
+        "source-contract-v1\n"
+    );
+    std::fs::write(skill.join("personal-note"), "user-owned note").unwrap();
+    std::fs::write(
+        fixture.checkout.join("skills/zoetrope-tracking/SKILL.md"),
+        "packaged-v2\n",
+    )
+    .unwrap();
+    let updater = destination.join("zoe-update");
+    succeeds(&fixture.command(&updater).output().unwrap());
+    assert_eq!(
+        std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        "packaged-v2\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(skill.join("personal-note")).unwrap(),
+        "user-owned note"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&unrelated).unwrap(),
+        "user-owned skill"
+    );
+    std::fs::write(
+        fixture.checkout.join("skills/zoetrope-tracking/SKILL.md"),
+        "unbuilt-v3\n",
+    )
+    .unwrap();
+    std::fs::write(fixture.checkout.join("build-fails"), "build failure").unwrap();
+    assert!(!fixture.command(&updater).output().unwrap().status.success());
+    assert_eq!(
+        std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        "packaged-v2\n"
+    );
+}
+
+#[test]
+fn updating_a_packaged_file_replaces_a_user_symlink_without_overwriting_its_target() {
+    let fixture = Fixture::new();
+    let destination = fixture.root.join("installed bin");
+    succeeds(&fixture.install(Some(&destination)));
+    let installed = fixture
+        .root
+        .join("codex home/skills/zoetrope-tracking/SKILL.md");
+    let personal = fixture.root.join("personal skill text");
+    std::fs::write(&personal, "user-owned content").unwrap();
+    std::fs::remove_file(&installed).unwrap();
+    std::os::unix::fs::symlink(&personal, &installed).unwrap();
+    succeeds(
+        &fixture
+            .command(&destination.join("zoe-update"))
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(
+        std::fs::read_to_string(&personal).unwrap(),
+        "user-owned content"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&installed).unwrap(),
+        "packaged-v1\n"
+    );
+    assert!(
+        !installed
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
 }
