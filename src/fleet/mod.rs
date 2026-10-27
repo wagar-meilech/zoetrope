@@ -2131,9 +2131,11 @@ impl FleetConsole {
                 }),
                 _ => None,
             };
-            let detail = native_id
+            let runtime_status = native_id
                 .and_then(|id| self.snapshots.get(id))
-                .map(|s| control_worker::status_word(&s.status).to_owned())
+                .map(|snapshot| &snapshot.status);
+            let detail = runtime_status
+                .map(|status| control_worker::status_word(status).to_owned())
                 .unwrap_or_else(|| {
                     if node.archived {
                         "Archived".into()
@@ -2159,7 +2161,7 @@ impl FleetConsole {
                 String::new()
             };
             let card = Card {
-                cue: visual::Cue::fleet(&node.id, &detail),
+                cue: visual::Cue::fleet(&node.id, runtime_status, node.archived),
                 bar,
                 title,
                 detail,

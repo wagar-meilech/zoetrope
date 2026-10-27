@@ -249,12 +249,12 @@ impl FleetConsole {
         }
         let mut spans = Vec::new();
         for (at, (label, status)) in [
-            ("done", "reported done"),
-            ("active", "in progress"),
-            ("blocked", "blocked"),
-            ("planned", "planned"),
-            ("cancelled", "cancelled"),
-            ("unknown", "unknown"),
+            ("done", Some(WorkStatus::Done)),
+            ("active", Some(WorkStatus::Active)),
+            ("blocked", Some(WorkStatus::Blocked)),
+            ("planned", Some(WorkStatus::Planned)),
+            ("cancelled", Some(WorkStatus::Cancelled)),
+            ("unknown", None),
         ]
         .into_iter()
         .enumerate()
@@ -446,7 +446,8 @@ impl FleetConsole {
             .map(|entry| work_graph::Task {
                 id: work_graph::selection_id(&entry.selection()),
                 title: entry.label().into(),
-                status: entry.display_status(),
+                status: entry.status(),
+                status_label: entry.display_status(),
                 owner: entry.owner_label(self),
                 dependencies: entry.dependencies().cloned(),
                 reference: entry.reference().map(str::to_owned),
@@ -476,6 +477,10 @@ impl FleetConsole {
             self.scroll = 0;
             self.select_recipient(self.selected_agent());
         }
+    }
+    pub(super) fn selected_work_status(&self) -> Option<WorkStatus> {
+        let entries = self.work_entries();
+        current_entry(&entries, self.work_selection.as_ref()).and_then(|at| entries[at].status())
     }
     pub(super) fn inspection_text(&self, compact: bool, width: u16) -> String {
         let activity = if self.work_canvas {

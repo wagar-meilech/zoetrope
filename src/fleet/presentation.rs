@@ -405,7 +405,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         };
         frame.render_widget(
             Paragraph::new(if ui.pane == Pane::Graph {
-                visual::details(&details)
+                visual::details(&details, ui.selected_work_status())
             } else {
                 ratatui::text::Text::raw(&details)
             })

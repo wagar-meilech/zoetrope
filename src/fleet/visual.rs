@@ -1,5 +1,7 @@
 //! Shared visual vocabulary for cached Fleet and Work presentation.
 use super::*;
+use crate::control::RuntimeStatus;
+use crate::workstate::WorkStatus;
 
 pub(super) const ACCENT: Color = Color::Indexed(178);
 
@@ -9,48 +11,56 @@ pub(super) struct Cue {
     pub color: Color,
 }
 impl Cue {
-    pub fn work(status: &str) -> Self {
+    pub fn work(status: Option<WorkStatus>) -> Self {
         match status {
-            "planned" => Self {
+            Some(WorkStatus::Planned) => Self {
                 glyph: "○",
                 color: Color::LightBlue,
             },
-            "in progress" | "Working" => Self {
+            Some(WorkStatus::Active) => Self {
                 glyph: "●",
                 color: Color::Cyan,
             },
-            "blocked"
-            | "Waiting for your answer"
-            | "Waiting for approval in Codex"
-            | "Codex reported a problem" => Self {
+            Some(WorkStatus::Blocked) => Self {
                 glyph: "!",
                 color: Color::LightRed,
             },
-            "reported done" => Self {
+            Some(WorkStatus::Done) => Self {
                 glyph: "✓",
                 color: Color::Green,
             },
-            "cancelled" => Self {
+            Some(WorkStatus::Cancelled) => Self {
                 glyph: "×",
                 color: Color::DarkGray,
             },
-            "Archived" => Self {
-                glyph: "▤",
-                color: Color::DarkGray,
-            },
-            "Idle in Codex" | "Not loaded in Codex" => Self {
-                glyph: "○",
-                color: Color::DarkGray,
-            },
-            _ => Self {
+            None => Self {
                 glyph: "?",
                 color: Color::Magenta,
             },
         }
     }
-    pub fn fleet(id: &FleetNodeId, status: &str) -> Self {
-        if !status.is_empty() {
-            return Self::work(status);
+    pub fn runtime(status: &RuntimeStatus) -> Self {
+        match status {
+            RuntimeStatus::Working => Self::work(Some(WorkStatus::Active)),
+            RuntimeStatus::WaitingForAnswer
+            | RuntimeStatus::WaitingForApproval
+            | RuntimeStatus::Error => Self::work(Some(WorkStatus::Blocked)),
+            RuntimeStatus::Idle | RuntimeStatus::NotLoaded => Self {
+                glyph: "○",
+                color: Color::DarkGray,
+            },
+            RuntimeStatus::Unknown => Self::work(None),
+        }
+    }
+    pub fn fleet(id: &FleetNodeId, status: Option<&RuntimeStatus>, archived: bool) -> Self {
+        if let Some(status) = status {
+            return Self::runtime(status);
+        }
+        if archived {
+            return Self {
+                glyph: "▤",
+                color: Color::DarkGray,
+            };
         }
         match id {
             FleetNodeId::Project(_) => Self {
@@ -77,12 +87,12 @@ pub(super) fn legend() -> ratatui::text::Line<'static> {
     use ratatui::text::Span;
     let mut spans = vec![Span::raw("Legend: ")];
     for (label, status) in [
-        ("○ planned", "planned"),
-        ("● active", "in progress"),
-        ("! blocked", "blocked"),
-        ("✓ done", "reported done"),
-        ("× cancelled", "cancelled"),
-        ("? unknown", "unknown"),
+        ("○ planned", Some(WorkStatus::Planned)),
+        ("● active", Some(WorkStatus::Active)),
+        ("! blocked", Some(WorkStatus::Blocked)),
+        ("✓ done", Some(WorkStatus::Done)),
+        ("× cancelled", Some(WorkStatus::Cancelled)),
+        ("? unknown", None),
     ] {
         spans.push(Span::styled(
             format!("{label}  "),
@@ -112,17 +122,13 @@ impl rataflow::EdgeContent for SemanticEdge {
 }
 
 /// Apply the same semantic colors to focused details, retaining field labels.
-pub(super) fn details(text: &str) -> ratatui::text::Text<'_> {
+pub(super) fn details(text: &str, work_status: Option<WorkStatus>) -> ratatui::text::Text<'_> {
     use ratatui::text::{Line, Span, Text};
     Text::from(
         text.lines()
             .map(|line| {
-                let status = line.strip_prefix("Status: ").or_else(|| {
-                    line.strip_prefix("› [")
-                        .and_then(|tail| tail.split_once(']').map(|(status, _)| status))
-                });
-                if let Some(status) = status {
-                    Line::styled(line, Style::default().fg(Cue::work(status).color))
+                if line.starts_with("Status: ") || line.starts_with("› [") {
+                    Line::styled(line, Style::default().fg(Cue::work(work_status).color))
                 } else if line.starts_with("Blocker:") {
                     Line::styled(line, Style::default().fg(Color::LightRed))
                 } else if ["Purpose:", "Next:", "Owner:", "Selected work:"]
