@@ -20,11 +20,11 @@ Statuses are coordinator reports, distinct from outcome verification and issue c
 
 | ID | Task | Status | Owner | Depends on | Next |
 | --- | --- | --- | --- | --- | --- |
-| WG-1 | Navigate a real work/dependency graph | active | /root/wg1_canvas | None | Finish public graph/navigation regressions and integrate. |
+| WG-1 | Navigate a real work/dependency graph | done | /root/wg1_canvas | None | Integrated. |
 | WG-2 | Steer the actual work owner | done | /root/wg2_owner | None | Integrated. |
 | WG-3 | Follow structured project artifacts locally | active | /root/wg3_sources | None | Complete automatic refresh, source recovery and bounded imports. |
 | WG-4 | Activate the reusable tracking skill | planned | main | WG-3 | Package the skill and project setup using the integrated tracking commands. |
-| WG-5 | Make the graph and controls visually legible | planned | main | WG-1 | Apply status styling, compact layout, progress and color controls. |
+| WG-5 | Make the graph and controls visually legible | active | /root/wg5_visual | WG-1 | Apply status styling, compact layout, progress and color controls. |
 | WG-6 | Integrate, review and update the live installation | planned | main | WG-2, WG-4, WG-5 | Run combined reviews/checks and update the app/skill. |
 
 ## Published issues
