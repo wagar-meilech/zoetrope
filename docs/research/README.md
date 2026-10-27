@@ -8,6 +8,28 @@ validation and final review resolutions take precedence.
 Source links retain the original research's line numbers; use code search if
 subsequent changes have moved a definition.
 
+## Visual work graph and persistent tracking
+
+The [approved specification](../WORK-GRAPH-SPEC.md),
+[answered questions](../WORK-GRAPH-QUESTIONS.md) and
+[live task frontier](../WORK-GRAPH-PLAN.md) describe issues #15–21.
+Implementation is integrated; final review fixes/checks and installation remain
+under WG-6 until the frontier is marked complete.
+
+| Work | Evidence |
+| --- | --- |
+| Work graph and navigation | [WG-1](wg-1-implementation.md) |
+| Exact native ownership | [WG-2](wg-2-implementation.md) |
+| Local source imports | [WG-3](wg-3-implementation.md), [public source contract](wg-3-source-contract.md) |
+| Tracking skill and installer | [WG-4](wg-4-implementation.md) |
+| Visual flow and color modes | [WG-5](wg-5-implementation.md), [synthetic terminal captures](wg-5-terminal-captures/README.md) |
+| Integration and independent review | [integration](work-graph-integration.md), [review](work-graph-review.md), [fixes](work-graph-review-fixes.md) |
+
+The [tracking skill](../../skills/zoetrope-tracking/SKILL.md) is the authoritative
+entrypoint for project setup/continuation. Source imports use configured local
+artifacts; source status never verifies outcomes and the monitor does not poll
+remote trackers or call a model. Older sections below remain historical.
+
 ## Semantic-context continuation — 27 October 2026
 
 Current requirements: [accepted spec](../SEMANTIC-CONTEXT-SPEC.md),

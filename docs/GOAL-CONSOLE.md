@@ -5,9 +5,11 @@ goals and agents into an expanding graph. Selecting a goal shows its meaningful
 work and evidence-backed progress. `H` switches Current / All history, `/`
 searches, and `?` shows help. Selection stays with the same work during refresh.
 
-To run the current source checkout, build with `cargo build --release --locked`
-and launch `./target/release/zoe`. This semantic-context iteration was developed
-and checked on Linux; it has not been installed as a global `zoe` command here.
+The checkout installer provides `zoe` and `zoe-update` on your command path;
+see [Installation](../README.md#installation). Run `zoe-update` after local
+changes to build and atomically reinstall the app and tracking skill. Normal
+launch runs the compiled binary directly. The current iteration is checked on
+the connected Linux environment; earlier Mac evidence remains dated separately.
 
 Current emphasizes working agents and requests needing attention. Without a
 compatible live connection, recent transcript writes are a fallback signal;
@@ -38,7 +40,8 @@ A selected task's owner becomes the recipient for ordinary `f` steering. Before
 opening Work, arrows select goals in Fleet. Press `a` or **Agents** for agent
 inspection; `x` / **Commands** shows the selected owner's full cached public
 messages and shell command; `R` / **Replay** opens the saved activity graph.
-Commands stay behind that explicit route. Enter/Space expands agents in Agents.
+Commands stay behind that explicit route. Space expands or collapses agents
+in Fleet/Agents; Enter opens the goal's Work graph.
 
 Work detail shows its owner, source, recorded time and reported purpose/change/
 next action/blocker. Dependencies are shown only when declared: **not declared**
@@ -61,10 +64,11 @@ appear first; PageUp/PageDown scrolls the remaining detail.
 | `H` | Switch Current / All history. |
 | `/` | Search the graph. |
 | Up / Down or `j` / `k` | Navigate the fleet, or choose work after `w` focuses it. |
-| `w`, then arrows or `[` / `]` | Focus and select meaningful work. |
+| `w`, then arrows or `[` / `]` | Open the Work graph and select meaningful tasks. |
 | `a` / **Agents** in Work/Agents views | Open agent inspection; `w` returns to work. |
 | `x` / **Commands** in Work/Agents views | Read the selected owner's cached commands/public messages. |
-| Enter or Space | Open a goal's Work graph; expand/collapse agents in Agents. |
+| Enter | Open the selected goal's Work graph. |
+| Space in Fleet/Agents | Expand/collapse the goal's agents. |
 | Left / Right, `+` / `-`, `o`, `r` | Pan, zoom, fit the overview, restore readable size. |
 | `f` / **Steer** | Edit feedback for the selected recipient. |
 | `C` / **Coordinator** | Explicitly select this goal's coordinator; retain recipient-specific drafts. |
