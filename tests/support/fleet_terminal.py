@@ -6,6 +6,7 @@ import pathlib
 import pty
 import re
 import select
+import shlex
 import signal
 import struct
 import subprocess
@@ -17,6 +18,14 @@ import unicodedata
 executable, fixture_root, scenario = sys.argv[1:]
 fixture = pathlib.Path(fixture_root)
 peer = None
+command_environment = os.environ.copy()
+if scenario in ("tracking-cli", "criteria-cli"):
+    fake_bin = fixture / "fake-bin"
+    fake_bin.mkdir(exist_ok=True)
+    fake = fake_bin / "zoe"
+    fake.write_text("#!/bin/sh\necho incompatible-zoe >&2\nexit 72\n")
+    fake.chmod(0o755)
+    command_environment["PATH"] = str(fake_bin) + os.pathsep + command_environment.get("PATH", "")
 if scenario in ("replay", "mouse-replay"):
     socket_path = fixture / "codex/app-server-control/app-server-control.sock"
     socket_path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,7 +49,8 @@ if pid == 0:
     os.close(start_write)
     os.read(start_read, 1)
     os.close(start_read)
-    os.chdir(fixture / "project")
+    os.chdir(fixture if scenario in ("tracking-cli", "criteria-cli") else fixture / "project")
+    os.environ.update(command_environment)
     os.environ["CODEX_HOME"] = str(fixture / "codex")
     os.environ["ZOETROPE_STATE_DIR"] = str(fixture / "state")
     os.environ["TERM"] = "xterm-256color"
@@ -174,6 +184,39 @@ try:
                     break
                 receive(0.05)
         os.write(terminal, b"\x03")
+    if scenario in ("tracking-cli", "criteria-cli") and observations["fleet"]:
+        observations["fake_on_path"] = subprocess.check_output(
+            ["/bin/sh", "-c", "command -v zoe"], env=command_environment, text=True
+        ).strip() == str(fake)
+        expect("Inspect runtime fixture goal", compact=True)
+        key, operation = (b"T", "context") if scenario == "tracking-cli" else (b"A", "show")
+        os.write(terminal, key)
+        deadline = time.monotonic() + 3
+        command = None
+        while time.monotonic() < deadline:
+            saved = json.loads(subprocess.check_output([
+                executable, "state", "--root", str(fixture / "state"),
+                "show", "codex", "root-goal",
+            ]))
+            drafts = saved["record"]["drafts"]
+            if drafts:
+                command = next((line for line in drafts[0]["text"].splitlines()
+                                if " state --root " in line and f" {operation} " in line), None)
+                if command:
+                    break
+            receive(0.05)
+        observations["current_executable"] = bool(command) and shlex.split(command)[0] == os.path.realpath(executable)
+        result = subprocess.run(["/bin/sh", "-c", command or "exit 73"],
+                                cwd=fixture / "project", env=command_environment,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            record = json.loads(result.stdout)
+            goal = record["goal"] if operation == "context" else record["record"]["goal"]
+            observations["reads_exact_store"] = result.returncode == 0 and goal["title"] == "Inspect runtime fixture goal"
+        except (ValueError, KeyError, TypeError):
+            observations["reads_exact_store"] = False
+            observations["command_error"] = result.stderr
+        os.write(terminal, b"\x03")
     if scenario in ("replay", "mouse-replay") and observations["fleet"]:
         expect("Inspect runtime fixture goal", compact=True)
         os.write(terminal, b"H")
@@ -220,7 +263,7 @@ try:
         else:
             observations["replay"] = False
     try:
-        if scenario not in ("autosave", "paste"):
+        if scenario not in ("autosave", "paste", "tracking-cli", "criteria-cli"):
             os.write(terminal, b"q")
     except OSError:
         pass  # An invalid CLI invocation can exit before accepting input.

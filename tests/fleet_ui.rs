@@ -821,6 +821,7 @@ fn documents_open_only_the_explicitly_selected_exact_path() {
         state_root: home.0.join("state"),
         socket: home.0.join("none.sock"),
         documents: zoetrope::documents::DocumentLauncher::new(code, opener),
+        state_executable: None,
     });
     wait_text(&mut ui, "Selected: Compiler documents");
     key(&mut ui, KeyCode::Char('d'));

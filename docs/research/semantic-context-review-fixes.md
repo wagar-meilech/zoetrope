@@ -83,3 +83,39 @@ before handoff; integration owns the final browser/resource/package evidence.
 
 No dependency, hidden model, remote communication/publication, permission-policy
 change or native-transcript write was introduced. All work remains local.
+
+## Source-launch bootstrap follow-up
+
+After integration `a63850a`, a final executable issue was confirmed: native
+source-build launch could draft `zoe state` even when `zoe` was absent or an
+incompatible global binary was on PATH.
+
+The native Fleet launcher now captures `std::env::current_exe()` once before
+terminal/worker startup. Optional `FleetConfig.state_executable` carries that
+absolute path; embedded callers retain the previous `None` / literal `zoe`
+default. One helper validates and shell-quotes the executable/root for both
+tracking and criteria drafts, including their help commands. Invalid/non-UTF-8
+configured paths produce a visible error rather than a misleading draft. There
+is no global installation, file scan or drawing-time lookup.
+
+Public executable/PT Y RED/GREEN command:
+
+```sh
+CARGO_TARGET_DIR=/tmp/zoetrope-sem-build/review-fixes cargo test --locked --test fleet_runtime tracking_commands_use_the_running_executable_even_with_an_incompatible_cli_on_path -- --exact
+```
+
+RED: an owned PTY launched the actual binary with an incompatible fake `zoe`
+first on PATH. The saved tracking command invoked the fake CLI, reported
+`incompatible-zoe`, and failed to read the record; the native process exited
+cleanly. GREEN: both `T` and `A` run in separate owned PTY launches, persist their
+editable drafts, and the resulting context/show commands execute the current
+binary from the different agent project directory and read the exact absolute
+state store. The fake stays first on PATH throughout. No live native control or
+model action is requested.
+
+Full validation was rerun after the follow-up: **318 passed, 1 existing manual
+probe ignored** (the fleet lifecycle suite now has 7 tests). Strict all-target,
+all-feature Clippy passed on Rust 1.99 and 1.88, as did formatting and whitespace
+checks. One fully specified embedded FleetConfig fixture now explicitly sets
+`state_executable: None`. The exact final committed tree is rechecked before
+handoff; the handoff supplies its SHA.
