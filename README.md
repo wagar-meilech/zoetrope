@@ -60,9 +60,35 @@ across both.
 ```bash
 git clone --branch feat/goal-console https://github.com/wagar-meilech/zoetrope
 cd zoetrope
-cargo build --release --locked
-./target/release/zoe
+./scripts/install.sh
 ```
+
+The installer builds a locked release and places `zoe` and `zoe-update` in
+`~/.local/bin` on Linux or macOS. If that directory is not on your `PATH`, add
+this line to your shell startup file and open a new terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+The two daily commands are:
+
+```bash
+zoe          # launch the compiled app directly
+zoe-update   # rebuild and reinstall changes from this checkout
+```
+
+Keep the checkout in a permanent location. Updates need the Rust toolchain and
+Cargo; normal launch runs the installed binary without Cargo or a background
+service. `zoe-update` uses the same checkout, branch and locked dependencies. It
+does not pull Git changes or switch branches. A failed build keeps the installed
+commands usable; successful updates replace the binary atomically, allowing
+already running processes to continue.
+
+For another destination, run `./scripts/install.sh --bin-dir "$HOME/bin"` and add
+that directory to `PATH`. The updater remembers the chosen directory and works
+from other working directories. If you move the checkout, run the installer from
+its new location with the same `--bin-dir` to refresh the updater.
 
 The optional [VS Code bridge](editors/vscode/README.md) opens selected Markdown
 documents in MD Reader. The main app is Rust; no JavaScript service is required.
