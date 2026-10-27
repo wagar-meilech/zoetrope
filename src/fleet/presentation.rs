@@ -9,6 +9,10 @@ use ratatui::{
 #[derive(Clone, Copy)]
 pub(super) enum Action {
     Steer,
+    Work,
+    Agents,
+    Commands,
+    Replay,
     Tracking,
     Coordinator,
     Guidance,
@@ -23,6 +27,14 @@ fn activate(ui: &mut FleetConsole, action: Action) {
     match action {
         Action::Steer if ui.edit.is_none() => ui.open_feedback(),
         Action::Steer => {}
+        Action::Work if ui.edit.is_none() => ui.focus_work(),
+        Action::Work => {}
+        Action::Agents if ui.edit.is_none() => ui.open_agents(),
+        Action::Agents => {}
+        Action::Commands if ui.edit.is_none() => ui.open_commands(),
+        Action::Commands => {}
+        Action::Replay if ui.edit.is_none() => ui.request_replay(),
+        Action::Replay => {}
         Action::Tracking if ui.edit.is_none() => ui.prepare_tracking(),
         Action::Tracking => {}
         Action::Coordinator if ui.edit.is_none() => ui.select_coordinator(),
@@ -53,6 +65,10 @@ fn draw_actions(ui: &mut FleetConsole, frame: &mut Frame, area: Rect) -> Rect {
                 ("[Steer f]", Action::Steer, None),
                 ("[Coordinator C]", Action::Coordinator, None),
                 ("[Enable tracking T]", Action::Tracking, None),
+                ("[Work w]", Action::Work, None),
+                ("[Agents a]", Action::Agents, None),
+                ("[Commands x]", Action::Commands, None),
+                ("[Replay R]", Action::Replay, None),
             ]
         };
     let mut x = area.x;
@@ -146,7 +162,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         header,
     );
     let (canvas, panel) = if body.width < 96 {
-        let graph_height = if ui.pane == Pane::Graph && ui.edit.is_none() {
+        let graph_height = if ui.pane == Pane::Graph && !ui.work_mode && ui.edit.is_none() {
             body.height / 2
         } else {
             body.height.min(5)
@@ -183,6 +199,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         Pane::Criteria => " Completion criteria ",
         Pane::Documents => " Documents ",
         Pane::Feedback => " Feedback ",
+        Pane::Commands => " Commands and public activity ",
         Pane::Graph => " Selected work ",
     });
     let inner = block.inner(panel);
@@ -247,6 +264,11 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             Pane::Documents => ui.documents_text(),
             Pane::Questions => ui.questions_text(),
             Pane::Criteria => ui.criteria_text(),
+            Pane::Commands => format!(
+                "Owner: {}\n{}\nEsc back · PageUp/PageDown scroll",
+                ui.recipient_label(),
+                ui.activity_text()
+            ),
             Pane::Feedback => format!(
                 "{}\n{}\n\nf edit feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop",
                 ui.runtime_word(),
@@ -254,12 +276,7 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             ),
             Pane::Graph => {
                 if ui.selected_work.is_some() {
-                    format!(
-                        "{}\n{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
-                        ui.runtime_word(),
-                        ui.steering_text(),
-                        ui.activity_text()
-                    )
+                    ui.inspection_text(frame.area().width < 96, content.width)
                 } else {
                     "Select a goal or agent to inspect its work".into()
                 }
@@ -273,9 +290,9 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         );
     }
     let hints = if frame.area().width < 96 {
-        "H history  / search  f feedback  Q questions  ? help"
+        "H history  / search  w work  a agents  f steer  ? help"
     } else {
-        "H history  / search  f feedback  Q questions  c goals  d docs  ? help  q quit"
+        "H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit"
     };
     frame.render_widget(Paragraph::new(format!("{hints}\n{}", ui.status)), footer);
     if ui.show_help {
@@ -353,7 +370,7 @@ fn draw_help(ui: &FleetConsole, frame: &mut Frame) {
         area.height.saturating_sub(2),
     );
     frame.render_widget(Clear, popup);
-    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F5 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nT Enable tracking: prepare coordinator reporting draft\nC explicitly select Coordinator; drafts keep their owner\nb saved deliveries · d documents · Enter preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
+    let text = "H history · / search · ↑↓ select · Enter expand\n←→ pan · + / - zoom · o overview · r readable\nw select work · [ / ] or arrows choose · a Agents · x Commands\nf feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop\nQ saved questions · L listen for native questions\nTab next prompt · 1–9 choose · e write an answer\nF2 submit answer · F5 copy a closed request to feedback\nx dismiss locally; native request is unchanged\nc criteria · e edit · v attest/verify · u reopen\n[ / ] choose draft plan · a adopt as unverified\np checkpoint preference · A prepare criteria request\nT Enable tracking: prepare coordinator reporting draft\nC explicitly select Coordinator; drafts keep their owner\nb saved deliveries · d documents · Enter preview\nR read-only replay · q returns from replay\nI reveal internal helpers · PageUp/PageDown detail\nEsc back / save draft · Ctrl-U clear editor\nq / Ctrl-C quit · watching makes no model calls";
     frame.render_widget(
         Paragraph::new(text)
             .block(

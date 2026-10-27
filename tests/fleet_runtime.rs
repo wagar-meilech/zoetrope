@@ -136,3 +136,14 @@ fn replay_returns_to_the_same_goal_and_draft_without_live_actions() {
     assert_eq!(saved["record"]["drafts"][0]["text"], "Keep H/q R draft");
     assert_eq!(saved["record"]["outbox"], serde_json::json!([]));
 }
+
+#[test]
+fn clicking_replay_opens_recording_and_preserves_drafts_without_live_actions() {
+    let observed = Fixture::new().run("mouse-replay");
+    assert_eq!(observed["mouse"], true, "{observed}");
+    assert_eq!(observed["replay"], true, "{observed}");
+    assert_eq!(observed["returned"], true, "{observed}");
+    assert_eq!(observed["draft"], true, "{observed}");
+    assert_eq!(observed["peer_exit"], 0, "{observed}");
+    assert_eq!(observed["exit"], 0, "{observed}");
+}

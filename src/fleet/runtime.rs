@@ -231,30 +231,26 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
                         let _ = crate::handler::handle_event(&event, &mut detail.app);
                     }
                     dirty = true;
-                } else if key.is_some_and(|key| key.code == KeyCode::Char('R'))
-                    && app.edit.is_none()
-                    && !app.searching
-                    && !app.show_help
-                {
-                    if retiring
-                        .as_ref()
-                        .is_some_and(|task: &JoinHandle<()>| !task.is_finished())
-                    {
-                        app.status =
-                            "Previous recording is closing; try replay again shortly".into();
-                    } else if let Some(source) = app.replay_source() {
-                        retiring = None;
-                        replay = Some(Replay::open(source));
-                        if let Err(error) = repaint(&mut terminal) {
-                            break Err(error.into());
-                        }
-                    } else {
-                        app.status = "Select a goal with a local recording to replay".into();
-                    }
-                    dirty = true;
                 } else {
                     if app.handle_event(&event) {
                         break Ok(());
+                    }
+                    if std::mem::take(&mut app.replay_requested) {
+                        if retiring
+                            .as_ref()
+                            .is_some_and(|task: &JoinHandle<()>| !task.is_finished())
+                        {
+                            app.status =
+                                "Previous recording is closing; try replay again shortly".into();
+                        } else if let Some(source) = app.replay_source() {
+                            retiring = None;
+                            replay = Some(Replay::open(source));
+                            if let Err(error) = repaint(&mut terminal) {
+                                break Err(error.into());
+                            }
+                        } else {
+                            app.status = "Select a goal with a local recording to replay".into();
+                        }
                     }
                     dirty = true;
                 }

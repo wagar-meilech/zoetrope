@@ -6,6 +6,7 @@ mod editor;
 mod presentation;
 pub mod runtime;
 mod state_worker;
+mod work_view;
 use crate::console::AgentKey;
 use crate::control::ThreadSnapshot;
 use crate::workstate::FeedbackMode;
@@ -69,12 +70,14 @@ struct InventoryView {
     summaries: BTreeMap<SessionKey, WorkSummary>,
     versions: BTreeMap<SessionKey, Option<(u64, SystemTime)>>,
     agent_names: BTreeMap<AgentKey, String>,
+    activity: Option<(AgentKey, Option<crate::console::RecordedActivity>)>,
     sources: BTreeMap<SessionKey, PathBuf>,
     selection: Option<FleetNodeId>,
     errors: Vec<String>,
 }
 enum InventoryCommand {
     Navigate(ConsoleCommand),
+    Activity(AgentKey),
     Live(BTreeMap<String, crate::console::LiveThread>),
     Reload,
     Shutdown,
@@ -95,6 +98,7 @@ impl Inventory {
             let mut console = Console::with_state(roots, root);
             let mut refresh = Instant::now();
             let mut query = String::new();
+            let mut activity_target: Option<AgentKey> = None;
             loop {
                 if Instant::now() >= refresh {
                     console.refresh(SystemTime::now());
@@ -119,9 +123,24 @@ impl Inventory {
                         }
                     }
                 }
+                let activity = activity_target
+                    .clone()
+                    .or_else(|| match console.selection()? {
+                        FleetNodeId::Session(session) => Some(AgentKey {
+                            session: session.clone(),
+                            agent_id: "main".into(),
+                        }),
+                        FleetNodeId::Agent(agent) => Some(agent.clone()),
+                        _ => None,
+                    })
+                    .map(|target| {
+                        let activity = console.recorded_activity(&target);
+                        (target, activity)
+                    });
                 let view = InventoryView {
                     ready: true,
                     agent_names: console.agent_names(),
+                    activity,
                     graph: console.graph().clone(),
                     query: query.clone(),
                     summaries,
@@ -139,6 +158,7 @@ impl Inventory {
                         }
                         console.command(command);
                     }
+                    Ok(InventoryCommand::Activity(target)) => activity_target = Some(target),
                     Ok(InventoryCommand::Reload) => refresh = Instant::now(),
                     Ok(InventoryCommand::Live(threads)) => console.set_live_threads(threads),
                     Ok(InventoryCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -210,6 +230,7 @@ impl NodeContent for Card {
 #[derive(Clone, Copy, PartialEq)]
 enum Pane {
     Graph,
+    Commands,
     Feedback,
     Criteria,
     Questions,
@@ -251,6 +272,10 @@ pub struct FleetConsole {
     control_pending: bool,
     inflight_id: Option<String>,
     selected_work: Option<WorkRecord>,
+    work_selection: Option<work_view::Selection>,
+    work_mode: bool,
+    activity_request: Option<AgentKey>,
+    replay_requested: bool,
     work_reload: Option<SessionKey>,
     edit: Option<Editor>,
     feedback_target: Option<AgentKey>,
@@ -305,6 +330,10 @@ impl FleetConsole {
             control_pending: false,
             inflight_id: None,
             selected_work: None,
+            work_selection: None,
+            work_mode: true,
+            activity_request: None,
+            replay_requested: false,
             work_reload: None,
             edit: None,
             feedback_target: None,
@@ -371,7 +400,8 @@ impl FleetConsole {
                 .as_ref()
                 .and_then(session_key)
                 .is_some_and(|key| self.view.versions.get(key) != view.versions.get(key));
-            changed = self.view.agent_names != view.agent_names
+            changed = self.view.activity != view.activity
+                || self.view.agent_names != view.agent_names
                 || self.view.ready != view.ready
                 || self.view.query != view.query
                 || self.view.graph != view.graph
@@ -401,9 +431,10 @@ impl FleetConsole {
                     self.work_reload = Some(key.clone());
                 }
                 if selection_changed {
+                    self.work_selection = None;
                     self.selected_work = None;
                     self.pending_center = true;
-                    self.control.select(self.selected_agent());
+                    self.select_recipient(self.selected_agent());
                 }
             }
             if changed {
@@ -430,7 +461,7 @@ impl FleetConsole {
                         // edited while the disk worker was busy.
                         if self.edit.is_none() {
                             self.feedback_target = Some(item.target.clone());
-                            self.control.select(Some(item.target.clone()));
+                            self.select_recipient(Some(item.target.clone()));
                             self.feedback_open = true;
                             self.pane = Pane::Feedback;
                             self.edit_kind = Some(EditKind::Feedback);
@@ -454,7 +485,11 @@ impl FleetConsole {
                         node.label = goal.title.clone();
                     }
                 }
+                let previous_target = self.control_target();
                 self.selected_work = Some(record);
+                if self.control_target() != previous_target {
+                    self.select_recipient(self.control_target());
+                }
                 if self.feedback_requested {
                     self.open_feedback();
                 }
@@ -601,6 +636,16 @@ impl FleetConsole {
             self.document_pending = false;
             changed = true;
         }
+        if let Some(target) = self.activity_request.as_ref() {
+            if self
+                .inventory
+                .tx
+                .try_send(InventoryCommand::Activity(target.clone()))
+                .is_ok()
+            {
+                self.activity_request = None;
+            }
+        }
         changed
     }
     fn deliveries_text(&self) -> String {
@@ -662,7 +707,7 @@ impl FleetConsole {
                     .find(|n| n.id == FleetNodeId::Agent(target.clone()))
                 {
                     return if node.label == target.agent_id {
-                        "Agent".into()
+                        self.work_owner_label(target)
                     } else {
                         node.label.clone()
                     };
@@ -671,8 +716,14 @@ impl FleetConsole {
                     .snapshots
                     .get(&target.agent_id)
                     .and_then(|s| s.name.clone())
-                    .unwrap_or_else(|| "Selected agent".into());
+                    .unwrap_or_else(|| self.work_owner_label(target));
             }
+        }
+        if self.work_selection.is_some() {
+            return self
+                .selected_work_owner()
+                .map(|owner| self.work_owner_label(&owner))
+                .unwrap_or_else(|| "Selected work unavailable".into());
         }
         if matches!(self.view.selection, Some(FleetNodeId::Session(_))) {
             return "Coordinator".into();
@@ -683,6 +734,10 @@ impl FleetConsole {
             .and_then(|id| self.flow.node(&flow_id(id)))
             .map(|n| n.content.title.clone())
             .unwrap_or_else(|| "No agent selected".into())
+    }
+    fn select_recipient(&mut self, target: Option<AgentKey>) {
+        self.activity_request = target.clone();
+        self.control.select(target);
     }
     fn control_target(&self) -> Option<AgentKey> {
         self.feedback_target
@@ -829,6 +884,9 @@ impl FleetConsole {
         }
     }
     fn selected_agent(&self) -> Option<AgentKey> {
+        if self.work_selection.is_some() {
+            return self.selected_work_owner();
+        }
         match self.view.selection.as_ref()? {
             FleetNodeId::Session(key) => Some(AgentKey {
                 session: key.clone(),
@@ -1509,25 +1567,49 @@ impl FleetConsole {
     }
 
     fn activity_text(&self) -> String {
-        let Some(node) = self
-            .view
-            .selection
-            .as_ref()
-            .and_then(|id| self.view.graph.nodes.iter().find(|n| &n.id == id))
-        else {
+        let Some(target) = self.control_target() else {
             return String::new();
         };
-        let mut text = String::new();
-        if let Some(activity) = &node.activity {
-            text.push_str(&format!("\n\nActivity: {activity}"));
-        }
-        if let Some(command) = &node.command {
-            text.push_str(&format!("\n\nLatest shell command:\n{command}"));
-            if let Some(purpose) = &node.purpose {
-                text.push_str(&format!("\nPurpose: {purpose}"));
+        if let Some((owner, activity)) = self
+            .view
+            .activity
+            .as_ref()
+            .filter(|(owner, _)| owner == &target)
+        {
+            let Some(activity) = activity else {
+                return format!(
+                    "\nNo indexed public activity for {}",
+                    self.producer_label(owner)
+                );
+            };
+            let mut text = String::new();
+            if let Some(narration) = &activity.narration {
+                text.push_str(&format!(
+                    "\nRecorded public message\nSource: {}\nRecorded: {}\n{}\n",
+                    activity
+                        .narration_source
+                        .as_deref()
+                        .unwrap_or("public transcript"),
+                    activity.narration_at.as_deref().unwrap_or("unknown"),
+                    narration
+                ));
             }
+            if let Some(command) = &activity.command {
+                text.push_str(&format!(
+                    "\nLatest shell command\nRecorded: {}\n{}\n",
+                    activity.command_at.as_deref().unwrap_or("unknown"),
+                    command
+                ));
+                if let Some(purpose) = &activity.purpose {
+                    text.push_str(&format!("Purpose: {purpose}\n"));
+                }
+            }
+            if text.is_empty() {
+                text.push_str("\nNo recorded public message or shell command for this owner.");
+            }
+            return text;
         }
-        text
+        "\nLoading indexed activity for the selected owner…".into()
     }
 
     fn toggle_checkpoints(&mut self) {
@@ -1542,7 +1624,11 @@ impl FleetConsole {
         }
     }
     fn select_coordinator(&mut self) {
-        let Some(target) = self.control_target() else {
+        let Some(session) = self
+            .control_target()
+            .map(|target| target.session)
+            .or_else(|| self.view.selection.as_ref().and_then(session_key).cloned())
+        else {
             self.status = "Select a goal or agent first".into();
             return;
         };
@@ -1550,12 +1636,16 @@ impl FleetConsole {
         self.feedback_open = false;
         self.pane = Pane::Graph;
         self.scroll = 0;
-        self.select(FleetNodeId::Session(target.session));
+        self.select(FleetNodeId::Session(session));
         self.status =
             "Coordinator selected explicitly; saved drafts retain their recipients".into();
     }
     fn prepare_tracking(&mut self) {
-        let Some(selected) = self.selected_agent() else {
+        let Some(selected) = self
+            .selected_agent()
+            .map(|target| target.session)
+            .or_else(|| self.view.selection.as_ref().and_then(session_key).cloned())
+        else {
             self.status = "Select a goal or agent to enable tracking".into();
             return;
         };
@@ -1568,7 +1658,7 @@ impl FleetConsole {
             return;
         };
         let target = AgentKey {
-            session: selected.session,
+            session: selected,
             agent_id: "main".into(),
         };
         let provider = match target.session.provider {
@@ -1577,9 +1667,16 @@ impl FleetConsole {
         };
         let root = shell_quote(root);
         let session = shell_quote(&target.session.session_id);
-        let instruction = format!(
+        let mut instruction = format!(
             "Enable Zoetrope work tracking for this goal. Keep a short plan of meaningful work items with stable IDs, actual agent owners, reported status and known outcome/dependency links. Report purpose, important changes, next steps or blockers when useful.\n\nRead compact context:\nzoe state --root {root} context {provider} {session}\n\nPublish changed work with upsert_work_item through:\nzoe state --root {root} apply {provider} {session} '<update JSON>'\nUse zoe state --help for fields and revision checks. Keep outcomes unverified until supported by evidence. Publish only at meaningful transitions: plan/scope changes, work starts/completes, blockers, or verification. Batch changes; routine reads and commands need no report."
         );
+        if record
+            .goal
+            .as_ref()
+            .is_none_or(|goal| goal.criteria.is_empty())
+        {
+            instruction.push_str("\n\nNo completion criteria are recorded yet. Propose concise, editable outcome criteria including tests and final checks; use set_goal through the same local command to record the scope. Keep every outcome unverified until supported by evidence.");
+        }
         let existing = record
             .drafts
             .iter()
@@ -1599,7 +1696,7 @@ impl FleetConsole {
             return;
         }
         self.feedback_target = Some(target.clone());
-        self.control.select(Some(target));
+        self.select_recipient(Some(target));
         self.feedback_open = true;
         self.pane = Pane::Feedback;
         self.edit_kind = Some(EditKind::Feedback);
@@ -1659,6 +1756,8 @@ impl FleetConsole {
     }
 
     fn select(&mut self, id: FleetNodeId) {
+        self.work_mode = matches!(id, FleetNodeId::Session(_));
+        self.work_selection = None;
         self.feedback_requested = false;
         let new_key = session_key(&id).cloned();
         let same = self.view.selection.as_ref().and_then(session_key) == new_key.as_ref();
@@ -1672,7 +1771,7 @@ impl FleetConsole {
                 self.work_reload = Some(key);
             }
         }
-        self.control.select(self.selected_agent());
+        self.select_recipient(self.selected_agent());
         self.navigate(ConsoleCommand::Select(id));
     }
 
@@ -1693,6 +1792,10 @@ impl FleetConsole {
                 self.navigate(ConsoleCommand::ToggleExpanded(key));
             }
         }
+    }
+    pub(super) fn request_replay(&mut self) {
+        self.replay_requested = true;
+        self.status = "Read-only replay requested".into();
     }
     pub(super) fn replay_source(&self) -> Option<(SessionKey, PathBuf)> {
         let key = self.view.selection.as_ref().and_then(session_key)?.clone();
@@ -1814,7 +1917,11 @@ impl FleetConsole {
                 bar,
                 title,
                 detail,
-                activity: node.activity.clone().unwrap_or_default(),
+                activity: node
+                    .activity
+                    .as_ref()
+                    .map(|activity| format!("Recorded: {activity}"))
+                    .unwrap_or_default(),
                 progress: if matches!(node.id, FleetNodeId::Session(_)) {
                     progress
                 } else {
@@ -2029,7 +2136,9 @@ impl FleetConsole {
                 }
                 KeyCode::Char('/') => self.searching = true,
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if self.pane == Pane::Documents {
+                    if self.pane == Pane::Graph && self.work_selection.is_some() {
+                        self.move_work(1);
+                    } else if self.pane == Pane::Documents {
                         self.item_index = self.item_index.saturating_add(1).min(
                             self.selected_work
                                 .as_ref()
@@ -2053,7 +2162,9 @@ impl FleetConsole {
                     }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    if matches!(
+                    if self.pane == Pane::Graph && self.work_selection.is_some() {
+                        self.move_work(-1);
+                    } else if matches!(
                         self.pane,
                         Pane::Criteria | Pane::Questions | Pane::Documents
                     ) {
@@ -2066,6 +2177,18 @@ impl FleetConsole {
                 KeyCode::Enter | KeyCode::Char(' ') if self.pane == Pane::Graph => {
                     self.toggle_expansion()
                 }
+                KeyCode::Char('w') if matches!(self.pane, Pane::Graph | Pane::Feedback) => {
+                    self.focus_work()
+                }
+                KeyCode::Char('a') if matches!(self.pane, Pane::Graph | Pane::Feedback) => {
+                    self.open_agents()
+                }
+                KeyCode::Char(']') if self.pane == Pane::Graph => self.move_work(1),
+                KeyCode::Char('[') if self.pane == Pane::Graph => self.move_work(-1),
+                KeyCode::Char('x') if matches!(self.pane, Pane::Graph | Pane::Feedback) => {
+                    self.open_commands()
+                }
+                KeyCode::Char('R') => self.request_replay(),
                 KeyCode::Char('f') => self.open_feedback(),
                 KeyCode::Char('T') => self.prepare_tracking(),
                 KeyCode::Char('C') => self.select_coordinator(),
