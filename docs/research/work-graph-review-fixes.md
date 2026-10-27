@@ -135,3 +135,34 @@ CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/final-portable cargo test --locked --off
 
 Formatting and `git diff --check` pass. Root/WG-6 owns final full-suite, package,
 rustdoc, resource, installation and live-observation validation after integration.
+
+## Portable installer additions — final update polish
+
+After the approved global update, GNU `cp -n` warned that its behavior is
+nonportable. The public installer regression
+`repeated_updates_preserve_nested_user_extras_without_following_old_directory_links`
+failed before the fix, reproducing that warning and a directory-to-packaged-file
+collision that prevented update. It covers nested/hidden notes, an old directory
+symlink at a packaged directory path, a nonconflicting directory link preserved
+as a link, and a package file replacing a conflicting old user directory. Two
+updates retain the nonconflicting extras, keep staged package contents, leave the
+external linked directory untouched and emit no stderr.
+
+The installer now uses a small POSIX shell traversal to copy only missing user
+paths and recurse only through real directories on both sides. Symlinks copy as
+links with portable `cp -R -P`; staged package paths always win. No new runtime
+dependency or GNU-only replacement flag is added.
+
+RED/GREEN and validation, after merging integration `811fb78`:
+
+```sh
+CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/fixes cargo test --locked --offline --test local_install repeated_updates_preserve_nested_user_extras_without_following_old_directory_links -- --exact --nocapture
+CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/fixes cargo test --locked --offline --test local_install
+sh -n scripts/install.sh
+cargo fmt --check
+git diff --check
+```
+
+The new slice and all eight installer process tests pass; shell syntax,
+formatting and diff checks pass. Rust application code did not change; the full
+native suite and global installation were not repeated for this polish.

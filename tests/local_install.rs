@@ -351,3 +351,87 @@ fn updating_a_packaged_file_replaces_a_user_symlink_without_overwriting_its_targ
             .is_symlink()
     );
 }
+
+#[test]
+fn repeated_updates_preserve_nested_user_extras_without_following_old_directory_links() {
+    let fixture = Fixture::new();
+    let destination = fixture.root.join("installed bin");
+    succeeds(&fixture.install(Some(&destination)));
+    let skill = fixture.root.join("codex home/skills/zoetrope-tracking");
+    let packaged = fixture.checkout.join("skills/zoetrope-tracking");
+    std::fs::create_dir_all(skill.join("references/personal/deep")).unwrap();
+    std::fs::write(
+        skill.join("references/personal/deep/.note"),
+        "nested user note",
+    )
+    .unwrap();
+    std::fs::write(skill.join(".local-note"), "hidden user note").unwrap();
+    std::fs::write(
+        skill.join("references/sources.md"),
+        "old local package copy",
+    )
+    .unwrap();
+    let external = fixture.root.join("private linked directory");
+    std::fs::create_dir_all(&external).unwrap();
+    std::fs::write(external.join("private.txt"), "leave private content alone").unwrap();
+    std::os::unix::fs::symlink(&external, skill.join("references/managed")).unwrap();
+    std::os::unix::fs::symlink(&external, skill.join("personal-directory-link")).unwrap();
+    std::fs::create_dir_all(packaged.join("references/managed")).unwrap();
+    std::fs::write(
+        packaged.join("references/managed/guide.md"),
+        "new package guide",
+    )
+    .unwrap();
+    std::fs::create_dir_all(skill.join("references/replaced-directory")).unwrap();
+    std::fs::write(
+        skill.join("references/replaced-directory/old-note"),
+        "conflicting extra",
+    )
+    .unwrap();
+    std::fs::write(
+        packaged.join("references/replaced-directory"),
+        "new packaged file",
+    )
+    .unwrap();
+
+    let updater = destination.join("zoe-update");
+    for _ in 0..2 {
+        let output = fixture.command(&updater).output().unwrap();
+        succeeds(&output);
+        assert!(
+            output.stderr.is_empty(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(skill.join("references/personal/deep/.note")).unwrap(),
+            "nested user note"
+        );
+        assert_eq!(
+            std::fs::read_to_string(skill.join(".local-note")).unwrap(),
+            "hidden user note"
+        );
+        assert_eq!(
+            std::fs::read_to_string(skill.join("references/sources.md")).unwrap(),
+            "source-contract-v1\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(skill.join("references/managed/guide.md")).unwrap(),
+            "new package guide"
+        );
+        assert!(!skill.join("references/managed/private.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(skill.join("references/replaced-directory")).unwrap(),
+            "new packaged file"
+        );
+        assert_eq!(
+            std::fs::read_link(skill.join("personal-directory-link")).unwrap(),
+            external
+        );
+        assert_eq!(
+            std::fs::read_to_string(external.join("private.txt")).unwrap(),
+            "leave private content alone"
+        );
+        assert!(!external.join("guide.md").exists());
+    }
+}
