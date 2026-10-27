@@ -107,3 +107,24 @@ The merger verified clean source/integration worktrees, exact source identity an
 The [review-fix evidence](work-graph-review-fixes.md) supplies retained green results on Rust 1.88 and 1.99: **18 tracking, 69 UI and eight PTY/runtime tests passed**, with one existing manual UI resource probe ignored; normal parallel UI suites and strict all-target Clippy also passed on both compilers after the contention-fixture correction. Portable checks passed 176 library and 13 Console tests; the excluded WebAssembly workspace check, formatting and diff checks passed. The evidence records both public RED/GREEN regressions and qualifies the earlier nondeterministic contention failure. No tests were repeated merely to relocate identical checked inputs. Documentation-only integration updates passed the staged diff check and leave the checked implementation/test/package/browser content unchanged.
 
 WG-6 remains `active`, owner `main`. Root owns final full-suite, package/rustdoc, resources, installation, live observation and independent reviewer rechecks; earlier baseline results are not final-source verification. No push, publication, global installation, main-branch merge, native input or other-project changes were performed.
+
+## WG-6 — portable installer polish — 28 October 2026
+
+- Previous integration tip: `d587f908297eae45f06d52ba7d43344233ed9309`.
+- Immutable source branch: `feat/work-graph-review-fixes`, checked clean at `f5e1d29ccd31d335ab4cc85f052a07fa8cceb813` in `/tmp/zoetrope-wg-fixes`.
+- Integration result: clean merge `c890cda718300ddf292364c326bf147cdecb79bb`; no conflicts. Both branches share integration `811fb78d8b6d58b561aa594fc65432916ecab915`. Root's newer resource probe and results remain unchanged.
+
+The merger verified clean worktrees, exact source identity and shared ancestry. The scoped installer fix replaces warning-producing `cp -n` with portable copying of missing user paths. Packaged files win; nested/hidden extras remain, and directory symlinks are copied as links without traversal. The merged `src`, `tests`, `scripts`, `skills`, Cargo and browser inputs exactly match the checked source, with these retained Git objects:
+
+| Path | Git object |
+| --- | --- |
+| `src` | `d88231676f16e4d23f5c024bcd4838f65eebbcb9` |
+| `tests` | `5f5be19ad0c8f51dc758449077c972ab251ef452` |
+| `scripts` | `cf253eea55099f86d4589806cb7ab1a78a853fc3` |
+| `skills` | `0426e642cba56f3dc7ed5294a1cbbea0cbb95cde` |
+| `Cargo.toml` | `244094e91689a84305dd54acbfee8b69b194c222` |
+| `Cargo.lock` | `2b643b079db6fb4cd004f1c35a5e61d539089968` |
+
+The [installer-polish evidence](work-graph-review-fixes.md#portable-installer-additions--final-update-polish) records the public regression's RED/GREEN slice and **all eight installer tests passed**, plus shell syntax, formatting and diff checks. The regression covers repeated updates, hidden/nested additions, directory links, packaged-file collisions and empty stderr. Rust application, packaged skill, Cargo and browser inputs remain identical to reviewed source `2a65e3155310768a34833a4f0b762c4e6afc72df`; installer tests are the only test changes. No full native run was repeated for unchanged Rust application inputs. Documentation-only integration updates passed the staged diff check and preserve exact source equivalence plus root's resource evidence.
+
+WG-6 remains `active`, owner `main`, until root completes final installation and PR work, including an actual updater run to confirm the warning is gone. This integration handoff performed no global installation, push, publication, live/native input, main-branch merge or other-project edit.
