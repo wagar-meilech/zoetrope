@@ -92,6 +92,10 @@ impl WorkStream {
                             steps,
                             source: "Codex recorded plan; statuses are not verification evidence"
                                 .into(),
+                            recorded_at: record["timestamp"]
+                                .as_str()
+                                .filter(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok())
+                                .map(str::to_owned),
                         },
                     });
                 }

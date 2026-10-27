@@ -90,6 +90,17 @@ pub struct FleetGraph {
     pub nodes: Vec<FleetNode>,
 }
 
+/// Bounded public activity for one exact owner, copied from the provider index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedActivity {
+    pub narration: Option<String>,
+    pub narration_at: Option<String>,
+    pub narration_source: Option<String>,
+    pub command: Option<String>,
+    pub command_at: Option<String>,
+    pub purpose: Option<String>,
+}
+
 /// An authoritative live observation, separate from transcript recency.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiveActivity {
@@ -428,6 +439,27 @@ impl Console {
             let _ = key;
             false
         }
+    }
+
+    /// Read one owner's already-indexed public activity; no transcript IO.
+    pub fn recorded_activity(&self, target: &AgentKey) -> Option<RecordedActivity> {
+        let session = self.sessions.iter().find(|session| {
+            session.provider == target.session.provider && session.id == target.session.session_id
+        })?;
+        let metadata = session
+            .every_file()
+            .filter(|file| file.role != FileRole::Sidecar)
+            .filter_map(|file| self.metadata.get(&file.path))
+            .find(|indexed| indexed.metadata.agent == target.agent_id)?;
+        let activity = &metadata.metadata.activity;
+        Some(RecordedActivity {
+            narration: activity.text.clone(),
+            narration_at: activity.text_at.clone(),
+            narration_source: activity.text_source.clone(),
+            command: activity.command.clone(),
+            command_at: activity.command_at.clone(),
+            purpose: activity.purpose.clone(),
+        })
     }
 
     /// Cached provider-recorded names for producer/recipient labels, including

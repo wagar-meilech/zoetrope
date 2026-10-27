@@ -5,7 +5,10 @@ use serde_json::Value;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PublicActivity {
     pub text: Option<String>,
+    pub text_at: Option<String>,
+    pub text_source: Option<String>,
     pub command: Option<String>,
+    pub command_at: Option<String>,
     pub purpose: Option<String>,
 }
 fn short(text: &str) -> String {
@@ -15,6 +18,12 @@ fn short(text: &str) -> String {
         .chars()
         .take(240)
         .collect()
+}
+fn recorded_at(record: &Value) -> Option<String> {
+    record["timestamp"]
+        .as_str()
+        .filter(|value| chrono::DateTime::parse_from_rfc3339(value).is_ok())
+        .map(str::to_owned)
 }
 impl PublicActivity {
     pub fn observe(&mut self, provider: Provider, line: &str) {
@@ -41,6 +50,15 @@ impl PublicActivity {
                             .join(" ");
                         if !text.trim().is_empty() {
                             self.text = Some(short(&text));
+                            self.text_at = recorded_at(&record);
+                            self.text_source = Some(
+                                if p["channel"] == "commentary" || p["phase"] == "commentary" {
+                                    "Codex commentary"
+                                } else {
+                                    "Codex final answer"
+                                }
+                                .into(),
+                            );
                         }
                     }
                 }
@@ -55,7 +73,7 @@ impl PublicActivity {
                         .as_str()
                         .and_then(|s| serde_json::from_str::<Value>(s).ok())
                     {
-                        self.shell(&input);
+                        self.shell(&input, recorded_at(&record));
                     }
                 }
                 if record["type"] == "event_msg"
@@ -76,6 +94,7 @@ impl PublicActivity {
                     });
                     if let Some(command) = command {
                         self.command = Some(command.chars().take(2048).collect());
+                        self.command_at = recorded_at(&record);
                         self.purpose = item["description"].as_str().map(short);
                     }
                 }
@@ -89,9 +108,11 @@ impl PublicActivity {
                                     part["text"].as_str().filter(|s| !s.trim().is_empty())
                                 {
                                     self.text = Some(short(text));
+                                    self.text_at = recorded_at(&record);
+                                    self.text_source = Some("Claude assistant message".into());
                                 }
                             } else if part["type"] == "tool_use" && part["name"] == "Bash" {
-                                self.shell(&part["input"]);
+                                self.shell(&part["input"], recorded_at(&record));
                             }
                         }
                     }
@@ -99,9 +120,10 @@ impl PublicActivity {
             }
         }
     }
-    fn shell(&mut self, input: &Value) {
+    fn shell(&mut self, input: &Value, recorded_at: Option<String>) {
         if let Some(command) = input["cmd"].as_str().or_else(|| input["command"].as_str()) {
             self.command = Some(command.chars().take(2048).collect());
+            self.command_at = recorded_at;
             self.purpose = input["description"]
                 .as_str()
                 .or_else(|| input["justification"].as_str())

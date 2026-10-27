@@ -963,6 +963,7 @@ fn plan_adoption_and_criteria_requests_stay_explicit_and_use_the_same_goal_recor
                             status: "completed".into(),
                         }],
                         source: "recorded plan".into(),
+                        recorded_at: None,
                     },
                 },
             )
@@ -1794,4 +1795,498 @@ fn saving_an_answer_keeps_the_editor_open_so_held_save_cannot_become_submission(
     wait_text(&mut ui, "Resolved in Codex");
     ui.shutdown();
     peer.finish();
+}
+
+#[test]
+fn opening_a_goal_shows_recorded_plan_work_status_owner_and_source_time() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    let path = home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl");
+    let plan = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{
+        "type":"function_call","name":"update_plan","call_id":"plan-one",
+        "arguments":serde_json::json!({"plan":[
+            {"step":"Inspect navigation","status":"completed"},
+            {"step":"Expose steering","status":"in_progress"},
+            {"step":"Check delivery","status":"pending"}
+        ]}).to_string()
+    }});
+    writeln!(
+        std::fs::OpenOptions::new().append(true).open(path).unwrap(),
+        "{plan}"
+    )
+    .unwrap();
+    let mut ui = home.ui();
+    let shown = wait_text(&mut ui, "Expose steering");
+    assert!(shown.contains("Work toward goal"), "{shown}");
+    assert!(shown.contains("reported done"), "{shown}");
+    assert!(shown.contains("in progress"), "{shown}");
+    assert!(shown.contains("planned"), "{shown}");
+    assert!(shown.contains("Inspect navigation"), "{shown}");
+    assert!(shown.contains("Expose steering"), "{shown}");
+    assert!(shown.contains("Check delivery"), "{shown}");
+    assert!(shown.contains("Coordinator"), "{shown}");
+    assert!(shown.contains("2026-10-27T12:00:00Z"), "{shown}");
+    assert!(shown.contains("0 of 2 verified"), "{shown}");
+    ui.shutdown();
+}
+
+fn save_work_report(home: &Home, session: &str, revision: u64, item: serde_json::Value) {
+    let update: WorkUpdate = serde_json::from_value(serde_json::json!({
+        "op":"upsert_work_item","expected_revision":revision,"item":item
+    }))
+    .unwrap();
+    Store::new(home.0.join("state"))
+        .apply(&home.key(session), update)
+        .unwrap();
+}
+
+#[test]
+fn explicit_work_is_default_and_explains_its_context_dependencies_and_outcomes() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    let owner =
+        serde_json::json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    let native: WorkUpdate = serde_json::from_value(serde_json::json!({"op":"import_plan","proposal":{
+        "id":"native","producer":owner,"steps":[{"step":"Opaque fallback","status":"pending"}],"source":"native plan"
+    }})).unwrap();
+    Store::new(home.0.join("state"))
+        .apply(&home.key("goal"), native)
+        .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"steering","label":"Expose input capability","owner":owner,"status":"blocked","source":"worker report",
+            "parent_id":"design","depends_on":["runtime-api"],
+            "outcome_links":[{"criterion_id":"check","goal_revision":1}],
+            "purpose":"Explain input before sending","change":"Child input is restricted",
+            "next":"Offer coordinator selection","blocker":"Await runtime docs"
+        }),
+    );
+    let mut ui = home.ui();
+    let shown = wait_text(&mut ui, "Expose input capability");
+    assert!(!shown.contains("Opaque fallback"), "{shown}");
+    assert!(shown.contains("blocked"), "{shown}");
+    assert!(shown.contains("Explain input before sending"), "{shown}");
+    assert!(shown.contains("Child input is restricted"), "{shown}");
+    assert!(shown.contains("Offer coordinator selection"), "{shown}");
+    assert!(shown.contains("Await runtime docs"), "{shown}");
+    assert!(shown.contains("runtime-api (unresolved)"), "{shown}");
+    assert!(shown.contains("design (unresolved)"), "{shown}");
+    assert!(shown.contains("Behavior checked"), "{shown}");
+    assert!(shown.contains("worker report"), "{shown}");
+    assert!(shown.contains("0 of 2 verified"), "{shown}");
+    ui.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn selected_work_keeps_its_identity_and_open_feedback_keeps_its_recipient() {
+    let peer = Peer::new("control");
+    let home = Home::new();
+    home.session("root-goal", "/projects/parser", false);
+    home.goal("root-goal", "Parser work");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"root-goal","thread_source":"subagent","parent_thread_id":"root-goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let owner = serde_json::json!({"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"child-thread"});
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Expose steering","owner":owner,"status":"active","source":"worker"}),
+    );
+    save_work_report(
+        &home,
+        "root-goal",
+        0,
+        serde_json::json!({"id":"docs","label":"Write usage","owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"main"},"status":"active","source":"coordinator"}),
+    );
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        socket: peer.dir.join("peer.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Expose steering");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Recipient: Parser");
+    save_work_report(
+        &home,
+        "root-goal",
+        1,
+        serde_json::json!({"id":"steering","label":"Review steering","status":"done"}),
+    );
+    let refreshed = wait_text(&mut ui, "Selected work: Review steering");
+    assert!(refreshed.contains("Recipient: Parser"), "{refreshed}");
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Keep the public interface");
+    save_work_report(
+        &home,
+        "root-goal",
+        2,
+        serde_json::json!({"id":"steering","owner":{"session":{"provider":"codex","session_id":"root-goal"},"agent_id":"main"}}),
+    );
+    Store::new(home.0.join("state"))
+        .apply(
+            &home.key("root-goal"),
+            WorkUpdate::Verify {
+                id: "build".into(),
+                revision: Some(1),
+                evidence: vec![Evidence {
+                    kind: EvidenceKind::UserAttestation,
+                    detail: "Build checked".into(),
+                    provenance: "operator".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let pinned = wait_text(&mut ui, "1 of 2 verified");
+    assert!(pinned.contains("Recipient: Parser"), "{pinned}");
+    assert!(pinned.contains("Keep the public interface"), "{pinned}");
+    key(&mut ui, KeyCode::F(2));
+    wait_text(&mut ui, "Accepted by Codex");
+    ctrl(&mut ui, 'u');
+    type_text(&mut ui, "Do docs later");
+    key(&mut ui, KeyCode::F(3));
+    wait_text(&mut ui, "Queued by Codex");
+    key(&mut ui, KeyCode::F(4));
+    wait_text(&mut ui, "accepted the interruption");
+    ui.shutdown();
+    peer.finish();
+}
+
+fn click_console_action(ui: &mut FleetConsole, label: &str) {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let rendered = text(ui, 150, 42);
+    let (column, row) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find(label)
+                .map(|column| (unicode_width::UnicodeWidthStr::width(&line[..column]), row))
+        })
+        .unwrap_or_else(|| panic!("missing action {label}: {rendered}"));
+    ui.handle_event(&Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: column as u16,
+        row: row as u16,
+        modifiers: KeyModifiers::NONE,
+    }));
+}
+
+#[test]
+fn visible_work_and_agents_actions_switch_inspection_without_losing_the_goal() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+        "status":"active","source":"coordinator"}),
+    );
+    let mut ui = home.ui();
+    let shown = wait_text(&mut ui, "Expose steering");
+    assert!(shown.contains("[Work w]"), "{shown}");
+    assert!(shown.contains("[Agents a]"), "{shown}");
+    click_console_action(&mut ui, "[Agents a]");
+    let agents = wait_text(&mut ui, "Agents expanded");
+    assert!(agents.contains("Agent inspection"), "{agents}");
+    assert!(agents.contains("Selected: Understand steering"), "{agents}");
+    click_console_action(&mut ui, "[Work w]");
+    let work = wait_text(&mut ui, "Selected work: Expose steering");
+    assert!(work.contains("Work toward goal"), "{work}");
+    assert!(work.contains("0 of 2 verified"), "{work}");
+    ui.shutdown();
+}
+
+#[test]
+fn narrow_work_inspection_keeps_current_context_and_control_availability_visible() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    for at in 0..6 {
+        save_work_report(
+            &home,
+            "goal",
+            0,
+            serde_json::json!({
+                "id":format!("step-{at}"),"label":format!("Meaningful work phase {at}"),
+                "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+                "status":if at == 4 {"active"} else {"planned"},"source":"coordinator",
+                "purpose":"Keep recipient clear","next":"Check direct input"
+            }),
+        );
+    }
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Meaningful work phase 4");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Selected work: Meaningful work phase 4");
+    let shown = text(&mut ui, 60, 28);
+    assert!(shown.contains("Meaningful work phase 4"), "{shown}");
+    assert!(shown.contains("›"), "{shown}");
+    assert!(shown.contains("Owner: Coordinator"), "{shown}");
+    assert!(shown.contains("Purpose: Keep recipient clear"), "{shown}");
+    assert!(shown.contains("Next: Check direct input"), "{shown}");
+    assert!(shown.contains("Guidance unavailable"), "{shown}");
+    assert!(shown.contains("Queue unavailable"), "{shown}");
+    assert!(shown.contains("Stop unavailable"), "{shown}");
+    ui.shutdown();
+}
+
+#[test]
+fn commands_inspection_uses_the_selected_work_owner_and_dates_public_narration() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    let child = home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl");
+    std::fs::write(&child, r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let message = serde_json::json!({"timestamp":"2026-10-27T10:00:00Z","type":"response_item","payload":{"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":"Checking child input"}]}});
+    let command = serde_json::json!({"timestamp":"2026-10-27T12:00:00Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"child-command","arguments":serde_json::json!({"cmd":"cargo test --parser","description":"Check child delivery"}).to_string()}});
+    let mut stream = std::fs::OpenOptions::new()
+        .append(true)
+        .open(child)
+        .unwrap();
+    writeln!(stream, "{message}\n{command}").unwrap();
+    let parent_command = serde_json::json!({"timestamp":"2026-10-27T12:30:00Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"parent-command","arguments":serde_json::json!({"cmd":"printf coordinator-only"}).to_string()}});
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+            .unwrap(),
+        "{parent_command}"
+    )
+    .unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Inspect child command",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "status":"active","source":"worker"}),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect child command");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Recipient: Parser");
+    click_console_action(&mut ui, "[Commands x]");
+    let shown = wait_text(&mut ui, "cargo test --parser");
+    assert!(shown.contains("Checking child input"), "{shown}");
+    assert!(shown.contains("2026-10-27T10:00:00Z"), "{shown}");
+    assert!(shown.contains("2026-10-27T12:00:00Z"), "{shown}");
+    assert!(shown.contains("Codex commentary"), "{shown}");
+    assert!(shown.contains("Check child delivery"), "{shown}");
+    assert!(!shown.contains("coordinator-only"), "{shown}");
+    let undated = serde_json::json!({"type":"response_item","payload":{"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":"Latest undated child update"}]}});
+    writeln!(stream, "{undated}").unwrap();
+    let refreshed = wait_text(&mut ui, "Latest undated child update");
+    assert!(refreshed.contains("Recorded: unknown"), "{refreshed}");
+    assert!(!refreshed.contains("2026-10-27T10:00:00Z"), "{refreshed}");
+    assert!(refreshed.contains("2026-10-27T12:00:00Z"), "{refreshed}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_focused_coordinator_and_tracking_actions_stay_explicit_and_request_missing_criteria() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Expose steering",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+        "status":"active","source":"worker"}),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Expose steering");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Recipient: Parser");
+    key(&mut ui, KeyCode::Char('C'));
+    wait_text(&mut ui, "Recipient: Coordinator");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Recipient: Parser");
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Keep the child draft");
+    key(&mut ui, KeyCode::Esc);
+    wait_text(&mut ui, "Draft saved");
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('T'));
+    let tracking = wait_text(&mut ui, "Tracking draft for Coordinator");
+    assert!(tracking.contains("Recipient: Coordinator"), "{tracking}");
+    ui.shutdown();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_zoe"))
+        .args(["state", "--root"])
+        .arg(home.0.join("state"))
+        .args(["show", "codex", "goal"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let record: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let drafts = record["record"]["drafts"].as_array().unwrap();
+    let coordinator = drafts
+        .iter()
+        .find(|draft| draft["target"]["agent_id"] == "main")
+        .unwrap()["text"]
+        .as_str()
+        .unwrap();
+    assert!(coordinator.contains("set_goal"), "{coordinator}");
+    assert!(coordinator.contains("final checks"), "{coordinator}");
+    assert!(coordinator.contains("unverified"), "{coordinator}");
+    assert!(
+        drafts
+            .iter()
+            .any(|draft| draft["target"]["agent_id"] == "child-thread"
+                && draft["text"] == "Keep the child draft")
+    );
+    assert_eq!(record["record"]["goal"], serde_json::Value::Null);
+    assert_eq!(record["record"]["outbox"], serde_json::json!([]));
+}
+
+#[test]
+fn unindexed_work_owners_keep_a_useful_recipient_id_and_full_identity_in_details() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Review unavailable child",
+        "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"unindexed-child-0123456789abcdef"},
+        "status":"active","source":"coordinator"}),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Review unavailable child");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = wait_text(&mut ui, "Recipient: Agent unindexed");
+    assert!(
+        shown.contains("Owner ID: unindexed-child-0123456789abcdef"),
+        "{shown}"
+    );
+    key(&mut ui, KeyCode::Char('C'));
+    wait_text(&mut ui, "Recipient: Coordinator");
+    ui.shutdown();
+}
+
+#[test]
+fn native_plan_revisions_do_not_retarget_selected_work_and_coordinator_is_explicit_recovery() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand native plans");
+    std::fs::write(home.0.join("codex/sessions/2026/10/23/rollout-child.jsonl"), r#"{"type":"session_meta","payload":{"id":"child-thread","session_id":"goal","thread_source":"subagent","parent_thread_id":"goal","agent_nickname":"Parser"}}
+"#).unwrap();
+    let store = Store::new(home.0.join("state"));
+    let plan = |id: &str, label: &str| -> WorkUpdate {
+        serde_json::from_value(serde_json::json!({"op":"import_plan","proposal":{
+            "id":id,"producer":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child-thread"},
+            "steps":[{"step":label,"status":"in_progress"}],"source":"native plan"
+        }})).unwrap()
+    };
+    store
+        .apply(&home.key("goal"), plan("first-native", "Original work"))
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Original work");
+    key(&mut ui, KeyCode::Char('w'));
+    wait_text(&mut ui, "Recipient: Parser");
+    store
+        .apply(&home.key("goal"), plan("next-native", "Replacement work"))
+        .unwrap();
+    let expired = wait_text(&mut ui, "Selected work is no longer recorded");
+    assert!(expired.contains("Selected work unavailable"), "{expired}");
+    assert!(
+        !expired.contains("Selected work: Replacement work"),
+        "{expired}"
+    );
+    key(&mut ui, KeyCode::Char('C'));
+    wait_text(&mut ui, "Recipient: Coordinator");
+    key(&mut ui, KeyCode::Char('w'));
+    let selected = wait_text(&mut ui, "Selected work: Replacement work");
+    assert!(selected.contains("Recipient: Parser"), "{selected}");
+    ui.shutdown();
+}
+
+#[test]
+fn work_scope_links_go_stale_and_unknown_dependencies_stay_distinct_from_none() {
+    let home = Home::new();
+    home.session("goal", "/projects/steering", false);
+    home.goal("goal", "Understand steering");
+    let owner =
+        serde_json::json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"steering","label":"Expose steering","owner":owner,
+        "status":"active","source":"coordinator","outcome_links":[{"criterion_id":"check","goal_revision":1}]}),
+    );
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({"id":"final","label":"Final checks","owner":owner,
+        "status":"planned","source":"coordinator","depends_on":[]}),
+    );
+    Store::new(home.0.join("state"))
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::SetGoal {
+                title: "Understand steering".into(),
+                criteria: vec![
+                    CriterionInput {
+                        id: "build".into(),
+                        label: "Build passes".into(),
+                        weight: 1.0,
+                    },
+                    CriterionInput {
+                        id: "check".into(),
+                        label: "Behavior checked".into(),
+                        weight: 1.0,
+                    },
+                    CriterionInput {
+                        id: "docs".into(),
+                        label: "Usage documented".into(),
+                        weight: 1.0,
+                    },
+                ],
+                reason: "Add usage documentation".into(),
+                provenance: "operator".into(),
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    let scope = wait_text(&mut ui, "stale scope");
+    assert!(scope.contains("revision 1; current 2"), "{scope}");
+    assert!(scope.contains("Dependencies: not declared"), "{scope}");
+    assert!(scope.contains("0 of 3 verified"), "{scope}");
+    key(&mut ui, KeyCode::Char('w'));
+    key(&mut ui, KeyCode::Down);
+    let independent = wait_text(&mut ui, "Selected work: Final checks");
+    assert!(
+        independent.contains("Dependencies: none declared"),
+        "{independent}"
+    );
+    save_work_report(
+        &home,
+        "goal",
+        1,
+        serde_json::json!({"id":"final","status":"done"}),
+    );
+    let done = wait_text(&mut ui, "reported done");
+    assert!(done.contains("0 of 3 verified"), "{done}");
+    ui.shutdown();
 }

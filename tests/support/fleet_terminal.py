@@ -17,7 +17,7 @@ import unicodedata
 executable, fixture_root, scenario = sys.argv[1:]
 fixture = pathlib.Path(fixture_root)
 peer = None
-if scenario == "replay":
+if scenario in ("replay", "mouse-replay"):
     socket_path = fixture / "codex/app-server-control/app-server-control.sock"
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     peer = subprocess.Popen(
@@ -111,6 +111,19 @@ def screen_text():
     return "\n".join("".join(cells.get((r, c), " ") for c in range(160)) for r in range(40))
 
 
+def click(label):
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        for row, line in enumerate(screen_text().splitlines()):
+            column = line.find(label)
+            if column >= 0:
+                os.write(terminal, f"\x1b[<0;{column + 1};{row + 1}M\x1b[<0;{column + 1};{row + 1}m".encode())
+                return True
+        if not receive():
+            return False
+    return False
+
+
 def expect(text, seconds=5, since=0, compact=False):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -161,7 +174,7 @@ try:
                     break
                 receive(0.05)
         os.write(terminal, b"\x03")
-    if scenario == "replay" and observations["fleet"]:
+    if scenario in ("replay", "mouse-replay") and observations["fleet"]:
         expect("Inspect runtime fixture goal", compact=True)
         os.write(terminal, b"H")
         expect("All history")
@@ -178,7 +191,14 @@ try:
             returned = True
             for _ in range(2):
                 mark = len(data)
-                os.write(terminal, b"R")
+                if scenario == "mouse-replay":
+                    clicked = click("[Replay R]")
+                    observations["mouse"] = observations.get("mouse", True) and clicked
+                    if not clicked:
+                        entered = False
+                        break
+                else:
+                    os.write(terminal, b"R")
                 if not expect("Read-only replay", since=mark):
                     entered = False
                     break

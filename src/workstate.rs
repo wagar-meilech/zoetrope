@@ -198,6 +198,8 @@ pub struct PlanProposal {
     pub producer: AgentKey,
     pub steps: Vec<PlanStep>,
     pub source: String,
+    #[serde(default)]
+    pub recorded_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -493,6 +495,29 @@ impl WorkRecord {
                     .criteria
                     .iter()
                     .any(|criterion| criterion.label.to_lowercase().contains(query))
+        }) || self.work_items.iter().any(|work| {
+            let report = &work.report;
+            [
+                &report.id,
+                &report.label,
+                &report.source,
+                &report.owner.agent_id,
+            ]
+            .into_iter()
+            .any(|text| text.to_lowercase().contains(query))
+                || [
+                    &report.purpose,
+                    &report.change,
+                    &report.next,
+                    &report.blocker,
+                ]
+                .into_iter()
+                .flatten()
+                .any(|text| text.to_lowercase().contains(query))
+        }) || self.plan_drafts.iter().any(|plan| {
+            plan.steps
+                .iter()
+                .any(|step| step.step.to_lowercase().contains(query))
         }) || self.documents.iter().any(|document| {
             document
                 .path
@@ -619,7 +644,7 @@ impl WorkRecord {
             }).collect();
             let step_count = steps.len();
             let value = serde_json::json!({
-                "id":plan.id,"producer":plan.producer,"source":source,
+                "id":plan.id,"producer":plan.producer,"source":source,"recorded_at":plan.recorded_at,
                 "source_truncated":source_truncated,"steps":steps,
                 "steps_omitted":plan.steps.len() - step_count
             });

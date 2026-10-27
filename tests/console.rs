@@ -368,3 +368,77 @@ fn an_indexed_claude_agent_stays_searchable_after_collapsing_and_refreshing() {
     console.command(ConsoleCommand::Search("Syntax worker".into()));
     assert!(rendered(&console).contains("Syntax worker"));
 }
+
+#[cfg(feature = "native")]
+#[test]
+fn search_finds_collapsed_work_and_recorded_plan_text_without_changing_selection() {
+    use zoetrope::workstate::{Store, WorkUpdate};
+    let home = Home::new();
+    home.write(
+        "codex/sessions/2026/10/23/rollout-current.jsonl",
+        &codex_meta("current", "/projects/compiler"),
+    );
+    home.write(
+        "codex/archived_sessions/rollout-archived.jsonl",
+        &codex_meta("archived", "/projects/editor"),
+    );
+    let current = SessionKey {
+        provider: Provider::Codex,
+        session_id: "current".into(),
+    };
+    let archived = SessionKey {
+        provider: Provider::Codex,
+        session_id: "archived".into(),
+    };
+    let store = Store::new(home.0.join("state"));
+    let update: WorkUpdate = serde_json::from_value(
+        serde_json::json!({"op":"upsert_work_item","expected_revision":0,"item":{
+            "id":"recover","label":"Recover recipient selection",
+            "owner":{"session":{"provider":"codex","session_id":"current"},"agent_id":"main"},
+            "status":"active","source":"coordinator"
+        }}),
+    )
+    .unwrap();
+    store.apply(&current, update).unwrap();
+    let update: WorkUpdate = serde_json::from_value(serde_json::json!({"op":"import_plan","proposal":{
+        "id":"native-plan","producer":{"session":{"provider":"codex","session_id":"archived"},"agent_id":"main"},
+        "steps":[{"step":"Restore navigation history","status":"completed"}],"source":"native plan"
+    }})).unwrap();
+    store.apply(&archived, update).unwrap();
+    let mut console = Console::with_state(
+        DiscoveryRoots {
+            claude_projects: None,
+            codex_home: Some(home.0.join("codex")),
+        },
+        home.0.join("state"),
+    );
+    console.refresh(SystemTime::now());
+    console.command(ConsoleCommand::ToggleHistory);
+    console.command(ConsoleCommand::Select(FleetNodeId::Session(
+        current.clone(),
+    )));
+    console.command(ConsoleCommand::Search("recover recipient".into()));
+    assert!(
+        console
+            .graph()
+            .nodes
+            .iter()
+            .any(|node| node.id == FleetNodeId::Session(current.clone()))
+    );
+    assert!(
+        !console
+            .graph()
+            .nodes
+            .iter()
+            .any(|node| node.id == FleetNodeId::Session(archived.clone()))
+    );
+    console.command(ConsoleCommand::Search("restore navigation".into()));
+    assert!(
+        console
+            .graph()
+            .nodes
+            .iter()
+            .any(|node| node.id == FleetNodeId::Session(archived.clone()))
+    );
+    assert_eq!(console.selection(), Some(&FleetNodeId::Session(current)));
+}
