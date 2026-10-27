@@ -46,3 +46,15 @@ Complementary retained regressions cover a missing alias with a deceptively simi
 - Existing public large-history probe: `cargo test --locked --test fleet_ui large_fleet_placement_resource_probe -- --exact --ignored --nocapture`: pass. 1,000 histories loaded in 333 ms with 32,026 µs peak UI poll; 4,000 loaded in 818 ms with 80,493 µs peak UI poll. These observations describe this fixture/machine and impose no timing threshold; full record IO remains on the inventory worker.
 
 Merged the latest integration tip `679f8b9` into this isolated branch with merge commit `80e2901`. That merge contains documentation only; the checked implementation is unchanged. `git merge-base --is-ancestor feat/goal-console HEAD` and a clean worktree verify the handoff baseline. No repeated broad checks were needed after the documentation merge.
+
+## WG-3 integration follow-up — native source identity
+
+The source integration review found that `ControlTarget::thread_id` deliberately routes an explicit non-`main` native ID verbatim. Existing explicit reports historically retain unindexed native ownership, so their behavior remains compatible. A newly imported `native:THREAD` source field must instead prove that the named thread belongs to its exact goal before becoming a recipient. WG-3 owns that source-only consumer guard and its UI/runtime-peer regression; this additive WG-2 change supplies the public metadata proof.
+
+Started from a clean `3a7b69a` worktree, fast-forwarded to the then-current integration `55d35bb`, then reapplied only the new Console regression. `Console::owner_resolutions()` now also includes native identity keys validated through the raw public parent chain, independently of the optional collaboration path. Child identities resolve to their exact scoped child; an explicit root native ID resolves to canonical `main`. Missing, foreign-root, broken, internal or cyclic ancestry cannot supply an identity entry. Alias resolution and the old explicit-report direct-ID route are unchanged.
+
+- RED: `CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/owner cargo test --locked --test console native_owner_identity_requires_exact_public_root_ancestry -- --exact --nocapture` failed because a proven child had no native identity entry.
+- GREEN: the same command passed after adding ancestry-validated native entries, including nested children without `agent_path`, canonical root IDs, and foreign/missing/internal negative cases.
+- `cargo test --locked --test console`: all 14 public Console cases pass.
+- `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check` and `git diff --check`: pass.
+- Broad suites were not repeated for this narrow follow-up; WG-3 runs the combined source/UI boundary coverage before its handoff.

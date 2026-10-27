@@ -541,3 +541,58 @@ fn oversized_public_headers_do_not_supply_owner_identity() {
     assert!(owners.contains_key(&alias("ordinary")));
     assert!(!owners.contains_key(&alias("oversized")));
 }
+
+#[test]
+fn native_owner_identity_requires_exact_public_root_ancestry() {
+    use zoetrope::console::OwnerResolution;
+    let home = Home::new();
+    for root in ["first", "second"] {
+        home.write(
+            &format!("codex/sessions/2026/10/23/rollout-{root}.jsonl"),
+            &codex_meta(root, "/same/project"),
+        );
+    }
+    for (native, root, parent, internal) in [
+        ("first-child", "first", "first", false),
+        ("first-nested", "first", "first-child", false),
+        ("foreign-child", "second", "second", false),
+        ("wrong-parent", "first", "foreign-child", false),
+        ("missing-parent", "first", "absent", false),
+        ("internal", "first", "first", true),
+    ] {
+        let header = serde_json::json!({"type":"session_meta","payload":{
+            "id":native,"session_id":root,"parent_thread_id":parent,
+            "thread_source":if internal {"guardian_review"} else {"subagent"}
+        }});
+        home.write(
+            &format!("codex/sessions/2026/10/23/rollout-{native}.jsonl"),
+            &format!("{header}\n"),
+        );
+    }
+    let mut console = home.console();
+    console.refresh(SystemTime::now());
+    let owners = console.owner_resolutions();
+    let key = |root: &str, native: &str| AgentKey {
+        session: SessionKey {
+            provider: Provider::Codex,
+            session_id: root.into(),
+        },
+        agent_id: native.into(),
+    };
+    assert_eq!(
+        owners.get(&key("first", "first-child")),
+        Some(&OwnerResolution::Resolved(key("first", "first-child")))
+    );
+    assert_eq!(
+        owners.get(&key("first", "first-nested")),
+        Some(&OwnerResolution::Resolved(key("first", "first-nested")))
+    );
+    assert_eq!(
+        owners.get(&key("first", "first")),
+        Some(&OwnerResolution::Resolved(key("first", "main")))
+    );
+    assert!(!owners.contains_key(&key("first", "foreign-child")));
+    assert!(!owners.contains_key(&key("first", "wrong-parent")));
+    assert!(!owners.contains_key(&key("first", "missing-parent")));
+    assert!(!owners.contains_key(&key("first", "internal")));
+}
