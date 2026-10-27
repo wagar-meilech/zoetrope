@@ -111,6 +111,17 @@ impl Provider {
             .into_iter()
             .find(|p| p.name().eq_ignore_ascii_case(name))
     }
+
+    /// Validate runtime-exposed native IDs against their own public headers.
+    #[cfg(feature = "native")]
+    pub(crate) fn runtime_root(self) -> anyhow::Result<String> {
+        match self {
+            Self::Codex => codex::discovery::runtime_root(),
+            Self::Claude => {
+                anyhow::bail!("automatic Claude identity is unavailable; supply an exact --session")
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

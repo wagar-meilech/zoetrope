@@ -484,6 +484,9 @@ pub struct WorkRecord {
     pub work_items: Vec<WorkItem>,
     #[serde(default)]
     pub source_tasks: Vec<crate::tracking::SourceTask>,
+    /// A successful canonical snapshot, including a deliberately empty source.
+    #[serde(default)]
+    pub source_snapshot: bool,
     #[serde(default)]
     pub source_diagnostics: Vec<String>,
     #[serde(default)]
@@ -506,6 +509,7 @@ impl WorkRecord {
             plan_drafts: Vec::new(),
             work_items: Vec::new(),
             source_tasks: Vec::new(),
+            source_snapshot: false,
             source_diagnostics: Vec::new(),
             criterion_history: Vec::new(),
             checkpoints: false,
@@ -561,6 +565,10 @@ impl WorkRecord {
                 .into_iter()
                 .flatten()
                 .any(|text| text.to_lowercase().contains(query))
+        }) || self.source_tasks.iter().any(|task| {
+            [&task.id, &task.label, &task.owner_label, &task.source]
+                .iter()
+                .any(|value| value.to_lowercase().contains(query))
         }) || self.plan_drafts.iter().any(|plan| {
             plan.steps
                 .iter()
@@ -606,13 +614,27 @@ impl WorkRecord {
         }
         let total_criteria = self.goal.as_ref().map_or(0, |goal| goal.criteria.len());
         let total_steps: usize = self.plan_drafts.iter().map(|plan| plan.steps.len()).sum();
-        let offset = offset.min(self.work_items.len());
+        let effective_total = if self.source_snapshot {
+            self.source_tasks.len()
+        } else {
+            self.work_items.len()
+        };
+        let offset = offset.min(effective_total);
+        let diagnostics: Vec<_> = self
+            .source_diagnostics
+            .iter()
+            .take(8)
+            .map(|text| short(text).0)
+            .collect();
         let mut context = serde_json::json!({
             "session":self.session, "progress":self.progress(),
             "goal":self.goal.as_ref().map(|goal| serde_json::json!({
                 "title":goal.title, "revision":goal.revision, "criteria":[]
             })),
             "work_items":[], "plans":[], "work_offset":offset,
+            "source_snapshot":self.source_snapshot,"source_tasks":[],
+            "source_tasks_total":self.source_tasks.len(),"source_tasks_omitted":self.source_tasks.len(),
+            "source_diagnostics":diagnostics,"source_diagnostics_omitted":self.source_diagnostics.len().saturating_sub(8),
             "work_items_total":self.work_items.len(), "work_items_omitted":self.work_items.len(),
             "criteria_omitted":total_criteria, "plans_omitted":self.plan_drafts.len(),
             "plan_steps_omitted":total_steps, "next_work_offset":null,
@@ -644,7 +666,16 @@ impl WorkRecord {
             context["goal"]["criteria"] = criteria.into();
         }
         let mut work_items = Vec::new();
-        for work in self.work_items.iter().skip(offset).take(limit.clamp(1, 32)) {
+        for work in self
+            .work_items
+            .iter()
+            .skip(offset)
+            .take(if self.source_snapshot {
+                0
+            } else {
+                limit.clamp(1, 32)
+            })
+        {
             let mut value = serde_json::to_value(work).expect("work serializes");
             let mut text_truncated = false;
             for key in ["label", "source", "purpose", "change", "next", "blocker"] {
@@ -672,9 +703,49 @@ impl WorkRecord {
                 break;
             }
         }
-        let next = offset + work_items.len();
+        let mut source_tasks = Vec::new();
+        for task in self
+            .source_tasks
+            .iter()
+            .skip(offset)
+            .take(limit.clamp(1, 32))
+        {
+            let mut value = serde_json::to_value(task).expect("source task serializes");
+            for key in [
+                "label",
+                "source",
+                "purpose",
+                "change",
+                "next",
+                "blocker",
+                "owner_label",
+                "status_label",
+            ] {
+                if let Some(text) = value[key].as_str() {
+                    value[key] = short(text).0.into();
+                }
+            }
+            for key in ["depends_on", "outcome_links"] {
+                if let Some(values) = value[key].as_array_mut() {
+                    let omitted = values.len().saturating_sub(16);
+                    values.truncate(16);
+                    value[format!("{key}_omitted")] = omitted.into();
+                }
+            }
+            if !push(&mut source_tasks, value, &mut work_budget) {
+                break;
+            }
+        }
+        let next = offset
+            + if self.source_snapshot {
+                source_tasks.len()
+            } else {
+                work_items.len()
+            };
+        context["source_tasks_omitted"] = (self.source_tasks.len() - source_tasks.len()).into();
+        context["source_tasks"] = source_tasks.into();
         context["work_items_omitted"] = (self.work_items.len() - work_items.len()).into();
-        context["next_work_offset"] = if next < self.work_items.len() {
+        context["next_work_offset"] = if next < effective_total {
             next.into()
         } else {
             serde_json::Value::Null
@@ -682,7 +753,11 @@ impl WorkRecord {
         context["work_items"] = work_items.into();
         let mut plans = Vec::new();
         let mut included_steps = 0;
-        for plan in self.plan_drafts.iter().take(4) {
+        for plan in self
+            .plan_drafts
+            .iter()
+            .take(if self.source_snapshot { 0 } else { 4 })
+        {
             let (source, source_truncated) = short(&plan.source);
             let steps: Vec<_> = plan.steps.iter().take(8).map(|step| {
                 let (text, text_truncated) = short(&step.step);
@@ -909,8 +984,18 @@ impl Store {
         ))
     }
     pub(crate) fn stamp(&self, session: &SessionKey) -> Option<(u64, std::time::SystemTime)> {
-        let metadata = fs::metadata(self.path(session)).ok()?;
-        Some((metadata.len(), metadata.modified().ok()?))
+        let record = fs::metadata(self.path(session))
+            .ok()
+            .and_then(|metadata| Some((metadata.len(), metadata.modified().ok()?)));
+        match (record, crate::tracking::stamp(&self.root)) {
+            (Some((bytes, time)), Some((source_bytes, source_time))) => {
+                Some((bytes + source_bytes, time.max(source_time)))
+            }
+            (record, source) => record.or(source),
+        }
+    }
+    pub(crate) fn refresh_sources(&self) -> Result<()> {
+        crate::tracking::refresh(&self.root)
     }
     pub fn read(&self, session: &SessionKey) -> Result<WorkRecord> {
         if session.session_id.is_empty() || session.session_id.len() > 100 {

@@ -61,6 +61,96 @@ pub fn read_meta(path: &Path) -> Option<SessionMeta> {
     }
 }
 
+/// Exact runtime binding; bounded header reads, no cwd/title/recency inference.
+#[cfg(feature = "native")]
+pub(crate) fn runtime_root() -> anyhow::Result<String> {
+    use anyhow::{Context, bail};
+    use std::io::{BufRead, BufReader, Read};
+    let root = std::env::var("CODEX_SESSION_ID")
+        .context("CODEX_SESSION_ID is unavailable; supply an exact --session")?;
+    let thread = std::env::var("CODEX_THREAD_ID")
+        .context("CODEX_THREAD_ID is unavailable; supply an exact --session")?;
+    for id in [&root, &thread] {
+        if id.is_empty()
+            || id.len() > 100
+            || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        {
+            bail!("invalid runtime native identity");
+        }
+    }
+    let sessions = codex_home()
+        .context("Codex home is unavailable")?
+        .join("sessions");
+    let mut pending = vec![(sessions, 0)];
+    let mut files = Vec::new();
+    let mut inspected = 0;
+    while let Some((directory, depth)) = pending.pop() {
+        for entry in std::fs::read_dir(directory).context("reading public runtime headers")? {
+            inspected += 1;
+            if inspected > 32768 {
+                bail!("native identity lookup exceeded 32768 entries; supply an exact --session");
+            }
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            if kind.is_dir() && depth < 3 {
+                pending.push((entry.path(), depth + 1));
+            } else if kind.is_file() && is_rollout_file(&entry.path()) {
+                files.push(entry.path());
+            }
+        }
+    }
+    let header = |id: &str| -> anyhow::Result<SessionMeta> {
+        let mut found = None;
+        for path in files.iter().filter(|path| {
+            path.file_stem()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.strip_suffix(id)
+                        .is_some_and(|prefix| prefix.ends_with('-'))
+                })
+        }) {
+            let mut line = String::new();
+            BufReader::new(std::fs::File::open(path)?.take(1024 * 1024 + 1))
+                .read_line(&mut line)?;
+            if line.len() > 1024 * 1024 {
+                bail!("native header exceeds 1 MiB");
+            }
+            let Some(Payload::SessionMeta(meta)) = parse_line(&line).map(|line| line.payload)
+            else {
+                continue;
+            };
+            if meta.id.as_deref() != Some(id) {
+                continue;
+            }
+            if found.is_some() {
+                bail!("ambiguous public native identity {id}");
+            }
+            found = Some(*meta);
+        }
+        found.with_context(|| format!("public native header for {id} is unavailable"))
+    };
+    let root_meta = header(&root)?;
+    if !root_meta.is_root() || root_meta.session_id.as_deref() != Some(root.as_str()) {
+        bail!("runtime root does not match its public native header");
+    }
+    let mut current = thread;
+    let mut seen = std::collections::BTreeSet::new();
+    while current != root {
+        if !seen.insert(current.clone()) || seen.len() > 64 {
+            bail!("invalid native ancestry");
+        }
+        let meta = header(&current)?;
+        if meta.session_id.as_deref() != Some(root.as_str()) || meta.is_root() {
+            bail!("runtime thread does not belong to the exposed root");
+        }
+        current = meta
+            .parent()
+            .context("current native thread has no public parent")?
+            .to_owned();
+    }
+    Ok(root)
+}
+
 /// Every rollout file under `sessions`, in path order. Walks the
 /// `YYYY/MM/DD` tree and nothing else.
 pub fn all_rollouts(sessions: &Path) -> Vec<PathBuf> {
