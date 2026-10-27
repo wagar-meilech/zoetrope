@@ -12,9 +12,10 @@ records earlier pauses and is historical.
 Semantic-context continuation follows `docs/SEMANTIC-CONTEXT-SPEC.md` and
 `docs/SEMANTIC-CONTEXT-TICKETS.md`; decisions are in the answered semantic
 questionnaire. For an explicitly tracked goal, read `docs/AGENT-REPORTING.md`
-using the supplied provider/session/state identity. Remote publication, push
-and PR updates remain pending payload/destination approval after automatic
-review rejected publishing the semantic spec; continue local work meanwhile.
+using the supplied provider/session/state identity. The user explicitly approved
+publication to `wagar-meilech/zoetrope`, pushing this branch and updating PR #8
+on 27 October 2026. Semantic spec/tickets are issues #9–13; local installation
+and checkout-based updates are issue #14 and `docs/INSTALLATION-SPEC.md`.
 
 The user approved `docs/GOAL-CONSOLE-SPEC.md`, its two public testing seams, and the task graph in `docs/GOAL-CONSOLE-TICKETS.md`. For this feature, explicit local Codex controls and opening a selected document extend the old read-only contract. Native transcripts stay read-only; the console must not add internet communication, telemetry, a hidden summarizing model, or automatic permission-policy changes. Preserve portable replay and the existing browser frontend.
 

@@ -44,7 +44,16 @@ SEM-1 and SEM-2 proceed independently; SEM-3 consumes their integrated interface
 
 ## Publication status
 
-Automatic approval review rejected publishing the full specification to GitHub without explicit payload/destination approval. GitHub remains the configured tracker. [SEM-1](semantic-tickets/SEM-1.md), [SEM-2](semantic-tickets/SEM-2.md), [SEM-3](semantic-tickets/SEM-3.md) and [SEM-4](semantic-tickets/SEM-4.md) are local task copies pending publication. Local implementation and validation are complete; no remote issue creation, push or PR update is claimed.
+Automatic approval review initially blocked publication. The user explicitly approved publication to `wagar-meilech/zoetrope`, push and the PR update on 27 October 2026. The [spec is issue #9](https://github.com/wagar-meilech/zoetrope/issues/9).
+
+| Local ticket | GitHub issue | Blocked by |
+| --- | --- | --- |
+| [SEM-1](semantic-tickets/SEM-1.md) | [#10](https://github.com/wagar-meilech/zoetrope/issues/10) | None |
+| [SEM-2](semantic-tickets/SEM-2.md) | [#11](https://github.com/wagar-meilech/zoetrope/issues/11) | None |
+| [SEM-3](semantic-tickets/SEM-3.md) | [#12](https://github.com/wagar-meilech/zoetrope/issues/12) | #10, #11 |
+| [SEM-4](semantic-tickets/SEM-4.md) | [#13](https://github.com/wagar-meilech/zoetrope/issues/13) | #12 |
+
+The additional installation/update request is [issue #14](https://github.com/wagar-meilech/zoetrope/issues/14), following [its specification](INSTALLATION-SPEC.md). All issues close through PR #8 when merged.
 
 ## Local integration evidence
 
@@ -55,8 +64,7 @@ Automatic approval review rejected publishing the full specification to GitHub w
 | SEM-3 | Integrated in `e6a6d52`, detail correction `ec35ad3` | [Work/owner/navigation RED/GREEN](research/sem-3-implementation.md) |
 | SEM-4 | Implemented and verified locally; source review clear, final checks passed | [Documentation/example verification](research/sem-4-implementation.md) |
 
-These statuses describe local implementation. Remote issue creation, push and PR
-updates remain pending the publication approval above. No task is remotely closed
-and no merge into main is claimed.
+These statuses describe verified implementation. Issues remain open until
+PR #8 merges. The user has not requested a merge into main.
 
-Final evidence: [validation](SEMANTIC-CONTEXT-VALIDATION.md), [two-axis review](research/semantic-context-review.md), and [review/bootstrap regressions](research/semantic-context-review-fixes.md). No additional implementation remains before publication approval.
+Final evidence: [validation](SEMANTIC-CONTEXT-VALIDATION.md), [two-axis review](research/semantic-context-review.md), and [review/bootstrap regressions](research/semantic-context-review-fixes.md). The semantic implementation is complete; the separately requested install/update helper is tracked above.

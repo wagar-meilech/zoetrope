@@ -4,10 +4,10 @@ Continue on `feat/goal-console`. Its `origin` is
 [wagar-meilech/zoetrope](https://github.com/wagar-meilech/zoetrope); the original
 console is in [PR #8](https://github.com/wagar-meilech/zoetrope/pull/8).
 The semantic-context continuation was authorized on 27 October 2026 through the
-completed questionnaire and “Answered, proceed.” It is integrated locally;
-remote publication, push and PR updates remain pending approval after automatic
-review rejected publishing the new specification. Merging into main still
-requires a user request.
+completed questionnaire and “Answered, proceed.” The user subsequently approved
+publication, push and the PR update on the same date. The semantic spec/tickets
+are published as issues #9–13; installation and updates are issue #14. Merging
+into main still requires a user request.
 
 ## Read first
 
@@ -27,8 +27,8 @@ requires a user request.
 
 Use [ARCHITECTURE.md](ARCHITECTURE.md) and [DESIGN.md](DESIGN.md) for code changes.
 [Issue-tracker instructions](agents/issue-tracker.md) retain GitHub as the
-configured tracker; the new local task copies are pending publication, not a
-claim that issues were created.
+configured tracker. The [task graph](SEMANTIC-CONTEXT-TICKETS.md) links the
+published issues; they close through PR #8 when it merges.
 
 ## Current behavior
 

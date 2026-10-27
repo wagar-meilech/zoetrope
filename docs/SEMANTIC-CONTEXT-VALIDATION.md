@@ -2,7 +2,7 @@
 
 The semantic continuation is implemented and verified locally on `feat/goal-console`. The final checked implementation commit is `c318c1c8`; integration `856c565` contains identical application source. Subsequent completion artifacts change documentation/probes only.
 
-This record concerns Linux x86_64 with Rust 1.99.0, plus strict compilation/linting on the declared Rust 1.88 minimum. The earlier [25 October Mac installation](GOAL-CONSOLE-VALIDATION.md) remains historical. No updated global `zoe` command, remote issue, push, PR update or merge into main is claimed.
+This record concerns Linux x86_64 with Rust 1.99.0, plus strict compilation/linting on the declared Rust 1.88 minimum. The earlier [25 October Mac installation](GOAL-CONSOLE-VALIDATION.md) remains historical. This source-validation run preceded installation and publication. See the [installation record](research/local-installation.md) and [task graph](SEMANTIC-CONTEXT-TICKETS.md) for subsequent actions. No merge into main is authorized.
 
 ## Checks
 
@@ -72,4 +72,4 @@ To repeat, build the release, compile the small Rust runtime helper against its 
 
 [The two-axis review](research/semantic-context-review.md) preserves initial findings and final resolutions separately. Standards has zero remaining findings; Spec has zero remaining findings. The source still uses recorded/public data and explicit reports, with no helper model, automatic project-instruction changes or scheduling changes.
 
-All four local tickets are implemented and verified. GitHub remains the configured tracker. Publishing the new spec/tickets, pushing these commits and updating PR #8 remain pending explicit approval after automatic review rejected disclosure of the new payload to the external destination. The local files and commits are ready for review.
+All four semantic tickets are implemented and verified. Automatic review initially blocked publication; the user then explicitly approved the payload and destination on 27 October 2026. The [spec](https://github.com/wagar-meilech/zoetrope/issues/9) and tickets [#10](https://github.com/wagar-meilech/zoetrope/issues/10), [#11](https://github.com/wagar-meilech/zoetrope/issues/11), [#12](https://github.com/wagar-meilech/zoetrope/issues/12), [#13](https://github.com/wagar-meilech/zoetrope/issues/13) are published and close through PR #8 when merged.

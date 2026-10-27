@@ -1,8 +1,8 @@
 # SEM-2: Discoverable steering and tracking
 
-Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md).
+Parent: [semantic context spec](../SEMANTIC-CONTEXT-SPEC.md), [issue #9](https://github.com/wagar-meilech/zoetrope/issues/9). Ticket: [#11](https://github.com/wagar-meilech/zoetrope/issues/11).
 
-Status: implemented and verified locally; remote publication pending explicit approval.
+Status: implemented, verified and published; closes through PR #8 when merged.
 
 Blocked by: None.
 
@@ -12,8 +12,8 @@ Make selected-recipient guidance/queue/stop availability visible before sending.
 
 ## Acceptance and process
 
-Follow docs/SEMANTIC-CONTEXT-SPEC.md and the completed questionnaire. Public console and executable/external seams are already approved. Apply the TDD skill: one red test, one green implementation, then the next behavior. Record meaningful RED/GREEN commands and results in docs/research/sem-N-implementation.md (use your ticket number). Keep Rust, no extra model, preserve native history and controls. Implement in your isolated worktree based on feat/goal-console; merge its current tip before reporting complete. Commit with Conventional Commits. Do not push or publish remotely.
+Follow docs/SEMANTIC-CONTEXT-SPEC.md and the completed questionnaire. Public console and executable/external seams are already approved. Apply the TDD skill: one red test, one green implementation, then the next behavior. Record meaningful RED/GREEN commands and results in docs/research/sem-N-implementation.md (use your ticket number). Keep Rust, no extra model, preserve native history and controls. Implement in your isolated worktree based on feat/goal-console; merge its current tip before reporting complete. Commit with Conventional Commits. Publication and the PR update were explicitly approved by the user on 27 October 2026. Do not merge into main without a user request.
 
 ## Local result
 
-See [implementation and validation evidence](../research/sem-2-implementation.md). Publication remains pending; no remote issue closure is claimed.
+See [implementation and validation evidence](../research/sem-2-implementation.md). Published; issue closure occurs through PR #8 when merged.

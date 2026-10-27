@@ -14,8 +14,10 @@ Current requirements: [accepted spec](../SEMANTIC-CONTEXT-SPEC.md),
 [answered questionnaire](../SEMANTIC-CONTEXT-QUESTIONS.md), and
 [local task graph](../SEMANTIC-CONTEXT-TICKETS.md). The
 [reporting convention](../AGENT-REPORTING.md) is opt-in for selected projects.
-Remote issue publication, push and PR updates remain pending approval; these
-local records do not imply remote completion.
+The user explicitly approved publication, push and the PR update on 27 October
+2026. The task graph links published issues #9–13; issue closure occurs through
+PR #8 when merged. [Installation/update evidence](local-installation.md) covers
+the additional user request tracked as issue #14.
 
 | Work | Implementation and verification notes |
 | --- | --- |

@@ -1,6 +1,6 @@
 # SEM-4 — Reporting convention and documentation
 
-Documentation implemented in `/tmp/zoetrope-sem-docs`, branch `feat/semantic-reporting-docs`, based on integrated `ec35ad3`. Root retains final combined validation, resource comparison, independent review and review fixes. Remote publication/push/PR updates remain pending payload/destination approval; no remote completion or merge is claimed.
+Documentation implemented in `/tmp/zoetrope-sem-docs`, branch `feat/semantic-reporting-docs`, based on integrated `ec35ad3`. Root retains final combined validation, resource comparison, independent review and review fixes. Publication/push/PR updates were pending explicit approval at the time of this work. The user later approved them; current issue links are in the task graph. No merge into main is claimed.
 
 ## Changes
 

@@ -1,6 +1,6 @@
 # Semantic goal context and discoverable steering
 
-Status: mechanism approved and implementation authorized on 27 October 2026 through the completed questionnaire and “Answered, proceed.” Continues the existing integration and its two approved public testing seams.
+Status: mechanism approved and implementation authorized on 27 October 2026 through the completed questionnaire and “Answered, proceed.” Continues the existing integration and its two approved public testing seams. Published as [issue #9](https://github.com/wagar-meilech/zoetrope/issues/9) after explicit publication approval on the same date.
 
 ## Problem Statement
 

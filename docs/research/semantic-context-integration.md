@@ -2,7 +2,9 @@
 
 Integration branch: `feat/goal-console`. All actions below were local. No issues,
 pushes, PR updates or native session mutations were performed; remote publication
-remains pending the previously reported automatic approval review block.
+was pending the automatic approval review block at the time of these merges.
+The user later approved publication; current links/status are in
+[the task graph](../SEMANTIC-CONTEXT-TICKETS.md).
 
 ## SEM-1 and SEM-2
 
