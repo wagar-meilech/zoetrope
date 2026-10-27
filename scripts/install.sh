@@ -67,11 +67,28 @@ trap cleanup 0
 trap 'exit 1' HUP INT TERM
 skill_staging=$(mktemp -d "$skills_home/.zoe-skill.XXXXXX")
 mkdir "$skill_staging/new"
-# Stage packaged files first, then preserve user additions without following
-# existing file symlinks or overwriting the new package with an older version.
+# Merge only missing user paths. Subshells keep recursive traversal variables
+# scoped; old directory links remain links and packaged paths always win.
+copy_additions() (
+    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        target=$2/${entry##*/}
+        if [ -e "$target" ] || [ -L "$target" ]; then
+            if [ -d "$entry" ] && [ ! -L "$entry" ] && [ -d "$target" ] && [ ! -L "$target" ]; then
+                copy_additions "$entry" "$target"
+            fi
+        elif [ -d "$entry" ] && [ ! -L "$entry" ]; then
+            mkdir "$target"
+            copy_additions "$entry" "$target"
+        elif [ -f "$entry" ] || [ -L "$entry" ]; then
+            cp -R -P "$entry" "$target"
+        fi
+    done
+)
+# Stage packaged files first, then preserve only nonconflicting user additions.
 cp -R "$checkout/skills/zoetrope-tracking/." "$skill_staging/new/"
 if [ -d "$skill_dir" ]; then
-    cp -R -n "$skill_dir/." "$skill_staging/new/"
+    copy_additions "$skill_dir" "$skill_staging/new"
 fi
 cp "$target_dir/release/zoe" "$staging/zoe"
 shell_quote() {
