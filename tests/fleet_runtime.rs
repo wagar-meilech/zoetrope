@@ -147,3 +147,16 @@ fn clicking_replay_opens_recording_and_preserves_drafts_without_live_actions() {
     assert_eq!(observed["peer_exit"], 0, "{observed}");
     assert_eq!(observed["exit"], 0, "{observed}");
 }
+
+#[test]
+fn tracking_commands_use_the_running_executable_even_with_an_incompatible_cli_on_path() {
+    let fixture = Fixture::new();
+    for action in ["tracking", "criteria"] {
+        let observed = fixture.run(&format!("{action}-cli"));
+        assert_eq!(observed["fake_on_path"], true, "{observed}");
+        assert_eq!(observed["current_executable"], true, "{observed}");
+        assert_eq!(observed["reads_exact_store"], true, "{observed}");
+        assert_eq!(observed["compact_context"], true, "{observed}");
+        assert_eq!(observed["exit"], 0, "{observed}");
+    }
+}

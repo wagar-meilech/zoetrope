@@ -400,6 +400,73 @@ fn explicitly_selecting_coordinator_keeps_the_child_draft_with_its_owner() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn criteria_requests_read_compact_context_without_saved_private_material() {
+    let home = Home::new();
+    let project = home.0.join("agent-project");
+    std::fs::create_dir_all(&project).unwrap();
+    home.session("goal", project.to_str().unwrap(), false);
+    home.goal("goal", "Review completion criteria");
+    let store = Store::new(home.0.join("state"));
+    let target =
+        serde_json::json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    for update in [
+        serde_json::json!({"op":"save_draft","target":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"child"},"text":"PRIVATE SAVED DRAFT"}),
+        serde_json::json!({"op":"capture_question","question":{"id":"private","target":target,
+            "prompts":[{"id":"secret","question":"Private input","is_secret":true}],"state":"expired",
+            "answers":{"secret":["PRIVATE SECRET ANSWER"]}}}),
+        serde_json::json!({"op":"create_feedback","id":"saved-outbox","target":target,"text":"PRIVATE SAVED OUTBOX","mode":"guidance"}),
+    ] {
+        store
+            .apply(&home.key("goal"), serde_json::from_value(update).unwrap())
+            .unwrap();
+    }
+    let mut ui = FleetConsole::new(FleetConfig {
+        roots: DiscoveryRoots {
+            codex_home: Some(home.0.join("codex")),
+            claude_projects: None,
+        },
+        state_root: home.0.join("state"),
+        state_executable: Some(PathBuf::from(env!("CARGO_BIN_EXE_zoe"))),
+        socket: home.0.join("no-runtime.sock"),
+        ..FleetConfig::default()
+    });
+    wait_text(&mut ui, "Selected: Review completion criteria");
+    key(&mut ui, KeyCode::Char('A'));
+    ui.try_shutdown().unwrap();
+    let saved = store.read(&home.key("goal")).unwrap();
+    let draft = &saved
+        .drafts
+        .iter()
+        .find(|draft| draft.target.agent_id == "main")
+        .unwrap()
+        .text;
+    assert!(draft.contains(" context codex 'goal'"), "{draft}");
+    assert!(!draft.contains(" show "), "{draft}");
+    let command = draft
+        .lines()
+        .find(|line| line.contains(" state --root ") && line.contains(" context "))
+        .unwrap();
+    let output = std::process::Command::new("/bin/sh")
+        .args(["-c", command])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let context: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(context["goal"]["title"], "Review completion criteria");
+    for field in ["record", "questions", "drafts", "outbox"] {
+        assert!(context.get(field).is_none(), "{context}");
+    }
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("PRIVATE"));
+    assert!(output.stdout.len() <= 65_536);
+}
+
 #[test]
 fn tracking_and_criteria_commands_share_the_ui_store_across_project_directories() {
     let home = Home::new();
@@ -420,7 +487,7 @@ fn tracking_and_criteria_commands_share_the_ui_store_across_project_directories(
         socket: home.0.join("no-runtime.sock"),
         ..FleetConfig::default()
     };
-    for (action, command) in [('T', " context "), ('A', " show ")] {
+    for action in ['T', 'A'] {
         let mut ui = FleetConsole::new(config.clone());
         wait_text(&mut ui, "No reported work");
         key(&mut ui, KeyCode::Char(action));
@@ -439,7 +506,10 @@ fn tracking_and_criteria_commands_share_the_ui_store_across_project_directories(
         );
         let saved: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         let draft = saved["record"]["drafts"][0]["text"].as_str().unwrap();
-        let read_command = draft.lines().find(|line| line.contains(command)).unwrap();
+        let read_command = draft
+            .lines()
+            .find(|line| line.contains(" state --root ") && line.contains(" context "))
+            .unwrap();
         assert!(
             read_command.contains(&format!("--root '{}'", state_home.0.display())),
             "{read_command}"
@@ -821,6 +891,7 @@ fn documents_open_only_the_explicitly_selected_exact_path() {
         state_root: home.0.join("state"),
         socket: home.0.join("none.sock"),
         documents: zoetrope::documents::DocumentLauncher::new(code, opener),
+        state_executable: None,
     });
     wait_text(&mut ui, "Selected: Compiler documents");
     key(&mut ui, KeyCode::Char('d'));
@@ -1056,8 +1127,8 @@ fn plan_adoption_and_criteria_requests_stay_explicit_and_use_the_same_goal_recor
     key(&mut ui, KeyCode::Char('A'));
     wait_text(&mut ui, "Ask me before meaningful milestones");
     let request = text(&mut ui, 800, 60);
-    assert!(request.contains("show codex 'root-goal'"), "{request}");
-    assert!(!request.contains("show codex 'child-thread'"));
+    assert!(request.contains("context codex 'root-goal'"), "{request}");
+    assert!(!request.contains("context codex 'child-thread'"));
     assert!(request.contains("state user'\\''s'"), "{request}");
     assert!(request.contains("Recipient: Parser"));
     assert!(!request.contains("Accepted by Codex"));

@@ -48,6 +48,9 @@ use ratatui::{
 pub struct FleetConfig {
     pub roots: DiscoveryRoots,
     pub state_root: PathBuf,
+    /// Absolute executable for shared state commands; None uses `zoe` on PATH.
+    /// The native launcher supplies its own current executable.
+    pub state_executable: Option<PathBuf>,
     pub socket: PathBuf,
     pub documents: DocumentLauncher,
 }
@@ -57,6 +60,7 @@ impl Default for FleetConfig {
             roots: DiscoveryRoots::local(),
             state_root: Store::default_root()
                 .unwrap_or_else(|_| std::env::temp_dir().join("zoetrope-state")),
+            state_executable: None,
             socket: crate::control::default_socket(),
             documents: DocumentLauncher::default(),
         }
@@ -262,6 +266,7 @@ pub struct FleetConsole {
     inventory: Inventory,
     state: StateWorker,
     state_root: PathBuf,
+    state_executable: Option<PathBuf>,
     plan_index: usize,
     control: ControlWorker,
     documents: DocumentWorker,
@@ -331,6 +336,7 @@ impl FleetConsole {
             inventory,
             state,
             state_root: config.state_root.clone(),
+            state_executable: config.state_executable.clone(),
             plan_index: 0,
             control,
             documents,
@@ -1643,6 +1649,34 @@ impl FleetConsole {
         self.status =
             "Coordinator selected explicitly; saved drafts retain their recipients".into();
     }
+    fn state_commands(&self) -> Result<(String, String), &'static str> {
+        if !self.state_root.is_absolute() {
+            return Err(
+                "State folder could not be resolved; restart from a valid working directory",
+            );
+        }
+        let root = self
+            .state_root
+            .to_str()
+            .ok_or("This state folder cannot be represented in a copyable command")?;
+        let executable = match &self.state_executable {
+            Some(path) => {
+                if !path.is_absolute() {
+                    return Err("State executable must use an absolute path for shared commands");
+                }
+                shell_quote(
+                    path.to_str().ok_or(
+                        "This state executable cannot be represented in a copyable command",
+                    )?,
+                )
+            }
+            None => "zoe".into(),
+        };
+        Ok((
+            format!("{executable} state --root {}", shell_quote(root)),
+            format!("{executable} state --help"),
+        ))
+    }
     fn prepare_tracking(&mut self) {
         let Some(selected) = self
             .selected_agent()
@@ -1656,14 +1690,12 @@ impl FleetConsole {
             self.status = "Loading saved work; try Enable tracking again shortly".into();
             return;
         };
-        if !self.state_root.is_absolute() {
-            self.status =
-                "State folder could not be resolved; restart from a valid working directory".into();
-            return;
-        }
-        let Some(root) = self.state_root.to_str() else {
-            self.status = "This state folder cannot be represented in a copyable command".into();
-            return;
+        let (command, help) = match self.state_commands() {
+            Ok(commands) => commands,
+            Err(reason) => {
+                self.status = reason.into();
+                return;
+            }
         };
         let target = AgentKey {
             session: selected,
@@ -1673,10 +1705,9 @@ impl FleetConsole {
             crate::provider::Provider::Codex => "codex",
             crate::provider::Provider::Claude => "claude",
         };
-        let root = shell_quote(root);
         let session = shell_quote(&target.session.session_id);
         let mut instruction = format!(
-            "Enable Zoetrope work tracking for this goal. Keep a short plan of meaningful work items with stable IDs, actual agent owners, reported status and known outcome/dependency links. Report purpose, important changes, next steps or blockers when useful.\n\nRead compact context:\nzoe state --root {root} context {provider} {session}\n\nPublish changed work with upsert_work_item through:\nzoe state --root {root} apply {provider} {session} '<update JSON>'\nUse zoe state --help for fields and revision checks. Keep outcomes unverified until supported by evidence. Publish only at meaningful transitions: plan/scope changes, work starts/completes, blockers, or verification. Batch changes; routine reads and commands need no report."
+            "Enable Zoetrope work tracking for this goal. Keep a short plan of meaningful work items with stable IDs, actual agent owners, reported status and known outcome/dependency links. Report purpose, important changes, next steps or blockers when useful.\n\nRead compact context:\n{command} context {provider} {session}\n\nPublish changed work with upsert_work_item through:\n{command} apply {provider} {session} '<update JSON>'\nUse {help} for fields and revision checks. Keep outcomes unverified until supported by evidence. Publish only at meaningful transitions: plan/scope changes, work starts/completes, blockers, or verification. Batch changes; routine reads and commands need no report."
         );
         if record
             .goal
@@ -1718,23 +1749,20 @@ impl FleetConsole {
             self.status = "Select the intended agent first".into();
             return;
         };
-        if !self.state_root.is_absolute() {
-            self.status =
-                "State folder could not be resolved; restart from a valid working directory".into();
-            return;
-        }
-        let Some(root) = self.state_root.to_str() else {
-            self.status="This state folder cannot be represented in a copyable command; edit criteria locally".into();
-            return;
+        let (command, help) = match self.state_commands() {
+            Ok(commands) => commands,
+            Err(reason) => {
+                self.status = reason.into();
+                return;
+            }
         };
         let provider = match target.session.provider {
             crate::provider::Provider::Codex => "codex",
             crate::provider::Provider::Claude => "claude",
         };
-        let root = shell_quote(root);
         let session = shell_quote(&target.session.session_id);
         let mut text = format!(
-            "Please propose concise, editable completion criteria for this goal: {}. Include testing and final checks. Keep outcomes unverified until supported by evidence.\n\nRead the exact goal record with:\nzoe state --root {root} show {provider} {session}\n\nUpdate this same goal record with:\nzoe state --root {root} apply {provider} {session} '<update JSON>'\nUse zoe state --help for update fields.\n",
+            "Please propose concise, editable completion criteria for this goal: {}. Include testing and final checks. Keep outcomes unverified until supported by evidence.\n\nRead compact context:\n{command} context {provider} {session}\n\nUpdate this same goal record with:\n{command} apply {provider} {session} '<update JSON>'\nUse {help} for update fields.\n",
             self.selected_label()
         );
         if self.selected_work.as_ref().is_some_and(|r| r.checkpoints) {

@@ -335,7 +335,13 @@ async fn main() -> Result<()> {
     }
     let cli = parse_cli(std::env::args())?;
     match cli {
-        Cli::Fleet => zoetrope::fleet::runtime::run(zoetrope::fleet::FleetConfig::default()).await,
+        Cli::Fleet => {
+            let config = zoetrope::fleet::FleetConfig {
+                state_executable: Some(std::env::current_exe()?),
+                ..zoetrope::fleet::FleetConfig::default()
+            };
+            zoetrope::fleet::runtime::run(config).await
+        }
         Cli::Inspect { target, provider } => run_inspect(target, provider).await,
         other => run_tui(other).await,
     }
