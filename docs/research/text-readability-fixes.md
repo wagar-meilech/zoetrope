@@ -122,3 +122,12 @@ native libzoetrope/ratatui/crossterm artifacts, as in the root resource probes.
 Debug RED/GREEN observations are retained under `/tmp/zoetrope-text-build/` as
 `link-cost-red.log` and `link-cost-green.log`. They are individual fixture samples,
 not timing guarantees. Final measurements and check outcomes follow below.
+
+## Second fix integration
+
+Immutable source `8a9e82a2adecdbd08f7a086d05b1b4e06354a831` was merged conflict-free
+into `feat/goal-console` as `465604f897cf61de7d06c1a2c8bbb963f10fb93f`. Application,
+public tests and package inputs exactly match that independently rechecked source.
+Only completion documentation changes follow this merge; the coordinator-owned
+untracked preview index was preserved unchanged. TXT-4 is done and TXT-5 remains
+active. This merger ran no tests, installation, publication or native input.
