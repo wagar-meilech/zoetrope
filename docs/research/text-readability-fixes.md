@@ -122,3 +122,38 @@ native libzoetrope/ratatui/crossterm artifacts, as in the root resource probes.
 Debug RED/GREEN observations are retained under `/tmp/zoetrope-text-build/` as
 `link-cost-red.log` and `link-cost-green.log`. They are individual fixture samples,
 not timing guarantees. Final measurements and check outcomes follow below.
+
+### Follow-up measurements and checks
+
+Application fix pin: `8a9e82a2adecdbd08f7a086d05b1b4e06354a831`.
+Measurements use the same owned public render probe and debug compiler, before
+and after indexing; each cell is one sample, so scheduling/cold-start noise is
+expected. No pass/fail timing threshold was introduced.
+
+| Input bytes | Malformed targets before, ms | Malformed targets after, ms | Equal-size control after, ms |
+| --- | --- | --- | --- |
+| 4,096 | 32.425 | 9.985 | 4.438 |
+| 8,192 | 116.449 | 6.977 | 10.132 |
+| 16,384 | 447.501 | 11.592 | 10.077 |
+| 32,768 | 1,754.988 | 20.698 | 17.811 |
+
+The algorithm now visits input bytes once to index matching parentheses and does
+constant-time target-end lookups. Literal/label/token scans consume their own
+segments without repeated target-tail walks. The table uses at most 64 KiB for
+the 32 KiB input bound, plus a bounded u16 opening stack. These are implementation
+bounds and qualified local observations, not universal latency guarantees.
+
+Follow-up validation passed:
+
+```sh
+CARGO_TARGET_DIR=/tmp/zoetrope-text-build/fixes cargo test --offline --locked --test console --test fleet_ui --test fleet_runtime
+CARGO_TARGET_DIR=/tmp/zoetrope-text-build/fixes cargo clippy --offline --locked --all-targets --all-features -- -D warnings
+CARGO_TARGET_DIR=/tmp/zoetrope-wg-build/sources-msrv cargo +1.88.0 clippy --offline --locked --all-targets --all-features -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The combined public suites pass 15 Console, 8 PTY/runtime and 81 UI tests; one
+manual resource probe remains ignored in the ordinary UI run. New regressions
+and measurements use owned temporary state only. Root owns final release/native
+resource evidence, independent rechecks and installation/publication.
