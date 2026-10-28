@@ -13,8 +13,8 @@ Continue on `feat/goal-console` and PR #8; no merge into main.
 | TXT-1 | Replace gold accents with soft blue | done | main | None | Rendering regression passed. |
 | TXT-2 | Format structured text and highlight paths/code | done | main | TXT-1 | Public display/editor regressions passed. |
 | TXT-3 | Preserve bounded selected-message structure lazily | done | main | None | Cache, UTF-8, refresh and privacy checks passed. |
-| TXT-4 | Resolve review and narrow-layout edge cases | active | /root/text_review_fixes | TXT-2, TXT-3 | Fix brackets, fragment isolation, compact clipping and path recognition. |
-| TXT-5 | Verify, install and publish the final update | active | main | TXT-4 | Terminal previews/checks prepared; final artifacts await fixes. |
+| TXT-4 | Resolve review and narrow-layout edge cases | done | /root/text_review_fixes | TXT-2, TXT-3 | Integrated; public regressions and strict lint checks passed. |
+| TXT-5 | Verify, install and publish the final update | active | main | TXT-4 | Run final combined checks/rechecks, install and publish. |
 
 ## Accepted behavior
 

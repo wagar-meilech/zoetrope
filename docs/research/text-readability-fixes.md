@@ -71,3 +71,14 @@ Raw local logs are under `/tmp/zoetrope-text-build/` (`link-*`, `fragments-*`,
 
 Root integration owns final full-suite/resource/terminal checks, independent
 rechecks, installed app/skill update, issue/PR publication and worktree cleanup.
+
+## Merger integration
+
+Clean handoff `21139996c14a3bc6cd796ad5685be460612fe11f` (application fix `f12885b`) was merged
+conflict-free into `feat/goal-console` as `ebbed25d7df9a532d4327fa4f6fa8b3686ee7d23`. The merged tree exactly
+matches the handoff before these documentation-only completion notes. Application,
+public tests and package inputs therefore retain the implementer's checked source.
+The coordinator's untracked synthetic-preview index was preserved unchanged.
+TXT-4 is integrated/done; TXT-5 remains active for root's final combined checks,
+independent rechecks, installation and publication. No broad tests, install,
+publication or native input were performed by this merger.
