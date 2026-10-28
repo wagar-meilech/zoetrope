@@ -82,3 +82,43 @@ The coordinator's untracked synthetic-preview index was preserved unchanged.
 TXT-4 is integrated/done; TXT-5 remains active for root's final combined checks,
 independent rechecks, installation and publication. No broad tests, install,
 publication or native input were performed by this merger.
+
+## Follow-up recheck fixes
+
+A second independent recheck found two remaining issues. Work fields and some
+other generated read-only panels still shared Markdown state across externally
+supplied values; malformed link targets also caused overlapping tail scans.
+
+Work context, labels, provenance and generated controls now use independent dense
+field/row fragments. The same seam covers criteria/evidence, plan steps, question
+headers/bodies/options/descriptions/answers, document names/paths and delivery
+snippets. Normal adjacent fields add no blank rows. Native source fields retain
+their original stored values and editors remain literal. The shared pane budget
+still applies across every fragment.
+
+The public Work-pane regression
+`malformed_work_fields_cannot_absorb_later_fields_provenance_or_controls` was RED
+when an unfinished task label/Purpose/Source fence styled later fields as code;
+it is GREEN with separate Status, Next, Provenance, Recorded and Controls plus
+unchanged stored work. The cross-panel regression
+`malformed_read_only_panel_values_cannot_absorb_later_rows_or_hints` was RED on a
+criterion fence absorbing the next criterion. It is GREEN across criteria,
+questions, documents and deliveries, including unchanged recorded values.
+
+The link matcher now computes parenthesis widths once per inline input and then
+looks up each target end in constant time. A u16 width table and opening stack are
+bounded by the existing 32 KiB pane input; zero marks unmatched openings. Literal
+bracket fallback and balanced-parenthesis targets keep their existing behavior.
+The new public regression
+`many_incomplete_link_targets_keep_literal_text_and_a_later_valid_link` confirms
+literal recovery and a later valid balanced link after 1,024 incomplete candidates.
+
+The deterministic public render probe is committed at
+[probes/text-readability-link-cost.rs](probes/text-readability-link-cost.rs).
+It creates owned recordings/state, renders real criteria through FleetConsole,
+prints equal-size punctuation controls and malformed targets, then cleans up.
+No private lexer calls or brittle timing threshold are used. Build against the
+native libzoetrope/ratatui/crossterm artifacts, as in the root resource probes.
+Debug RED/GREEN observations are retained under `/tmp/zoetrope-text-build/` as
+`link-cost-red.log` and `link-cost-green.log`. They are individual fixture samples,
+not timing guarantees. Final measurements and check outcomes follow below.

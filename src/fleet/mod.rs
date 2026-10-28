@@ -751,11 +751,11 @@ impl FleetConsole {
         }
         changed
     }
-    fn deliveries_text(&self) -> String {
+    fn deliveries_text(&self) -> Vec<rich_text::Fragment<'_>> {
         use crate::workstate::{DeliveryState as S, FeedbackMode as M};
-        let mut text = String::from(
-            "Saved deliveries\nDelivery records confirm receipt, not completed work.\n",
-        );
+        use rich_text::Fragment;
+        let mut fields =
+            vec!["Saved deliveries\nDelivery records confirm receipt, not completed work.".into()];
         if let Some(work) = &self.selected_work {
             for item in work.outbox.iter().rev().take(32) {
                 let mode = match item.mode {
@@ -778,23 +778,21 @@ impl FleetConsole {
                         S::Unavailable => "Unavailable",
                     }
                 };
-                text.push_str(&format!(
-                    "\n{mode} to {} · {state}\n",
-                    self.producer_label(&item.target)
-                ));
+                fields.push(
+                    format!("{mode} to {} · {state}", self.producer_label(&item.target)).into(),
+                );
                 if item.mode != M::Answer {
-                    text.push_str(&crate::ui::truncate(
+                    fields.push(Fragment::row(crate::ui::truncate(
                         item.text.lines().next().unwrap_or_default(),
                         160,
-                    ));
-                    text.push('\n');
+                    )));
                 }
             }
             if work.outbox.is_empty() {
-                text.push_str("\nNo deliveries yet. Write feedback with f.");
+                fields.push("No deliveries yet. Write feedback with f.".into());
             }
         }
-        text
+        fields
     }
     fn recipient_label(&self) -> String {
         if self.pane == Pane::Feedback
@@ -1360,60 +1358,79 @@ impl FleetConsole {
             self.update_state(key, update, "Outcome reopened; prior verification retained");
         }
     }
-    fn criteria_text(&self) -> String {
+    fn criteria_text(&self) -> Vec<rich_text::Fragment<'_>> {
+        use rich_text::Fragment;
         let Some(record) = &self.selected_work else {
-            return "Loading selected goal…".into();
+            return vec!["Loading selected goal…".into()];
         };
-        let mut text = String::new();
+        let mut fields = Vec::new();
         if let Some(goal) = &record.goal {
-            for (at, c) in goal.criteria.iter().enumerate() {
-                text.push_str(&format!(
-                    "{} {} {}\n",
+            for (at, criterion) in goal.criteria.iter().enumerate() {
+                fields.push(Fragment::row(format!(
+                    "{} {} {}",
                     if at == self.item_index { "›" } else { " " },
-                    if c.status == CriterionStatus::Verified {
+                    if criterion.status == CriterionStatus::Verified {
                         "✓"
                     } else {
                         "○"
                     },
-                    c.label
-                ));
-                for evidence in &c.evidence {
-                    text.push_str(&format!("  Evidence: {}\n", evidence.detail));
+                    criterion.label
+                )));
+                for evidence in &criterion.evidence {
+                    fields.push(Fragment::field("  Evidence", &evidence.detail));
                 }
             }
-            text.push_str(&format!(
-                "\nScope revision {} · {} earlier scopes\n",
-                goal.revision,
-                record.scope_history.len()
-            ));
+            fields.push(
+                format!(
+                    "Scope revision {} · {} earlier scopes",
+                    goal.revision,
+                    record.scope_history.len()
+                )
+                .into(),
+            );
         } else {
-            text.push_str("Progress not tracked. Press e to add outcomes.\n");
+            fields.push(Fragment::row(
+                "Progress not tracked. Press e to add outcomes.",
+            ));
         }
         if !record.criterion_history.is_empty() {
-            text.push_str("Prior verification retained in outcome history.\n");
-        }
-        text.push_str(&format!(
-            "\nCheckpoints: {} (preference only)\n",
-            if record.checkpoints {
-                "requested"
-            } else {
-                "off"
-            }
-        ));
-        if let Some(plan) = record.plan_drafts.get(self.plan_index) {
-            text.push_str(&format!(
-                "\nDraft plan (unverified) {} of {}\nProposed by {}\n",
-                self.plan_index + 1,
-                record.plan_drafts.len(),
-                self.producer_label(&plan.producer)
+            fields.push(Fragment::row(
+                "Prior verification retained in outcome history.",
             ));
-            for step in &plan.steps {
-                text.push_str(&format!("  {}\n", step.step));
-            }
-            text.push_str("[ / ] choose plan · a adopt as pending outcomes\n");
         }
-        text.push_str("\ne edit · v verify · u reopen · p checkpoints\nA prepare criteria request · PageUp/PageDown scroll");
-        text
+        fields.push(
+            format!(
+                "Checkpoints: {} (preference only)",
+                if record.checkpoints {
+                    "requested"
+                } else {
+                    "off"
+                }
+            )
+            .into(),
+        );
+        if let Some(plan) = record.plan_drafts.get(self.plan_index) {
+            fields.push(
+                format!(
+                    "Draft plan (unverified) {} of {}",
+                    self.plan_index + 1,
+                    record.plan_drafts.len()
+                )
+                .into(),
+            );
+            fields.push(Fragment::row(format!(
+                "Proposed by {}",
+                self.producer_label(&plan.producer)
+            )));
+            for step in &plan.steps {
+                fields.push(Fragment::row(format!("  {}", step.step)));
+            }
+            fields.push(Fragment::row(
+                "[ / ] choose plan · a adopt as pending outcomes",
+            ));
+        }
+        fields.push("e edit · v verify · u reopen · p checkpoints\nA prepare criteria request · PageUp/PageDown scroll".into());
+        fields
     }
 
     fn listen_questions(&mut self) {
@@ -1594,61 +1611,65 @@ impl FleetConsole {
             }
         }
     }
-    fn questions_text(&self) -> String {
+    fn questions_text(&self) -> Vec<rich_text::Fragment<'_>> {
+        use rich_text::Fragment;
         let questions = self.questions();
         let Some(question) = questions.get(self.item_index) else {
-            return "Saved questions\n\nNo unanswered questions for this goal.\nL listen for this agent's native questions\nH also reveals deliberately dismissed questions".into();
+            return vec!["Saved questions\n\nNo unanswered questions for this goal.\nL listen for this agent's native questions\nH also reveals deliberately dismissed questions".into()];
         };
-        let mut text = format!(
-            "Questions · {} of {}\n{}\n\n",
-            self.item_index + 1,
-            questions.len(),
-            match question.state {
-                QuestionState::Pending => "Pending in the current Codex connection",
-                QuestionState::Expired => "Original request expired · draft retained",
-                QuestionState::Resolved => "Resolved in Codex · text and draft retained",
-                QuestionState::Dismissed => "Dismissed locally",
-                QuestionState::Answered | QuestionState::AnsweredElsewhere =>
-                    "Resolved in Codex · recorded answer",
-            }
-        );
+        let mut fields = vec![
+            format!(
+                "Questions · {} of {}\n{}",
+                self.item_index + 1,
+                questions.len(),
+                match question.state {
+                    QuestionState::Pending => "Pending in the current Codex connection",
+                    QuestionState::Expired => "Original request expired · draft retained",
+                    QuestionState::Resolved => "Resolved in Codex · text and draft retained",
+                    QuestionState::Dismissed => "Dismissed locally",
+                    QuestionState::Answered | QuestionState::AnsweredElsewhere =>
+                        "Resolved in Codex · recorded answer",
+                }
+            )
+            .into(),
+        ];
         if let Some(prompt) = question.prompts.get(self.prompt_index) {
-            text.push_str(&format!("{}\n{}\n", prompt.header, prompt.question));
+            fields.push(prompt.header.clone().into());
+            fields.push(Fragment::row(prompt.question.clone()));
             for (at, option) in prompt.options.iter().enumerate() {
-                text.push_str(&format!(
-                    "{} {} {}\n",
+                fields.push(Fragment::row(format!(
+                    "{} {} {}",
                     at + 1,
                     if question
                         .answers
                         .get(&prompt.id)
-                        .is_some_and(|a| a.contains(&option.label))
+                        .is_some_and(|answers| answers.contains(&option.label))
                     {
                         "●"
                     } else {
                         "○"
                     },
                     option.label
-                ));
+                )));
                 if !option.description.is_empty() {
-                    text.push_str(&format!("  {}\n", option.description));
+                    fields.push(Fragment::row(format!("  {}", option.description)));
                 }
             }
             match question.answers.get(&prompt.id) {
-                Some(answer) => text.push_str(&format!(
-                    "\nAnswer draft: {}\n",
+                Some(answer) => fields.push(Fragment::field(
+                    "Answer draft",
                     if prompt.is_secret {
                         "Saved (hidden)".into()
                     } else {
                         answer.join("; ")
-                    }
+                    },
                 )),
-                None => {
-                    text.push_str("\nNo answer chosen in Zoetrope. Defaults are never submitted.\n")
-                }
+                None => fields
+                    .push("No answer chosen in Zoetrope. Defaults are never submitted.".into()),
             }
         }
-        text.push_str("\n↑↓ question · Tab prompt · 1–9 choose · e write\nF2 submit answer · F5 copy closed request to feedback\nx dismiss locally · L listen · Esc back");
-        text
+        fields.push("↑↓ question · Tab prompt · 1–9 choose · e write\nF2 submit answer · F5 copy closed request to feedback\nx dismiss locally · L listen · Esc back".into());
+        fields
     }
 
     fn producer_label(&self, target: &AgentKey) -> String {
@@ -1680,37 +1701,47 @@ impl FleetConsole {
             })
             .unwrap_or_else(|| "Agent".into())
     }
-    fn documents_text(&self) -> String {
-        let mut text = String::from("Documents created or changed by agents\n\n");
+    fn documents_text(&self) -> Vec<rich_text::Fragment<'_>> {
+        use rich_text::Fragment;
+        let mut fields = vec!["Documents created or changed by agents\n".into()];
         if let Some(record) = &self.selected_work {
             for (at, document) in record.documents.iter().enumerate() {
-                text.push_str(&format!(
-                    "{} {}\n  {} · {}\n",
+                fields.push(Fragment::row(format!(
+                    "{} {}",
                     if at == self.item_index { "›" } else { " " },
                     document
                         .path
                         .file_name()
                         .unwrap_or_default()
-                        .to_string_lossy(),
+                        .to_string_lossy()
+                )));
+                fields.push(Fragment::row(format!(
+                    "  {} · {}",
                     self.producer_label(&document.producer),
                     match document.change {
                         crate::workstate::DocumentChange::Created => "Created",
                         crate::workstate::DocumentChange::Changed => "Changed",
                         crate::workstate::DocumentChange::Deleted => "Removed",
                     }
-                ));
+                )));
             }
             if record.documents.is_empty() {
-                text.push_str("No recorded Markdown documents for this goal.\n");
+                fields.push(Fragment::row(
+                    "No recorded Markdown documents for this goal.",
+                ));
             }
             if let Some(document) = record.documents.get(self.item_index) {
-                text.push_str(&format!("\nSelected path: {}\n", document.path.display()));
+                fields.push(Fragment::field(
+                    "Selected path",
+                    document.path.display().to_string(),
+                ));
             }
         }
-        text.push_str(
-            "\n↑↓ select · Enter request MD Reader preview\nEsc back · Opening is always explicit",
+        fields.push(
+            "↑↓ select · Enter request MD Reader preview\nEsc back · Opening is always explicit"
+                .into(),
         );
-        text
+        fields
     }
     fn open_document(&mut self) {
         if self.document_pending {

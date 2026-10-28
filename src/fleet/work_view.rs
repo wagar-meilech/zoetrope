@@ -1,4 +1,5 @@
 //! Selected-goal work from already cached explicit records and native plans.
+use super::rich_text::Fragment;
 use super::*;
 use crate::workstate::{PlanProposal, PlanStatus, WorkItem, WorkStatus};
 
@@ -514,13 +515,10 @@ impl FleetConsole {
                     format!(
                         "{} [{}] {}",
                         if selected { "›" } else { "→" },
-                        crate::ui::truncate(&entry.display_status(), 40),
-                        crate::ui::truncate(entry.label(), 120)
+                        entry.display_status(),
+                        entry.label()
                     ),
-                    format!(
-                        "Owner: {}",
-                        crate::ui::truncate(&entry.owner_label(self), 120)
-                    ),
+                    format!("Owner: {}", entry.owner_label(self)),
                 ];
                 let context = entry.context();
                 for at in [0, 2, 3, 1] {
@@ -556,97 +554,94 @@ impl FleetConsole {
                         width,
                     })
                     .collect();
-                fragments.push(
-                    format!(
-                        "Recorded detail · PageDown scroll\n{}\n{}",
-                        self.work_text(),
-                        self.steering_text()
-                    )
-                    .into(),
-                );
+                fragments.push("Recorded detail · PageDown scroll".into());
+                fragments.extend(self.work_text());
+                fragments.push("## Controls".into());
+                fragments.push(Fragment::row(self.steering_text()));
                 fragments.extend(activity);
                 return fragments;
             }
         }
-        let mut fragments = vec![
-            format!(
-                "{}\n## Controls\n{}\n{}",
-                self.work_text(),
-                self.runtime_word(),
-                self.steering_text()
-            )
-            .into(),
-        ];
+        let mut fragments = self.work_text();
+        fragments.push("## Controls".into());
+        fragments.push(Fragment::row(self.runtime_word()));
+        fragments.push(Fragment::row(self.steering_text()));
         fragments.extend(activity);
         fragments.push(
             "f feedback · Q saved questions · c criteria\nd documents · R read-only replay".into(),
         );
         fragments
     }
-    pub(super) fn work_text(&self) -> String {
+    pub(super) fn work_text(&self) -> Vec<Fragment<'_>> {
         let Some(record) = &self.selected_work else {
-            return String::new();
+            return Vec::new();
         };
         if let Some(Selection::Missing(reference)) = &self.work_selection {
-            return format!(
-                "Unresolved prerequisite: {reference}\nNo matching task is recorded. Ownership is unavailable; no recipient is selected.\nChoose a task with arrows or w."
-            );
+            return vec![
+                Fragment::field("Unresolved prerequisite", reference),
+                Fragment::row(
+                    "No matching task is recorded. Ownership is unavailable; no recipient is selected.",
+                ),
+                Fragment::row("Choose a task with arrows or w."),
+            ];
         }
         let entries = self.work_entries();
-        let mut text = String::from("## Work toward goal\n");
+        let mut fields = vec!["## Work toward goal".into()];
         for diagnostic in record.source_diagnostics.iter().take(4) {
-            text.push_str(&format!("Source: {diagnostic}\n"));
+            fields.push(Fragment::field("Source", diagnostic));
         }
         if entries.is_empty() {
-            text.push_str("No reported work; Enable tracking to request updates.\n");
-            return text;
+            fields.push(Fragment::row(
+                "No reported work; Enable tracking to request updates.",
+            ));
+            return fields;
         }
         let Some(current) = current_entry(&entries, self.work_selection.as_ref()) else {
-            text.push_str("Selected work is no longer recorded; press w to choose current work.\n");
-            return text;
+            fields.push(Fragment::row(
+                "Selected work is no longer recorded; press w to choose current work.",
+            ));
+            return fields;
         };
         let selected = self.work_selection.is_some().then_some(current);
-        let start = current.saturating_sub(1);
         for (at, entry) in entries
             .iter()
             .enumerate()
-            .skip(start)
+            .skip(current.saturating_sub(1))
             .take(if self.work_canvas { 0 } else { 4 })
         {
-            let marker = if selected == Some(at) { "› " } else { "" };
-            text.push_str(&format!(
-                "{marker}[{}] {}\n",
-                crate::ui::truncate(&entry.display_status(), 40),
-                crate::ui::truncate(entry.label(), 120)
-            ));
+            fields.push(Fragment::row(format!(
+                "{}[{}] {}",
+                if selected == Some(at) { "› " } else { "" },
+                entry.display_status(),
+                entry.label()
+            )));
         }
         if entries.len() > 4 && !self.work_canvas {
-            text.push_str(&format!("{} work entries · w select work\n", entries.len()));
+            fields.push(Fragment::row(format!(
+                "{} work entries · w select work",
+                entries.len()
+            )));
         }
         if entries.len() == 512 || record.plan_drafts.len() > 512 {
-            text.push_str("Work view limit: 512 entries; use local context for recorded detail.\n");
+            fields.push(Fragment::row(
+                "Work view limit: 512 entries; use local context for recorded detail.",
+            ));
         }
         let current = entries[current];
         if selected.is_some() {
-            text.push_str(&format!(
-                "Selected work: {}\n",
-                crate::ui::truncate(current.label(), 160)
-            ));
+            fields.push(Fragment::field("Selected work", current.label()));
         }
         if self.work_canvas {
-            text.push_str(&format!("Status: {}\n", current.display_status()));
+            fields.push(Fragment::field("Status", current.display_status()));
         }
-        text.push_str(&format!(
-            "Owner: {}\n",
-            crate::ui::truncate(&current.owner_label(self), 120)
-        ));
+        fields.push(Fragment::field("Owner", current.owner_label(self)));
         if self.work_canvas {
             if current.context().iter().any(|(_, value)| value.is_some()) {
-                text.push_str("\n## Context\n");
+                fields.push("## Context".into());
             }
             for (label, value) in current.context() {
                 if let Some(value) = value {
-                    text.push_str(&format!("{label}: {}\n", crate::ui::truncate(value, 240)));
+                    fields.push(Fragment::field(label, value));
                 }
             }
         }
@@ -657,52 +652,43 @@ impl FleetConsole {
                         .format("%Y-%m-%d %H:%M UTC")
                         .to_string()
                 })
-                .unwrap_or_else(|_| crate::ui::truncate(current.recorded_at(), 80))
+                .unwrap_or_else(|_| current.recorded_at().to_owned())
         } else {
-            crate::ui::truncate(current.recorded_at(), 80)
+            current.recorded_at().to_owned()
         };
-        text.push_str(&format!(
-            "\n## Provenance\nSource: {}\nRecorded: {}\n",
-            crate::ui::truncate(current.source(), 160),
-            recorded
-        ));
+        fields.push("## Provenance".into());
+        fields.push(Fragment::field("Source", current.source()));
+        fields.push(Fragment::field("Recorded", recorded));
         if let Some(owner) = current.owner()
             && self.producer_label(owner) == "Agent"
         {
-            text.push_str(&format!(
-                "Owner ID: {}\n",
-                crate::ui::truncate(&owner.agent_id, 256)
-            ));
+            fields.push(Fragment::field("Owner ID", &owner.agent_id));
         }
         match current {
             Entry::Report(_) | Entry::Source(_) => {
                 if let Some(parent) = current.parent() {
-                    text.push_str(&format!(
-                        "Parent: {} · grouping only\n",
-                        self.work_reference(parent)
+                    fields.push(Fragment::field(
+                        "Parent",
+                        format!("{} · grouping only", self.work_reference(parent)),
                     ));
                 }
-                text.push_str("Dependencies: ");
-                match current.dependencies() {
-                    None => text.push_str("not declared\n"),
-                    Some(dependencies) if dependencies.is_empty() => {
-                        text.push_str("none declared\n")
-                    }
+                let dependencies = match current.dependencies() {
+                    None => "not declared".into(),
+                    Some(dependencies) if dependencies.is_empty() => "none declared".into(),
                     Some(dependencies) => {
-                        text.push_str(
-                            &dependencies
-                                .iter()
-                                .take(4)
-                                .map(|id| self.work_reference(id))
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        );
+                        let mut value = dependencies
+                            .iter()
+                            .take(4)
+                            .map(|id| self.work_reference(id))
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         if dependencies.len() > 4 {
-                            text.push_str(" · more recorded");
+                            value.push_str(" · more recorded");
                         }
-                        text.push('\n');
+                        value
                     }
-                }
+                };
+                fields.push(Fragment::field("Dependencies", dependencies));
                 for link in current.links().iter().take(4) {
                     let relation = match &record.goal {
                         Some(goal) if goal.revision != link.goal_revision => format!(
@@ -714,50 +700,43 @@ impl FleetConsole {
                             .iter()
                             .find(|criterion| criterion.id == link.criterion_id)
                             .map(|criterion| {
-                                format!(
-                                    "{} (revision {})",
-                                    crate::ui::truncate(&criterion.label, 120),
-                                    goal.revision
-                                )
+                                format!("{} (revision {})", criterion.label, goal.revision)
                             })
                             .unwrap_or_else(|| format!("{} (unresolved)", link.criterion_id)),
                         None => format!("{} (unresolved goal)", link.criterion_id),
                     };
-                    text.push_str(&format!(
-                        "Outcome: {}\n",
-                        crate::ui::truncate(&relation, 200)
-                    ));
+                    fields.push(Fragment::field("Outcome", relation));
                 }
                 if current.links().len() > 4 {
-                    text.push_str(
-                        "More outcome links recorded; inspect local context for detail.\n",
-                    );
+                    fields.push(Fragment::row(
+                        "More outcome links recorded; inspect local context for detail.",
+                    ));
                 }
                 if !self.work_canvas {
                     for (label, value) in current.context() {
                         if let Some(value) = value {
-                            text.push_str(&format!(
-                                "{label}: {}\n",
-                                crate::ui::truncate(value, 240)
-                            ));
+                            fields.push(Fragment::field(label, value));
                         }
                     }
                 }
                 if let Entry::Source(task) = current {
-                    text.push_str(&format!(
-                        "Source ID: {} / {}\n",
-                        task.source_id, task.task_id
+                    fields.push(Fragment::field(
+                        "Source ID",
+                        format!("{} / {}", task.source_id, task.task_id),
                     ));
                     if task.stale {
-                        text.push_str("Source stale · retaining last successful synchronization\n");
+                        fields.push(Fragment::row(
+                            "Source stale · retaining last successful synchronization",
+                        ));
                     }
                 }
             }
-            Entry::Plan(_, _) => {
-                text.push_str("Dependencies: not declared · plan status is unverified\n")
-            }
+            Entry::Plan(_, _) => fields.push(Fragment::field(
+                "Dependencies",
+                "not declared · plan status is unverified",
+            )),
         }
-        text
+        fields
     }
     fn work_reference(&self, id: &str) -> String {
         self.work_entries()
