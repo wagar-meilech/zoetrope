@@ -1,0 +1,48 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                   ┌ Commands and public activity ──────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ?  │Selected: WG-5 visual fixture           │
+unknown                                                         │Recipient: Coordinator                  │
+              ✓ Plan approved    × Retire old re…               │     Outcomes: 0 of 5 verified · 0%     │
+                                                                │Owner: Coordinator                      │
+                                                                │                                        │
+                      │                                         │── Recorded public message              │
+                      ▼                                         │Source: Codex commentary                │
+              ┌──────────────┐   ┌──────────────┐               │Recorded: unknown                       │
+              │Standard chec…│   │External revi…│               │                                        │
+              │✓ reported do…│   │? unknown: pr…│               │── Delivery plan                        │
+              └──────────────┘   └──────────────┘               │Read src/parser.rs:42 and keep scope    │
+                      ▼                                         │focused.                                │
+              ┌──────────────┐                                  │                                        │
+              │Choose menus  │                                  │• [x] Updated README.md                 │
+              │✓ reported do…│                                  │• [ ] Check ./tests/parser.rs           │
+              └──────────────┘                                  │                                        │
+                      ▼                  ▼                      ││ Keep provenance separate from         │
+              ┌──────────────┐───┌──────────────┐               │verification.                           │
+              │Customize ord…│   │Delivery loca…│               │                                        │
+              │✓ reported do…│   │✓ reported do…│               │╭─ rust                                 │
+              └──────────────┘   └──────────────┘               ││ let parser =                          │
+                      │                  │                      │read_source("src/parser.rs");           │
+                      ▼──────────────────╯                      ││     validate(parser);                 │
+              ┌› selected────┐                                  │╰─                                      │
+              │Close the ord…│                                  │                                        │
+              │● in progress │                                  │Next: inspect the spec (docs/WORK.md).  │
+              └──────────────┘                                  │                                        │
+                      ▼                                         │── Latest shell command                 │
+              ┌──────────────┐                                  │Recorded: unknown                       │
+              │Payment confi…│                                  │                                        │
+              │○ planned     │                                  │╭─ sh                                   │
+              └──────────────┘                                  ││ cargo test --locked --test parser     │
+                      ▼                  ▼                      │╰─                                      │
+              ┌──────────────┐───┌──────────────┐               │                                        │
+              │Send reminders│   │Customer corr…│               │Purpose: Check the public parser seam   │
+              │! blocked     │   │○ planned     │               │                                        │
+              └──────────────┘   └──────────────┘               │Esc back · PageUp/PageDown scroll       │
+                      │                  │                      │                                        │
+                      ▼──────────────────╯                      │                                        │
+              ┌──────────────┐                                  │                                        │
+              │Deploy service│                                  │                                        │
+              │○ planned     │                                  │                                        │
+              └──────────────┘                                  └────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Recorded commands and public messages for the selected owner

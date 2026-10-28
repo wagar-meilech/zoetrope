@@ -12,9 +12,11 @@ into main still requires a user request.
 ## Current iteration
 
 The current [text-readability continuation](TEXT-READABILITY.md), issue #22,
-replaces gold accents, formats structured detail text and preserves selected
-public-message paragraphs through a bounded lazy cache. Its working-status table
-records review fixes and final checks/installation. Earlier work below is complete.
+is complete and installed: soft-blue accents, structured detail text, colored
+paths/code and preserved selected-message paragraphs through a bounded lazy cache.
+Final validation records 386 native / 189 portable tests, both clear review axes,
+actual terminal previews/resources and the refreshed installed viewer. Earlier
+work below remains historical evidence for its own source.
 
 The approved [visual work graph and persistent tracking specification](WORK-GRAPH-SPEC.md)
 is complete. All six tickets in the [frontier](WORK-GRAPH-PLAN.md) are integrated,
@@ -59,7 +61,7 @@ fields win, supplements fill gaps, and valid task removal expires old selection.
 - `a` / **Agents** opens agent inspection; Space expands agents in Fleet/Agents.
   `x` / **Commands** reads the selected owner's cached public messages/commands.
 - Status colors and glyphs distinguish planned, active, blocked, reported done,
-  cancelled and unknown work. Gold selection, legend and compact owner/purpose/
+  cancelled and unknown work. Soft-blue selection, legend and compact owner/purpose/
   next/blocker context remain usable in narrow terminals. Full tool output stays
   behind Commands. `--color auto|always|never` controls actual terminal colors.
 - Reported-work counts are separate from evidence-backed weighted outcome progress.
@@ -98,7 +100,7 @@ for any future helper is to assess the no-model flow, then settle role, trigger
 and budget with explicit opt-in. Working agents still spend tokens maintaining
 ordinary artifacts and reporting evidence; the monitor itself calls no model.
 
-Current [work graph validation](WORK-GRAPH-VALIDATION.md) records 373 native tests,
+Preceding [work graph validation](WORK-GRAPH-VALIDATION.md) records 373 native tests,
 189 portable tests, strict linting on Rust 1.99 and the declared 1.88 minimum,
 wasm/rustdoc/package checks, actual terminal captures and qualified resources.
 The separate [Standards and Spec reviews](research/work-graph-review.md) are clear

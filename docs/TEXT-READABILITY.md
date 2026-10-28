@@ -14,7 +14,7 @@ Continue on `feat/goal-console` and PR #8; no merge into main.
 | TXT-2 | Format structured text and highlight paths/code | done | main | TXT-1 | Public display/editor regressions passed. |
 | TXT-3 | Preserve bounded selected-message structure lazily | done | main | None | Cache, UTF-8, refresh and privacy checks passed. |
 | TXT-4 | Resolve review and narrow-layout edge cases | done | /root/text_review_fixes | TXT-2, TXT-3 | Integrated second fix; independent Standards and Spec rechecks clear. |
-| TXT-5 | Verify, install and publish the final update | active | main | TXT-4 | Run final combined checks/rechecks, install and publish. |
+| TXT-5 | Verify, install and publish the final update | done | main | TXT-4 | Final checks/reviews passed; installed viewer refreshed; PR updated. |
 
 ## Accepted behavior
 
@@ -77,3 +77,78 @@ added after the parent preservation slice, not claimed as a separate RED/GREEN l
 Initial combined checks pass: 378 native tests (one ordinary manual probe ignored),
 189 portable tests, strict minimum-Rust Clippy, locked wasm, formatting and patch
 hygiene. Final review, release/terminal/resource checks and installation follow.
+
+## Final validation — 28 October 2026
+
+Application source `8a9e82a2adecdbd08f7a086d05b1b4e06354a831` is independently
+rechecked and integrated. Handoff `5d562c3` retains identical app/test/package
+inputs; subsequent changes are completion documentation and synthetic artifacts.
+
+| Check | Result |
+| --- | --- |
+| Full native all-feature suite | **386 passed**, one manual resource probe ignored in the ordinary run |
+| Explicit manual 1,000/4,000-goal history probe | Passed; startup 315/836 ms, peak UI poll 19.705/82.379 ms |
+| Portable suite | **189 passed** (176 library +13 Console) |
+| Strict all-target/all-feature Clippy, Rust 1.99 and declared 1.88 minimum | Passed at the final fix source |
+| Locked wasm frontend | Passed |
+| Rust documentation, warnings denied | Passed |
+| Standalone crate package | Packaged/compiled; nothing uploaded |
+| Formatting / diff hygiene | Passed |
+| Independent Standards and Spec reviews | Both clear after rechecks |
+| Actual release / updater / installed skill | Built and installed; binary hash and packaged skill verified |
+
+Portable/wasm checks at `59c514e` cover the unchanged shared/provider source;
+later fixes only change native presentation/tests. Final native/rustdoc/package/
+release checks ran after final fix integration. The targeted final fix suites
+also passed 104 tests (15 Console, 8 runtime, 81 UI) before the final combined run.
+There are no hosted CI checks reported for this branch; these are local results.
+
+The release is 8,454,416 bytes, SHA-256
+`957c58af61e4455be44b2c261c2ba38a2504a0545f877a882e1cb03cb2e13065`.
+No Cargo manifest/lockfile or dependency changed in this continuation.
+
+### Visual and resource evidence
+
+[Actual terminal previews](research/text-readability-captures/README.md) include
+150×42, 106×48 and 60×28 Work/readable, overview and Commands views. Final wide
+Work/Commands and narrow readable views were visually inspected; public render
+regressions cover the other layout/formatting cases. ANSI captures preserve the
+actual soft-blue/teal/lavender styles under inherited NO_COLOR with explicit override.
+All committed screenshots use synthetic data.
+
+Two ten-second idle release samples followed three seconds of warmup:
+
+| Fixture | RSS / peak RSS | Sampled CPU, one core | Idle terminal output |
+| --- | --- | --- | --- |
+| 12 tasks, 8 edges; Commands open with 6,719-byte structured public message | 8,796 KiB (8.6 MiB) | 0.1% | 0 bytes |
+| 512 tasks,508 edges; Work graph | 18,816 KiB (18.4 MiB) | 0.2% | 0 bytes |
+
+The samples ran concurrently with a short synthetic capture during warmup.
+They do not measure arbitrary busy native sessions or guarantee platform-wide
+performance. [Raw observations](research/text-readability-resource-results.json)
+and the [public resource probe](research/probes/work-graph-resource.py) record
+source sizes, release identity and practical limits. Add `rich commands` after
+`12` to reproduce the structured-message sample.
+
+The [public malformed-link probe](research/probes/text-readability-link-cost.rs)
+uses equal-size criteria fixtures. Final release draws for 4/8/16/32 KiB malformed
+inputs were 2.321/3.264/5.747/8.606 ms; controls were 2.524/3.072/5.245/7.790 ms.
+The preceding quadratic version took 62.6 ms at 32 KiB in the reviewer's release
+sample. Separate debug RED/GREEN sweeps and the one-pass implementation rationale
+are recorded in [fix evidence](research/text-readability-fixes.md). These are
+individual observations with scheduling noise, not asserted timing guarantees.
+
+### Installed viewer and publication
+
+The actual `zoe-update` rebuilt/reinstalled the same permanent checkout and user
+tracking skill without warnings. `~/.local/bin/zoe` matches the checked release;
+ordinary launch needs no Cargo command. Existing drafts/records remain intact.
+The refreshed `readable` window in `zoe-work-graph` observes the same exact project
+and coordinator through read-only navigation, using explicit color. It sends no
+guidance/queue/stop and changes no project instructions. Raw live captures remain
+local under `.local/`; the checked-in previews are synthetic.
+
+[Issue #22](https://github.com/wagar-meilech/zoetrope/issues/22) closes through
+[PR #8](https://github.com/wagar-meilech/zoetrope/pull/8) when merged. The PR is
+updated and ready for review; main remains unmerged. The [review history](research/text-readability-review.md)
+preserves each independent axis and resolution separately.

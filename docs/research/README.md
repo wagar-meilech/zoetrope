@@ -11,8 +11,10 @@ subsequent changes have moved a definition.
 ## Text readability continuation
 
 [Requested behavior, working status and TDD evidence](../TEXT-READABILITY.md)
-track issue #22. The [separate review reports](text-readability-review.md) preserve
-original findings and final resolutions. The preceding work graph evidence below
+track completed issue #22 work (closure follows PR #8). [Terminal previews](text-readability-captures/README.md),
+[resource observations](text-readability-resource-results.json) and the
+[separate review reports](text-readability-review.md) preserve final evidence
+and original findings/resolutions. The preceding work graph evidence below
 remains dated to that earlier release.
 
 ## Visual work graph and persistent tracking

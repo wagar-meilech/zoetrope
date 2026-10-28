@@ -1,0 +1,28 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work
+Work graph · 12 tasks · 11 prerequisite edges
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled
+? unknown
+              ×  ▶─  ▶─  ▶✓  ▶┬  ▶─  ▶○  ▶┬
+              ?          ▶╯  ─╯      ▶╯  ─╯
+┌ Commands and public activity ────────────────────────────┐
+│Selected: WG-5 visual fixture                             │
+│Recipient: Coordinator                                    │
+│              Outcomes: 0 of 5 verified · 0%              │
+│Owner: Coordinator                                        │
+│                                                          │
+│── Recorded public message                                │
+│Source: Codex commentary                                  │
+│Recorded: unknown                                         │
+│                                                          │
+│── Delivery plan                                          │
+│Read src/parser.rs:42 and keep scope focused.             │
+│                                                          │
+│• [x] Updated README.md                                   │
+│• [ ] Check ./tests/parser.rs                             │
+│                                                          │
+││ Keep provenance separate from verification.             │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  ? help
+Recorded commands and public messages for the selected owner

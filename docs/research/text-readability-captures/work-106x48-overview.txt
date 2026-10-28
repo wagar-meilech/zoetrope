@@ -1,0 +1,48 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                   ┌ Selected work ─────────────────────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ?  │Selected: WG-5 visual fixture           │
+unknown                                                         │Recipient: Coordinator                  │
+              ✓ Plan approved    × Retire old re…               │     Outcomes: 0 of 5 verified · 0%     │
+                                                                │Reported work: 5 of 12 done             │
+                                                                │● 1 active  ! 1 blocked  ○ 3 planned  × │
+                      │                                         │1 cancelled  ? 1 unknown                │
+                      ▼                                         │[Steer f] [Coordinator C]               │
+              ┌──────────────┐   ┌──────────────┐               │[Enable tracking T] [Work w] [Agents a] │
+              │Standard chec…│   │External revi…│               │[Commands x] [Replay R]                 │
+              │✓ reported do…│   │? unknown: pr…│               │── Work toward goal                     │
+              └──────────────┘   └──────────────┘               │Selected work: Close the order          │
+                      ▼                                         │Status: in progress                     │
+              ┌──────────────┐                                  │Owner: Coordinator                      │
+              │Choose menus  │                                  │                                        │
+              │✓ reported do…│                                  │── Context                              │
+              └──────────────┘                                  │Purpose: Review src/parser.rs:42 and    │
+                      ▼                  ▼                      │keep scope focused.                     │
+              ┌──────────────┐───┌──────────────┐               │Changed: Source fields are imported     │
+              │Customize ord…│   │Delivery loca…│               │deterministically.                      │
+              │✓ reported do…│   │✓ reported do…│               │                                        │
+              └──────────────┘   └──────────────┘               │Keep provenance separate from outcome   │
+                      │                  │                      │evidence.                               │
+                      ▼──────────────────╯                      │Next: Run cargo test --locked, then read│
+              ┌› selected────┐                                  │the spec (docs/WORK.md).                │
+              │Close the ord…│                                  │                                        │
+              │● in progress │                                  │── Provenance                           │
+              └──────────────┘                                  │Source: coordinator · local report      │
+                      ▼                                         │Recorded: 2026-10-28 01:10 UTC          │
+              ┌──────────────┐                                  │Dependencies: Customize order (custom), │
+              │Payment confi…│                                  │Delivery locations (locations)          │
+              │○ planned     │                                  │                                        │
+              └──────────────┘                                  │── Controls                             │
+                      ▼                  ▼                      │Codex controls unavailable              │
+              ┌──────────────┐───┌──────────────┐               │Guidance unavailable: Codex disconnected│
+              │Send reminders│   │Customer corr…│               │Queue unavailable: Codex disconnected   │
+              │! blocked     │   │○ planned     │               │Stop unavailable: Codex disconnected    │
+              └──────────────┘   └──────────────┘               │                                        │
+                      │                  │                      │f feedback · Q saved questions · c      │
+                      ▼──────────────────╯                      │criteria                                │
+              ┌──────────────┐                                  │d documents · R read-only replay        │
+              │Deploy service│                                  │                                        │
+              │○ planned     │                                  │                                        │
+              └──────────────┘                                  └────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner
