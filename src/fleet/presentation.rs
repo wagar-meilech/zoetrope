@@ -381,10 +381,10 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         draw_editor(ui, frame, content);
     } else {
         let details = match ui.pane {
-            Pane::Deliveries => vec![ui.deliveries_text().into()],
-            Pane::Documents => vec![ui.documents_text().into()],
-            Pane::Questions => vec![ui.questions_text().into()],
-            Pane::Criteria => vec![ui.criteria_text().into()],
+            Pane::Deliveries => ui.deliveries_text(),
+            Pane::Documents => ui.documents_text(),
+            Pane::Questions => ui.questions_text(),
+            Pane::Criteria => ui.criteria_text(),
             Pane::Commands => {
                 let mut fragments = vec![format!("Owner: {}",ui.recipient_label()).into()];
                 fragments.extend(ui.activity_text());

@@ -12,8 +12,17 @@ const MAX_LINES: usize = 512;
 /// Source formatting state ends at each typed fragment, before later UI text.
 pub(super) enum Fragment<'a> {
     Markdown(Cow<'a, str>),
+    Field(Cow<'a, str>),
     Shell(&'a str),
     Compact { text: Cow<'a, str>, width: u16 },
+}
+impl<'a> Fragment<'a> {
+    pub fn field(label: &'static str, value: impl AsRef<str>) -> Self {
+        Self::Field(format!("{label}: {}", value.as_ref()).into())
+    }
+    pub fn row(text: impl Into<Cow<'a, str>>) -> Self {
+        Self::Field(text.into())
+    }
 }
 impl<'a> From<String> for Fragment<'a> {
     fn from(text: String) -> Self {
@@ -36,7 +45,7 @@ pub(super) fn render<'a>(
     let mut remaining_lines = MAX_LINES;
     for (at, fragment) in fragments.iter().enumerate() {
         let (text, shell, clipped_width) = match fragment {
-            Fragment::Markdown(text) => (text.as_ref(), false, None),
+            Fragment::Markdown(text) | Fragment::Field(text) => (text.as_ref(), false, None),
             Fragment::Shell(text) => (*text, true, None),
             Fragment::Compact { text, width } => (text.as_ref(), false, Some(*width)),
         };
@@ -48,7 +57,7 @@ pub(super) fn render<'a>(
         if text.is_empty() {
             continue;
         }
-        if clipped_width.is_none() {
+        if matches!(fragment, Fragment::Markdown(_) | Fragment::Shell(_)) {
             gap(&mut output);
         }
         let mut end = text.len().min(remaining_bytes);
@@ -286,6 +295,8 @@ fn gap(lines: &mut Vec<Line<'_>>) {
 }
 
 fn inline<'a>(mut text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
+    let source_len = text.len();
+    let targets = target_widths(text);
     while !text.is_empty() {
         let Some(at) = text.find(['`', '*', '[']) else {
             tokens(text, style, spans);
@@ -303,7 +314,8 @@ fn inline<'a>(mut text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
             "["
         };
         if marker == "[" {
-            if let Some((label, target, tail)) = link(text) {
+            let matching = targets.get(source_len - text.len()..).unwrap_or_default();
+            if let Some((label, target, tail)) = link(text, matching) {
                 tokens(label, style.add_modifier(Modifier::UNDERLINED), spans);
                 spans.push(Span::styled(" (", style));
                 spans.push(literal(target, style.fg(PATH)));
@@ -331,28 +343,47 @@ fn inline<'a>(mut text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
     }
 }
 
-fn link(text: &str) -> Option<(&str, &str, &str)> {
-    // Nested labels are outside this subset. Match the immediate closing label,
-    // never a later unrelated bracket pair.
-    let close = text[1..].find(['[', ']'])? + 1;
-    if text.as_bytes()[close] != b']' {
-        return None;
+/// Build matching target widths once, so malformed candidates never rescan
+/// overlapping suffixes. Inline input is within the pane's 32 KiB byte budget;
+/// u16 offsets keep this scratch space bounded to 64 KiB plus its opening stack.
+fn target_widths(text: &str) -> Vec<u16> {
+    if !text.contains('[') || !text.contains("](") || text.len() > MAX_BYTES {
+        return Vec::new();
     }
-    let target = text[close + 1..].strip_prefix('(')?;
-    let mut depth = 1usize;
-    for (at, ch) in target.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some((&text[1..close], &target[..at], &target[at + 1..]));
+    let mut matching = vec![0u16; text.len()];
+    let mut opened = Vec::new();
+    for (at, byte) in text.bytes().enumerate() {
+        match byte {
+            b'(' => opened.push(at as u16),
+            b')' => {
+                if let Some(start) = opened.pop() {
+                    matching[start as usize] = (at - start as usize) as u16;
                 }
             }
             _ => {}
         }
     }
-    None
+    matching
+}
+
+fn link<'a>(text: &'a str, matching: &[u16]) -> Option<(&'a str, &'a str, &'a str)> {
+    let close = text[1..].find(['[', ']'])? + 1;
+    if text.as_bytes()[close] != b']' {
+        return None;
+    }
+    let open = close + 1;
+    if text.as_bytes().get(open) != Some(&b'(') {
+        return None;
+    }
+    let width = *matching.get(open)? as usize;
+    if width == 0 {
+        return None;
+    }
+    let end = open + width;
+    if text.as_bytes().get(end) != Some(&b')') {
+        return None;
+    }
+    Some((&text[1..close], &text[open + 1..end], &text[end + 1..]))
 }
 
 fn tokens<'a>(text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {

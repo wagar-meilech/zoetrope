@@ -4309,3 +4309,208 @@ fn independently_formatted_activity_sections_share_the_pane_display_limit() {
     );
     ui.shutdown();
 }
+
+#[test]
+fn malformed_work_fields_cannot_absorb_later_fields_provenance_or_controls() {
+    use ratatui::style::{Color, Modifier};
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Independent work fields");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"fields","label":"Scoped task\n```text\nUnclosed task label","status":"active",
+            "source":"coordinator\n```text\nUnclosed source field",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Read the code\n```rust\n## Controls\nUnclosed field code",
+            "next":"Check the source", "change":"Keep each field independent."
+        }),
+    );
+    let original = serde_json::to_value(
+        Store::new(home.0.join("state"))
+            .read(&home.key("goal"))
+            .unwrap()
+            .work_items,
+    )
+    .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Scoped task");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 240, 120);
+    assert!(
+        shown.contains("unclosed fence"),
+        "each incomplete field must remain inspectable: {shown}"
+    );
+    assert!(
+        shown.contains("│ ## Controls"),
+        "a source heading inside code must remain literal: {shown}"
+    );
+    let mut terminal = Terminal::new(TestBackend::new(240, 120)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    for field in [
+        "Status: in progress",
+        "Next: Check the source",
+        "Source: coordinator",
+        "Recorded:",
+        "Guidance unavailable",
+    ] {
+        assert!(
+            rendered_cells(buffer, field)
+                .iter()
+                .all(|cell| cell.fg != Color::Rgb(203, 166, 247)),
+            "later field must not inherit another value's code style: {field}"
+        );
+    }
+    for heading in ["── Provenance", "── Controls"] {
+        assert!(
+            rendered_cells(buffer, heading)
+                .iter()
+                .all(|cell| cell.fg == Color::Rgb(137, 180, 250)
+                    && cell.modifier.contains(Modifier::BOLD)),
+            "trusted section must keep its own style: {heading}"
+        );
+    }
+    ui.shutdown();
+    let after = serde_json::to_value(
+        Store::new(home.0.join("state"))
+            .read(&home.key("goal"))
+            .unwrap()
+            .work_items,
+    )
+    .unwrap();
+    assert_eq!(
+        after, original,
+        "formatting must not rewrite reported fields"
+    );
+}
+
+#[test]
+fn malformed_read_only_panel_values_cannot_absorb_later_rows_or_hints() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Independent read-only panels");
+    let store = Store::new(home.0.join("state"));
+    let owner =
+        serde_json::json!({"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"});
+    let bad_path = home.0.join("First document\n```text\nUnclosed document.md");
+    let safe_path = home.0.join("second-safe.md");
+    for update in [
+        serde_json::json!({"op":"set_goal","title":"Independent read-only panels","criteria":[{"id":"build","label":"First criterion\n```text\nUnclosed criterion","weight":1},{"id":"check","label":"Second safe criterion","weight":1}],"reason":"Owned formatting fixture","provenance":"test"}),
+        serde_json::json!({"op":"verify","id":"build","revision":2,"evidence":[{"kind":"user_attestation","detail":"Fixture evidence\n```text\nUnclosed evidence","provenance":"owned fixture"}]}),
+        serde_json::json!({"op":"capture_question","question":{"id":"question","target":owner,"prompts":[{"id":"choice","header":"Prompt header\n```text\nUnclosed header","question":"Safe question body","options":[{"label":"First option\n```text\nUnclosed option","description":"Option description\n```text\nUnclosed description"},{"label":"Second safe option","description":"Independent option detail"}]}],"state":"expired","answers":{}}}),
+        serde_json::json!({"op":"add_document","document":{"id":"first","path":bad_path,"producer":owner,"source":"owned fixture","change":"created"}}),
+        serde_json::json!({"op":"add_document","document":{"id":"second","path":safe_path,"producer":owner,"source":"owned fixture","change":"created"}}),
+        serde_json::json!({"op":"create_feedback","id":"safe","target":owner,"text":"Later receipt remains readable","mode":"guidance"}),
+        serde_json::json!({"op":"create_feedback","id":"bad","target":owner,"text":"```text\nRecorded literal feedback","mode":"guidance"}),
+    ] {
+        store
+            .apply(&home.key("goal"), serde_json::from_value(update).unwrap())
+            .unwrap();
+    }
+    let original = serde_json::to_value(store.read(&home.key("goal")).unwrap()).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Independent read-only panels");
+    for (keycode, later) in [
+        (
+            'c',
+            vec!["Second safe criterion", "Scope revision", "e edit"],
+        ),
+        (
+            'Q',
+            vec![
+                "Safe question body",
+                "Second safe option",
+                "Defaults are never submitted",
+                "F2 submit answer",
+            ],
+        ),
+        (
+            'd',
+            vec!["Coordinator · Created", "Opening is always explicit"],
+        ),
+        ('b', vec!["Later receipt remains readable"]),
+    ] {
+        key(&mut ui, KeyCode::Esc);
+        key(&mut ui, KeyCode::Char(keycode));
+        wait_text(
+            &mut ui,
+            match keycode {
+                'c' => "First criterion",
+                'Q' => "Prompt header",
+                'd' => "First document",
+                _ => "Later receipt remains readable",
+            },
+        );
+        let mut terminal = Terminal::new(TestBackend::new(240, 120)).unwrap();
+        terminal.draw(|f| ui.draw(f)).unwrap();
+        for expected in later {
+            assert!(
+                rendered_cells(terminal.backend().buffer(), expected)
+                    .iter()
+                    .all(|cell| cell.fg != Color::Rgb(203, 166, 247)),
+                "later row or hint in pane {keycode} must not inherit another field's fence: {expected}"
+            );
+        }
+    }
+    ui.shutdown();
+    assert_eq!(
+        serde_json::to_value(store.read(&home.key("goal")).unwrap()).unwrap(),
+        original,
+        "read-only formatting must leave all recorded values unchanged"
+    );
+}
+
+#[test]
+fn many_incomplete_link_targets_keep_literal_text_and_a_later_valid_link() {
+    use ratatui::style::{Color, Modifier};
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Many incomplete targets");
+    Store::new(home.0.join("state"))
+        .apply(
+            &home.key("goal"),
+            WorkUpdate::SetGoal {
+                title: "Many incomplete targets".into(),
+                criteria: vec![CriterionInput {
+                    id: "long".into(),
+                    label: format!(
+                        "{} Read [the spec](docs/(draft)/SPEC.md).",
+                        "[x]( ".repeat(1024)
+                    ),
+                    weight: 1.0,
+                }],
+                reason: "Owned public rendering regression".into(),
+                provenance: "test".into(),
+            },
+        )
+        .unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Selected: Many incomplete targets");
+    key(&mut ui, KeyCode::Char('c'));
+    let shown = text(&mut ui, 240, 160);
+    assert!(
+        shown.contains("[x]("),
+        "incomplete targets must remain literal"
+    );
+    assert!(
+        shown.contains("the spec (docs/(draft)/SPEC.md)"),
+        "a later balanced link must still be recognized: {shown}"
+    );
+    let mut terminal = Terminal::new(TestBackend::new(240, 160)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    assert!(
+        rendered_cells(terminal.backend().buffer(), "the spec")
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::UNDERLINED))
+    );
+    assert!(
+        rendered_cells(terminal.backend().buffer(), "docs/(draft)/SPEC.md")
+            .iter()
+            .all(|cell| cell.fg == Color::Rgb(148, 226, 213))
+    );
+    ui.shutdown();
+}
