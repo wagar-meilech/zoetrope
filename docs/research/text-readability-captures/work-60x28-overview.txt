@@ -1,0 +1,28 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work
+Work graph · 12 tasks · 11 prerequisite edges
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled
+? unknown
+
+✓    ─▶✓ Sta…─▶✓ Cho…─▶✓ Cus…▶›● Cl…─▶○ Pay…─▶! Sen…─▶○ Dep…
+×                     │✓ Del… │              │○ Cus… │
+                      ▶      ─╯              ▶      ─╯
+?
+
+
+┌ Selected work ───────────────────────────────────────────┐
+│              Outcomes: 0 of 5 verified · 0%              │
+│Reported: ✓5 ●1 !1 ○3 ×1 ?1                               │
+│[Steer f] [Agents a] [Commands x] [Replay R]              │
+│[Coordinator C] [Enable tracking T]                       │
+│› [in progress] Close the order                           │
+│Owner: Coordinator                                        │
+│Purpose: Review src/parser.rs:42 and keep scope focused.  │
+│Next: Run cargo test --locked, then read the spec (docs/W…│
+│Changed: Source fields are imported deterministically.    │
+│Guidance unavailable  Queue unavailable  Stop unavailable │
+│                                                          │
+│Recorded detail · PageDown scroll                         │
+└──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  ? help
+Work selected · [ / ] or arrows choose · f steer its owner

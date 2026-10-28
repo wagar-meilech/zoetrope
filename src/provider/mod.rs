@@ -71,9 +71,13 @@ use crate::fact::Statement;
 // the vocabulary in `fact`, and how it finds its files is the primitives on
 // `Provider` below. Nothing outside needs the parsers themselves, and the
 // browser frontend goes through `tailer::Bundle`.
+pub(crate) mod activity;
 pub(crate) mod claude;
 pub(crate) mod codex;
+pub(crate) mod metadata;
 pub(crate) mod summary;
+#[cfg(feature = "native")]
+pub(crate) mod work;
 
 #[cfg(test)]
 pub(crate) mod harness;
@@ -81,7 +85,10 @@ pub(crate) mod harness;
 /// The transcript formats this build reads. An enum, not a trait: providers
 /// arrive by pull request, and an exhaustive `match` makes the compiler list
 /// every site a new one must touch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 pub enum Provider {
     Claude,
     Codex,
@@ -103,6 +110,17 @@ impl Provider {
         Provider::ALL
             .into_iter()
             .find(|p| p.name().eq_ignore_ascii_case(name))
+    }
+
+    /// Validate runtime-exposed native IDs against their own public headers.
+    #[cfg(feature = "native")]
+    pub(crate) fn runtime_root(self) -> anyhow::Result<String> {
+        match self {
+            Self::Codex => codex::discovery::runtime_root(),
+            Self::Claude => {
+                anyhow::bail!("automatic Claude identity is unavailable; supply an exact --session")
+            }
+        }
     }
 }
 
@@ -340,6 +358,15 @@ impl Provider {
         match self {
             Provider::Claude => claude::discovery::all_paths(scope),
             Provider::Codex => codex::discovery::all_paths(scope),
+        }
+    }
+
+    /// Discovery under an explicit provider storage root, without changing
+    /// process environment. Claude takes its `projects` directory; Codex its home.
+    pub fn all_paths_in(self, root: &Path, scope: &Scope) -> Vec<PathBuf> {
+        match self {
+            Provider::Claude => claude::discovery::all_paths_in(root, scope),
+            Provider::Codex => codex::discovery::all_paths_in(root, scope),
         }
     }
 

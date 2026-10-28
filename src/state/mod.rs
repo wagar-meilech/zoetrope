@@ -1215,6 +1215,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "native")]
     #[test]
     fn user_pan_cancels_glide() {
         let mut app = App::new("s".into(), Mode::Live);

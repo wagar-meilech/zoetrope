@@ -3,7 +3,8 @@
 //! CLI (hand-rolled over `std::env::args`, no clap):
 //!
 //! ```text
-//! zoe                       follow the current project's live session
+//! zoe                       open the global goal and agent console
+//! zoe --project             follow the current project's live session
 //! zoe <file.jsonl>          replay a recording, played from the start
 //! zoe <id>                  replay a session by id (or a unique prefix)
 //! zoe <dir>                 follow another project's live session
@@ -13,6 +14,7 @@
 //! zoe inspect <file|id|dir> headless: print the session tree + info
 //! ```
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -35,6 +37,8 @@ const CHANNEL_CAP: usize = 32;
 /// once running, regardless of how it launched.
 #[derive(Debug, Clone)]
 pub enum Cli {
+    /// Global goals and agents across local projects.
+    Fleet,
     /// View a session in the TUI. `target`: a session file (replay it from the
     /// start), a project dir (follow its live session), a session id, or
     /// `None` (the current project). `follow` starts at the live edge instead
@@ -60,7 +64,8 @@ const USAGE: &str = "\
 zoetrope — visualize coding-agent sessions as a flow graph
 
 USAGE:
-    zoe                     follow the current project's live session
+    zoe                     open the global goal and agent console
+    zoe --project           follow the current project's live session
     zoe <file.jsonl>        replay a recording, played from the start
     zoe <id>                replay a session by id, or a unique prefix of one
     zoe <dir>               follow another project's live session
@@ -68,14 +73,55 @@ USAGE:
     zoe <file> --speed N    playback speed (default 8.0)
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
     zoe inspect <file|id>   headless: print the session tree + info
+    zoe state --help       local goals, evidence, drafts and questions
+    zoe tracking --help    bind exact goals to local structured task sources
+    zoe control --help     explicit controls for the existing local Codex runtime
+    zoe --color <mode>      auto (respects NO_COLOR), always, or never; applies to this process
     zoe --version           print the version and exit
 
 Once open, scrub/follow/pause/go-live are available no matter how you launched.";
+
+/// Remove global styling flags before choosing Fleet, replay, or a subcommand.
+/// Crossterm exposes a process-local atomic override; the parent environment is
+/// never changed, including an inherited NO_COLOR preference.
+fn color_arguments(arguments: impl Iterator<Item = String>) -> Result<Vec<String>> {
+    let mut arguments = arguments;
+    let mut remaining = Vec::new();
+    if let Some(executable) = arguments.next() {
+        remaining.push(executable);
+    }
+    let mut mode = "auto".to_owned();
+    while let Some(argument) = arguments.next() {
+        if argument == "--color" {
+            mode = arguments
+                .next()
+                .ok_or_else(|| anyhow!("--color requires auto, always, or never\n\n{USAGE}"))?;
+        } else if let Some(value) = argument.strip_prefix("--color=") {
+            mode = value.to_owned();
+        } else {
+            remaining.push(argument);
+        }
+    }
+    let enabled = match mode.as_str() {
+        "always" => true,
+        "never" => false,
+        "auto" => {
+            std::io::stdout().is_terminal()
+                && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
+        }
+        _ => bail!("invalid --color mode {mode:?}; expected auto, always, or never\n\n{USAGE}"),
+    };
+    crossterm::style::force_color_output(enabled);
+    Ok(remaining)
+}
 
 /// Parse `std::env::args` into a [`Cli`]. Returns a usage error on bad input.
 fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     // Skip argv[0].
     let mut args = args.skip(1).peekable();
+    if args.peek().is_none() {
+        return Ok(Cli::Fleet);
+    }
 
     let provider_flag = |args: &mut std::iter::Peekable<_>| -> Result<Option<Provider>> {
         let v: String = args
@@ -114,6 +160,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     let mut follow = false;
     let mut speed = DEFAULT_REPLAY_SPEED;
     let mut provider = None;
+    let mut project = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => {
@@ -127,6 +174,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
                 std::process::exit(0);
             }
             "--follow" => follow = true,
+            "--project" => project = true,
             "--speed" => {
                 let v = args
                     .next()
@@ -151,6 +199,9 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
         }
     }
 
+    if project && target.is_some() {
+        bail!("--project follows the current directory; choose it or a target\n\n{USAGE}");
+    }
     Ok(Cli::View {
         target,
         follow,
@@ -311,8 +362,26 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let cli = parse_cli(std::env::args())?;
+    let arguments = color_arguments(std::env::args())?;
+    if arguments.get(1).map(String::as_str) == Some("state") {
+        return zoetrope::workstate::run_cli(arguments.into_iter().skip(2));
+    }
+    if arguments.get(1).map(String::as_str) == Some("tracking") {
+        return zoetrope::tracking::run_cli(arguments.into_iter().skip(2));
+    }
+
+    if let Some(result) = zoetrope::control::run_cli(&arguments[1..]) {
+        return result;
+    }
+    let cli = parse_cli(arguments.into_iter())?;
     match cli {
+        Cli::Fleet => {
+            let config = zoetrope::fleet::FleetConfig {
+                state_executable: Some(std::env::current_exe()?),
+                ..zoetrope::fleet::FleetConfig::default()
+            };
+            zoetrope::fleet::runtime::run(config).await
+        }
         Cli::Inspect { target, provider } => run_inspect(target, provider).await,
         other => run_tui(other).await,
     }
@@ -328,18 +397,6 @@ mod tests {
         let mut v = vec!["zoe".to_string()];
         v.extend(args.iter().map(|s| s.to_string()));
         parse_cli(v.into_iter())
-    }
-
-    #[test]
-    fn bare_invocation_is_live_for_cwd() {
-        match cli(&[]).unwrap() {
-            Cli::View {
-                target: None,
-                follow: false,
-                ..
-            } => {}
-            other => panic!("expected View{{target:None}}, got {other:?}"),
-        }
     }
 
     #[test]

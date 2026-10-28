@@ -1,0 +1,118 @@
+{
+  "status": "complete",
+  "completed_date": "2026-10-25",
+  "repo": "/Users/melikhov/Repos/zoetrope",
+  "integration_branch": "feat/goal-console",
+  "integration_tip": "f327bf8be5a8a1652ecc90a135bcd563df0567de",
+  "working_tree": "clean, synchronized with origin",
+  "pull_request": {
+    "url": "https://github.com/wagar-meilech/zoetrope/pull/8",
+    "state": "open, ready for review",
+    "main_merged": false
+  },
+  "completed_tickets": [
+    "ZOE-1",
+    "ZOE-2",
+    "ZOE-3",
+    "ZOE-4",
+    "ZOE-5",
+    "ZOE-6"
+  ],
+  "active_agents": [],
+  "running_builds": [],
+  "remaining_work": [],
+  "installed": {
+    "command": "/Users/melikhov/.local/bin/zoe",
+    "target": "/Users/melikhov/Repos/zoetrope/target/release/zoe",
+    "bytes": 6206336,
+    "sha256": "3c2d4aa10ace5b5638fde45545c4470cd2ba53fedc81acfc29b7b861d2f86964",
+    "native_rust": "1.88.0",
+    "prior_binary_backup": ".local/research-artifacts/zoetrope-install-backups/zoe-before-goal-console-2026-10-25",
+    "vscode_bridge": "wagar.zoetrope-preview 0.1.0 installed; real MD Reader preview verified"
+  },
+  "verified": {
+    "native_tests": 290,
+    "manual_resource_probe_ignored_in_ci": 1,
+    "portable_library_tests": 176,
+    "editor_host_tests": 5,
+    "strict_clippy": true,
+    "formatting": true,
+    "portable_build": true,
+    "wasm_check": true,
+    "wasm_rust": "1.90.0",
+    "rustdoc_warnings_as_errors": true,
+    "spelling": true,
+    "commit_lint": true,
+    "standalone_package_dry_run": true,
+    "package_published": false,
+    "installed_terminal": true,
+    "external_progress_refresh_without_navigation": true,
+    "md_reader_real_preview": true,
+    "independent_review": "All R1\u2013R8 and follow-up regressions resolved",
+    "remote_ci": "No GitHub status checks reported; validation was local"
+  },
+  "resources": {
+    "samples": "docs/research/zoetrope-final-resource-samples-2026-10-25.json",
+    "fresh_average_process_cpu_percent_approx": 0.2,
+    "fresh_rss_mib": [
+      8.2,
+      8.4
+    ],
+    "after_replay_rss_mib": 23.4,
+    "debug_archived_goals": [
+      1000,
+      4000
+    ],
+    "debug_peak_ui_poll_ms": [
+      25.2,
+      108.5
+    ],
+    "debug_startup_ms": [
+      428,
+      1263
+    ]
+  },
+  "guide": "docs/GOAL-CONSOLE.md",
+  "validation": "docs/GOAL-CONSOLE-VALIDATION.md",
+  "historical_checkpoint": "docs/PAUSED-CHECKPOINT.md",
+  "review_notes": "docs/research/zoetrope-final-review-2026-10-25.md",
+  "review_fix_notes": "docs/research/zoe-review-fixes-implementation.md",
+  "compatibility_notes": "docs/research/zoe-control-compatibility-2026-10-23/FINDINGS.md",
+  "history_normalization": {
+    "head": "f9fda773c96c7649bc6be6fdb6e8cbe7ee00b540",
+    "tree": "c654a176eecb9668af0c9c2f3af051981ada5eb7",
+    "main": "b1f31dd26bd4e9e513885e39edb78d0850a5d1fe",
+    "remote": "f9fda773c96c7649bc6be6fdb6e8cbe7ee00b540",
+    "backup": "backup/goal-console-before-header-normalization-20261025",
+    "after": {
+      "head": "f327bf8be5a8a1652ecc90a135bcd563df0567de",
+      "tree": "c654a176eecb9668af0c9c2f3af051981ada5eb7",
+      "main": "b1f31dd26bd4e9e513885e39edb78d0850a5d1fe"
+    },
+    "unchanged_tree": true,
+    "unchanged_main": true,
+    "exact_remote_lease_used": true
+  },
+  "cleanup": "All implementer worktrees, their toolchain overrides and isolated build caches removed; installed release retained",
+  "task_goal_record": {
+    "session": "01a1691a-571a-7c03-bc87-946ac8a3d53d",
+    "verified": [
+      "inventory",
+      "persistence",
+      "control",
+      "terminal",
+      "preview",
+      "handoff"
+    ],
+    "pending": [],
+    "progress": "6 of 6 verified \u00b7 100%"
+  },
+  "documentation": {
+    "consolidated_date": "2026-10-27",
+    "handoff": "docs/HANDOFF.md",
+    "research_index": "docs/research/README.md",
+    "paths": "Supporting artifact paths are relative to the repository root; original implementation status is dated 25 October 2026.",
+    "local_artifacts": ".local/",
+    "migration_manifest": ".local/document-migration/manifest.json"
+  }
+}

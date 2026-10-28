@@ -1,0 +1,48 @@
+[1m[38;5;178mZoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+[0mWork graph · 12 tasks · 11 prerequisite edges                   [38;5;178m┌ Selected work ─────────────────────────┐
+[39mLegend: [38;5;12m○ planned  [38;5;6m● active  [38;5;9m! blocked  [38;5;2m✓ done  [38;5;8m× cancelled  [38;5;5m?[39m  [38;5;178m│[39mSelected: WG-5 visual fixture           [38;5;178m│
+[38;5;5munknown  [39m                                                       [38;5;178m│[39mRecipient: Coordinator                  [38;5;178m│
+[39m              [38;5;0m[48;5;2m✓ Plan approved [39m[49m   [38;5;0m[48;5;8m× Retire old re…[39m[49m               [38;5;178m│     Outcomes: 0 of 5 verified · 0%     │
+[39m              [38;5;0m[48;5;2m                [39m[49m   [38;5;0m[48;5;8m                [39m[49m               [38;5;178m│[39mReported work: 5 of 12 done             [38;5;178m│
+[39m              [38;5;0m[48;5;2m                [39m[49m   [38;5;0m[48;5;8m                [39m[49m               [38;5;178m│[38;5;6m● 1 active  [38;5;9m! 1 blocked  [38;5;12m○ 3 planned  [38;5;8m×[39m [38;5;178m│
+[39m                      [38;5;237m│[39m                                         [38;5;178m│[38;5;8m1 cancelled  [38;5;5m? 1 unknown  [39m              [38;5;178m│
+[39m                      [38;5;237m▼[39m                                         [38;5;178m│[Steer f][39m [38;5;178m[Coordinator C][39m               [38;5;178m│
+[39m              [38;5;2m┌──────────────┐[39m   [38;5;5m┌──────────────┐[39m               [38;5;178m│[Enable tracking T][39m [38;5;178m[Work w][39m [38;5;178m[Agents a][39m [38;5;178m│
+[39m              [38;5;2m│[1m[39mStandard chec…[0m[38;5;2m│[39m   [38;5;5m│[1m[39mExternal revi…[0m[38;5;5m│[39m               [38;5;178m│[Commands x][39m [38;5;178m[Replay R][39m                 [38;5;178m│
+[39m              [38;5;2m│✓ reported do…│[39m   [38;5;5m│? unknown: pr…│[39m               [38;5;178m│[39mWork toward goal                        [38;5;178m│
+[39m              [38;5;2m└──────────────┘[39m   [38;5;5m└──────────────┘[39m               [38;5;178m│[1m[39mSelected work:[0m Close the order          [38;5;178m│
+[39m                      [38;5;237m▼[39m                                         [38;5;178m│[38;5;6mStatus: in progress[39m                     [38;5;178m│
+[39m              [38;5;2m┌──────────────┐[39m                                  [38;5;178m│[1m[39mOwner:[0m Coordinator                      [38;5;178m│
+[39m              [38;5;2m│[1m[39mChoose menus[0m  [38;5;2m│[39m                                  [38;5;178m│[1m[39mPurpose:[0m Close the sale safely          [38;5;178m│
+[39m              [38;5;2m│✓ reported do…│[39m                                  [38;5;178m│[1m[39mNext:[0m Review callback expiry            [38;5;178m│
+[39m              [38;5;2m└──────────────┘[39m                                  [38;5;178m│[39mSource: coordinator · local report      [38;5;178m│
+[39m                      [38;5;237m▼[39m                  [38;5;237m▼[39m                      [38;5;178m│[39mRecorded: 2026-10-27 23:08 UTC          [38;5;178m│
+[39m              [38;5;2m┌──────────────┐[38;5;237m───[38;5;2m┌──────────────┐[39m               [38;5;178m│[39mDependencies: Customize order (custom), [38;5;178m│
+[39m              [38;5;2m│[1m[39mCustomize ord…[0m[38;5;2m│[39m   [38;5;2m│[1m[39mDelivery loca…[0m[38;5;2m│[39m               [38;5;178m│[39mDelivery locations (locations)          [38;5;178m│
+[39m              [38;5;2m│✓ reported do…│[39m   [38;5;2m│✓ reported do…│[39m               [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;2m└──────────────┘[39m   [38;5;2m└──────────────┘[39m               [38;5;178m│[39mCodex controls unavailable              [38;5;178m│
+[39m                      [38;5;237m│[39m                  [38;5;237m│[39m                      [38;5;178m│[39mGuidance unavailable: Codex disconnected[38;5;178m│
+[39m                      [38;5;237m▼──────────────────╯[39m                      [38;5;178m│[39mQueue unavailable: Codex disconnected   [38;5;178m│
+[39m              [1m[38;5;178m┌› selected────┐[0m                                  [38;5;178m│[39mStop unavailable: Codex disconnected    [38;5;178m│
+[39m              [1m[38;5;178m│[39mClose the ord…[38;5;178m│[0m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [1m[38;5;178m│[0m[38;5;6m● in progress[39m [1m[38;5;178m│[0m                                  [38;5;178m│[39mf feedback · Q saved questions · c      [38;5;178m│
+[39m              [1m[38;5;178m└──────────────┘[0m                                  [38;5;178m│[39mcriteria                                [38;5;178m│
+[39m                      [38;5;237m▼[39m                                         [38;5;178m│[39md documents · R read-only replay        [38;5;178m│
+[39m              [38;5;12m┌──────────────┐[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m│[1m[39mPayment confi…[0m[38;5;12m│[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m│○ planned[39m     [38;5;12m│[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m└──────────────┘[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m                      [38;5;237m▼[39m                  [38;5;237m▼[39m                      [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;9m┌──────────────┐[38;5;237m───[38;5;12m┌──────────────┐[39m               [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;9m│[1m[39mSend reminders[0m[38;5;9m│[39m   [38;5;12m│[1m[39mCustomer corr…[0m[38;5;12m│[39m               [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;9m│! blocked[39m     [38;5;9m│[39m   [38;5;12m│○ planned[39m     [38;5;12m│[39m               [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;9m└──────────────┘[39m   [38;5;12m└──────────────┘[39m               [38;5;178m│[39m                                        [38;5;178m│
+[39m                      [38;5;237m│[39m                  [38;5;237m│[39m                      [38;5;178m│[39m                                        [38;5;178m│
+[39m                      [38;5;237m▼──────────────────╯[39m                      [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m┌──────────────┐[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m│[1m[39mDeploy service[0m[38;5;12m│[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m│○ planned[39m     [38;5;12m│[39m                                  [38;5;178m│[39m                                        [38;5;178m│
+[39m              [38;5;12m└──────────────┘[39m                                  [38;5;178m└────────────────────────────────────────┘
+[39mH history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner

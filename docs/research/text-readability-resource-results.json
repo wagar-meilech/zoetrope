@@ -1,0 +1,105 @@
+{
+  "application_commit": "8a9e82a2adecdbd08f7a086d05b1b4e06354a831",
+  "integration_handoff": "5d562c30974b17865407b7deb293e130829e4639",
+  "platform": "Linux x86_64",
+  "release_bytes": 8454416,
+  "release_sha256": "957c58af61e4455be44b2c261c2ba38a2504a0545f877a882e1cb03cb2e13065",
+  "idle_samples": [
+    {
+      "fixture": "isolated structured local source and real release executable",
+      "tasks": 12,
+      "sources": 1,
+      "dense_within_sources": false,
+      "structured_message_bytes": 6719,
+      "commands_view": true,
+      "declared_edges": 8,
+      "source_bytes": 1512,
+      "open_seconds_observed": 0.074,
+      "measurement_seconds": 10.001,
+      "cpu_percent_one_core": 0.1,
+      "rss_kib": 8796,
+      "peak_rss_kib": 8796,
+      "idle_terminal_bytes": 0,
+      "explicit_color_override": true,
+      "exit_code": 0
+    },
+    {
+      "fixture": "isolated structured local source and real release executable",
+      "tasks": 512,
+      "sources": 1,
+      "dense_within_sources": false,
+      "structured_message_bytes": 0,
+      "commands_view": false,
+      "declared_edges": 508,
+      "source_bytes": 59762,
+      "open_seconds_observed": 0.072,
+      "measurement_seconds": 10.001,
+      "cpu_percent_one_core": 0.2,
+      "rss_kib": 18816,
+      "peak_rss_kib": 18816,
+      "idle_terminal_bytes": 0,
+      "explicit_color_override": true,
+      "exit_code": 0
+    }
+  ],
+  "malformed_link_release_samples": [
+    {
+      "kind": "control",
+      "source_bytes": 4096,
+      "draw_ms": 2.524
+    },
+    {
+      "kind": "unclosed-targets",
+      "source_bytes": 4096,
+      "draw_ms": 2.321
+    },
+    {
+      "kind": "control",
+      "source_bytes": 8192,
+      "draw_ms": 3.072
+    },
+    {
+      "kind": "unclosed-targets",
+      "source_bytes": 8192,
+      "draw_ms": 3.264
+    },
+    {
+      "kind": "control",
+      "source_bytes": 16384,
+      "draw_ms": 5.245
+    },
+    {
+      "kind": "unclosed-targets",
+      "source_bytes": 16384,
+      "draw_ms": 5.747
+    },
+    {
+      "kind": "control",
+      "source_bytes": 32768,
+      "draw_ms": 7.79
+    },
+    {
+      "kind": "unclosed-targets",
+      "source_bytes": 32768,
+      "draw_ms": 8.606
+    }
+  ],
+  "history_probe": [
+    {
+      "goals": 1000,
+      "startup_ms": 315,
+      "peak_ui_poll_us": 19705
+    },
+    {
+      "goals": 4000,
+      "startup_ms": 836,
+      "peak_ui_poll_us": 82379
+    }
+  ],
+  "qualifications": [
+    "Owned synthetic local files and PTYs; no model calls or real native guidance.",
+    "Two idle samples ran concurrently with a short synthetic capture run during warmup; ten-second samples after three-second warmup.",
+    "Single observations, coarse process CPU ticks; no universal latency or memory guarantee.",
+    "The link-cost helper renders public criteria through the same native release library; it does not invoke private lexer helpers."
+  ]
+}

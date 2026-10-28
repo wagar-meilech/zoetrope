@@ -1,0 +1,42 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                                             ┌ Selected work ───────────────────────────────────────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ? unknown                    │Selected: WG-5 visual fixture                             │
+                             ✓ Plan approv…   × Retire old …                              │Recipient: Coordinator                                    │
+                                                                                          │              Outcomes: 0 of 5 verified · 0%              │
+                                                                                          │Reported work: 5 of 12 done                               │
+                                    ▼                                                     │● 1 active  ! 1 blocked  ○ 3 planned  × 1 cancelled  ? 1  │
+                             ✓ Standard ch…   ? External re…                              │unknown                                                   │
+                                                                                          │[Steer f] [Coordinator C] [Enable tracking T] [Work w]    │
+                                                                                          │[Agents a] [Commands x] [Replay R]                        │
+                                    │                                                     │── Work toward goal                                       │
+                                    ▼                                                     │Selected work: Close the order                            │
+                             ✓ Choose menus                                               │Status: in progress                                       │
+                                                                                          │Owner: Coordinator                                        │
+                                                                                          │                                                          │
+                                    │                                                     │── Context                                                │
+                                    ▼────────────────▼                                    │Purpose: Review src/parser.rs:42 and keep scope focused.  │
+                             ✓ Customize o…   ✓ Delivery lo…                              │Changed: Source fields are imported deterministically.    │
+                                                                                          │                                                          │
+                                                                                          │Keep provenance separate from outcome evidence.           │
+                                    ▼                │                                    │Next: Run cargo test --locked, then read the spec         │
+                             ›● Close the …──────────╯                                    │(docs/WORK.md).                                           │
+                                                                                          │                                                          │
+                                                                                          │── Provenance                                             │
+                                    │                                                     │Source: coordinator · local report                        │
+                                    ▼                                                     │Recorded: 2026-10-28 01:10 UTC                            │
+                             ○ Payment con…                                               │Dependencies: Customize order (custom), Delivery locations│
+                                                                                          │(locations)                                               │
+                                                                                          │                                                          │
+                                    │                                                     │── Controls                                               │
+                                    ▼────────────────▼                                    │Codex controls unavailable                                │
+                             ! Send remind…   ○ Customer co…                              │Guidance unavailable: Codex disconnected                  │
+                                                                                          │Queue unavailable: Codex disconnected                     │
+                                                                                          │Stop unavailable: Codex disconnected                      │
+                                    ▼                │                                    │                                                          │
+                             ┌────────────┐──────────╯                                    │f feedback · Q saved questions · c criteria               │
+                             │Deploy serv…│                                               │d documents · R read-only replay                          │
+                             │○ planned   │                                               │                                                          │
+                             └────────────┘                                               └──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner

@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-27",
+  "platform": "Linux x86_64",
+  "rust": "1.99.0",
+  "source_commit": "856c5654020a2829f4d3fb3214a7fa1660b8225a",
+  "release_bytes": 7585584,
+  "fixture": {
+    "goals": 1,
+    "explicit_work_items": 3,
+    "native_plan_producers": 2,
+    "live_control": "unavailable local socket",
+    "real_native_sessions_used": false,
+    "model_calls": 0
+  },
+  "baseline": {
+    "stage": "SEM-1/SEM-2 foundation",
+    "elapsed_seconds": 16.001,
+    "cpu_percent_reported": 0,
+    "rss_kib": 7568,
+    "peak_rss_kib": 7568,
+    "idle_terminal_bytes": 0
+  },
+  "final": {
+    "elapsed_seconds": 16.001,
+    "cpu_percent_reported": 0,
+    "rss_kib": 7728,
+    "peak_rss_kib": 7728,
+    "idle_terminal_bytes": 0,
+    "terminal_initialized": true,
+    "observed_work": true,
+    "exit_code": 0
+  },
+  "history": {
+    "baseline": [
+      {
+        "goals": 1000,
+        "probe_elapsed_ms": 307,
+        "peak_ui_poll_us": 18954
+      },
+      {
+        "goals": 4000,
+        "probe_elapsed_ms": 767,
+        "peak_ui_poll_us": 78329
+      }
+    ],
+    "final": [
+      {
+        "goals": 1000,
+        "probe_elapsed_ms": 315,
+        "peak_ui_poll_us": 19690
+      },
+      {
+        "goals": 4000,
+        "probe_elapsed_ms": 795,
+        "peak_ui_poll_us": 80625
+      }
+    ]
+  },
+  "notes": [
+    "CPU 0.0 means no process clock ticks were reported in this short interval; it is not a universal zero-CPU guarantee.",
+    "History probe elapsed includes its 100 ms unchanged-view observation.",
+    "The public-runtime helper uses explicit synthetic roots and a nonexistent control socket; busy live runs and full replay are not measured."
+  ]
+}

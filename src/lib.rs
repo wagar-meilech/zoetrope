@@ -27,6 +27,7 @@
 //! ([`handler`]) are native-only (they pull tokio/crossterm/fs) and `cfg`-gated
 //! behind the `native` feature.
 
+pub mod console;
 pub mod fact;
 pub mod provider;
 pub mod state;
@@ -42,6 +43,17 @@ pub mod ui;
 #[cfg(feature = "native")]
 pub mod autopilot;
 #[cfg(feature = "native")]
+pub mod control;
+#[cfg(feature = "native")]
+pub mod documents;
+#[cfg(feature = "native")]
+pub mod fleet;
+#[cfg(feature = "native")]
 pub mod handler;
 #[cfg(feature = "native")]
 pub mod tui;
+
+#[cfg(feature = "native")]
+pub mod tracking;
+#[cfg(feature = "native")]
+pub mod workstate;

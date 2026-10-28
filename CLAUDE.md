@@ -1,12 +1,42 @@
 # zoetrope
 
-Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph. The same core also runs in the browser, compiled to wasm. Read-only, zero network.
+Terminal UI for a global goal/agent graph, persistent local steering and Claude Code/Codex session replay. The replay core also runs in the browser, compiled to wasm. Native transcripts remain read-only; explicit native controls use local IPC only.
+
+## Approved goal-console work
+
+For the current visual work graph and persistent tracking iteration, follow
+`docs/WORK-GRAPH-SPEC.md` and the approved frontier in `docs/WORK-GRAPH-PLAN.md`
+(issues #15–21). Keep the existing integration branch and PR #8.
+
+For continuation, start with `docs/HANDOFF.md`. Supporting research,
+implementation notes, review evidence and schema exports are consolidated in
+`docs/research/`; its README is the archive index. `docs/PAUSED-CHECKPOINT.md`
+records earlier pauses and is historical.
+
+Semantic-context continuation follows `docs/SEMANTIC-CONTEXT-SPEC.md` and
+`docs/SEMANTIC-CONTEXT-TICKETS.md`; decisions are in the answered semantic
+questionnaire. For an explicitly tracked goal, read `docs/AGENT-REPORTING.md`
+using the supplied provider/session/state identity. The user explicitly approved
+publication to `wagar-meilech/zoetrope`, pushing this branch and updating PR #8
+on 27 October 2026. Semantic spec/tickets are issues #9–13; local installation
+and checkout-based updates are issue #14 and `docs/INSTALLATION-SPEC.md`.
+
+The user approved `docs/GOAL-CONSOLE-SPEC.md`, its two public testing seams, and the task graph in `docs/GOAL-CONSOLE-TICKETS.md`. For this feature, explicit local Codex controls and opening a selected document extend the old read-only contract. Native transcripts stay read-only; the console must not add internet communication, telemetry, a hidden summarizing model, or automatic permission-policy changes. Preserve portable replay and the existing browser frontend.
+
+Use GitHub Issues in `wagar-meilech/zoetrope`; details are in `docs/agents/issue-tracker.md`. The umbrella spec is issue #1. Integrate implementation worktrees into `feat/goal-console`, and use one PR to close the spec and tickets. Do not merge that PR into main without a user request.
+
+Follow vertical TDD at the approved public console and executable/external-launch seams. Historical and current check results are dated in the validation records and ticket implementation notes. Record red/green commands in the ticket's implementation notes. Do not test private implementation details or duplicate an existing native Codex run to simulate control.
+
+The user explicitly requires fast, resource-light code. Keep the main implementation in Rust; JavaScript/TypeScript is limited to the small VS Code bridge. Use bounded metadata reads, incremental caches, lazy expansion and off-UI-thread local IO. Avoid heavy frameworks, background model summarizers, whole-history work on each frame and needless idle redraws. Verify representative resource behavior instead of assuming that a language guarantees efficiency.
 
 Transcript formats enter through one boundary: `src/provider/` turns records into the facts in `src/fact.rs`, and nothing past it knows the format. See `docs/ARCHITECTURE.md` §0 before adding to either side.
 
-See `docs/ARCHITECTURE.md` for the invariants and principles, `docs/DESIGN.md` for the module map and transcript format, `docs/HERDR-PLUGIN.md` for the Herdr bridge in `herdr-plugin/`, `TODO.md` for the roadmap, and `README.md` for usage.
+See `docs/ARCHITECTURE.md` for invariants, `docs/DESIGN.md` for the module map and transcript format, `docs/HERDR-PLUGIN.md` for the Herdr bridge, the current task graph for implementation work, and `README.md` for usage.
 
 ## Running
+
+For local installation, updating the installed command, or moving the checkout,
+follow the Installation section of `README.md`.
 
 Two crates: `zoetrope` at the root (the published lib + the `zoe` binary) and `zoetrope-web` in `web/wasm/` (the browser frontend, `publish = false`, wasm32-only). The browser frontend is **excluded** from the root workspace and resolves as its own — it cannot be compiled for the host at all, so keeping it a member would mean permanent phantom errors in the editor. The commands below therefore only touch `zoetrope`; the browser frontend needs its own manifest path.
 

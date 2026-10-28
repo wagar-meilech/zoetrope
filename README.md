@@ -5,7 +5,7 @@
 <h1 align="center">zoetrope</h1>
 
 <p align="center">
-  <em>Watch a Claude Code or Codex session as a live flow graph, in your terminal or your browser.</em>
+  <em>Watch goals and agents across projects, steer Codex from your terminal, and replay sessions.</em>
 </p>
 
 <p align="center">
@@ -28,7 +28,13 @@ Claude Code and Codex write a transcript for every session. zoetrope reads it an
 the session as a graph in your terminal: the main agent, the agents it spawns, and the
 tools each one runs, updating live as it goes. Point it at a finished run and it replays,
 paced by the session's own timestamps. Point it at a running one and it follows along.
-It's read-only, and nothing leaves your machine.
+Native transcripts stay read-only. This fork adds a global goal console,
+evidence-backed progress, persistent questions and drafts, and explicit local
+Codex controls. Passive monitoring uses no model calls or internet service.
+See the [goal console guide](docs/GOAL-CONSOLE.md) for work-first goal inspection,
+visible steering, tracking, history and document preview. The optional
+[project reporting convention](docs/AGENT-REPORTING.md) keeps agent updates
+concise. Browser replay remains available.
 
 Built on [ratatui](https://ratatui.rs) and [rataflow](https://github.com/furkankly/rataflow).
 
@@ -49,6 +55,49 @@ across both.
 
 ## Installation
 
+**This customized fork** — Rust 1.88 or newer:
+
+```bash
+git clone --branch feat/goal-console https://github.com/wagar-meilech/zoetrope
+cd zoetrope
+./scripts/install.sh
+```
+
+The installer builds a locked release and places `zoe` and `zoe-update` in
+`~/.local/bin` on Linux or macOS. It also installs the normally discoverable
+`zoetrope-tracking` skill into `${CODEX_HOME:-$HOME/.codex}/skills`. Installation
+alone does not enable tracking in any project. If `~/.local/bin` is not on your
+`PATH`, add this line to your shell startup file and open a new terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+The two daily commands are:
+
+```bash
+zoe          # launch the compiled app directly
+zoe-update   # rebuild and reinstall changes from this checkout
+```
+
+Keep the checkout in a permanent location. Updates need the Rust toolchain and
+Cargo; normal launch runs the installed binary without Cargo or a background
+service. `zoe-update` uses the same checkout, branch, locked dependencies and skill
+destination, updating the app and packaged skill together. It does not pull Git
+changes or switch branches. Unrelated user skills and extra files are preserved.
+A failed build keeps the installed commands and skill usable; successful updates
+replace the binary atomically, allowing already running processes to continue.
+
+For another destination, run `./scripts/install.sh --bin-dir "$HOME/bin"` and add
+that directory to `PATH`. The updater remembers the chosen directory and works
+from other working directories. If you move the checkout, run the installer from
+its new location with the same `--bin-dir` to refresh the updater.
+
+The optional [VS Code bridge](editors/vscode/README.md) opens selected Markdown
+documents in MD Reader. The main app is Rust; no JavaScript service is required.
+
+The following installation methods install the **upstream release**:
+
 **Homebrew** — macOS and Linux:
 
 ```bash
@@ -66,14 +115,9 @@ cargo install zoetrope
 macOS (Apple Silicon and Intel), Linux (`musl`, arm64 and x86_64) and Windows
 (x86_64). Unpack one and put `zoe` on your `PATH`.
 
-Whichever route you take, the command is `zoe`. Or build from source:
-
-```bash
-git clone https://github.com/furkankly/zoetrope
-cd zoetrope
-cargo build --release
-./target/release/zoe
-```
+Whichever route you take, the command is `zoe`. Build this customized fork with
+the source commands above; the upstream installers do not contain its goal
+console changes.
 
 No install at all: **[try it in your browser](https://zoetrope.furkankly.dev/app)**.
 Drop a transcript on the page and get the same graph.
@@ -103,7 +147,8 @@ covers both.
 ## Usage
 
 ```bash
-zoe                          # follow the current project's live session
+zoe                          # global goal and agent console
+zoe --project                # follow the current project's live session
 zoe <dir>                    # follow another project's session
 zoe <file.jsonl>             # replay a recording from the start (any file of a session)
 zoe <id>                     # replay a session by id, or a unique prefix of one
@@ -114,15 +159,40 @@ zoe inspect <file|id>        # print the session tree and exit (no TUI)
 ```
 
 Give it a file and it reads the whole transcript, then keeps watching for new lines.
-Give it a directory, or no argument at all, and it finds the newest session in that
-project and follows it live. Whichever way you start, the controls are the same:
-scrub, follow, pause, jump back to live.
+Give it a directory, or use `--project`, and it finds the newest session in that
+project and follows it live. File/ID/project views retain the replay controls:
+scrub, follow, pause and jump back to live. Bare `zoe` opens the fleet console:
+`H` switches current/history, `/` searches and `?` shows help.
+
+In a selected goal, **Enable tracking** (`T`) prepares an editable request for
+its coordinator; send or queue it explicitly. The request supplies the installed
+skill/executable and exact local identity. Authorized setup reuses the project
+tracker and task artifacts, adding only missing structured fields and a small
+managed pointer. Normal task edits then refresh the Work graph locally without
+repeated JSON reports. Later goals bind their own native identity and source
+subset; a local project disable takes precedence over committed instructions.
+Projects without a tracker can keep native plans/reports or establish one minimal
+task document seeded with known work. Source completion remains separate from
+verified outcome evidence. See [tracking and reporting](docs/AGENT-REPORTING.md)
+for status/disable commands and the fallback when the skill is unavailable.
 
 The same engine also runs [in the browser](https://zoetrope.furkankly.dev/app),
 compiled to WebAssembly via [ratzilla](https://github.com/ratatui/ratzilla). Open a
 session from disk, or drop a transcript on the page. It stays local there too.
 
 ## Features
+
+**Goal console**
+- One expanding graph across projects, goals and agents, with searchable history
+- Meaningful work within each goal, including one coordinator's recorded plan,
+  owners, reported status, purpose, next steps and declared dependencies
+- Editable completion criteria, evidence and scope revisions, separate from
+  reported work completion; unknown progress stays unknown
+- Visible recipient-specific steering and capability checks, with distinct
+  guidance, queue and stop actions plus persistent feedback/questions
+- Explicit tracking setup and reusable opt-in project reporting guidance
+- Recorded Markdown documents opened in the user's VS Code MD Reader
+- Local incremental indexing, bounded caches and no monitoring model
 
 **The graph**
 - A node per agent: the main session, its subagents, and workflow groups with their
@@ -154,7 +224,7 @@ session from disk, or drop a transcript on the page. It stays local there too.
   workflows with their own children, so the graph is the whole picture
 - Keeps going when an agent writes something it hasn't seen: unfamiliar records
   are skipped, never fatal
-- Read-only, and no network at all (see below)
+- Native history stays read-only; explicit controls use the existing local Codex runtime
 
 ## Keys
 
@@ -221,9 +291,11 @@ A few of the pieces that turn a log into a watchable session:
 - **You own the camera, not the history.** The recording is immutable and the graph
   never rearranges itself under you (`r` to relayout). The camera follows the action
   until you touch it, then stays where you put it.
-- **Zero network, provably.** There is no HTTP client anywhere in the dependency tree,
-  and `tokio` is pulled in without its `net` feature. `cargo tree` is the proof. This is
-  a property you can check, not a promise.
+- **Local monitoring and explicit controls.** Zoetrope makes no Internet requests.
+  The native controller uses WebSocket framing over Codex's existing Unix socket,
+  with TLS disabled; it never opens a TCP connection or starts a replacement daemon.
+  Explicit guidance is handed to that runtime, which continues its normal work.
+  Passive monitoring runs no model, uploads no transcripts and adds no telemetry.
 
 The model, the timeline and the rendering all live in the **portable core**, a
 library with no IO that compiles for any target, including WebAssembly. The native
@@ -231,8 +303,8 @@ frontend (the `zoe` binary in this
 crate) and the browser frontend (the `zoetrope-web` crate under `web/wasm/`, which
 runs the hosted app) sit on top of it and differ only in their IO and event loop.
 
-See [`docs/DESIGN.md`](https://github.com/furkankly/zoetrope/blob/main/docs/DESIGN.md) for the module map and the transcript format,
-and [`docs/ARCHITECTURE.md`](https://github.com/furkankly/zoetrope/blob/main/docs/ARCHITECTURE.md) for the invariants above in full.
+See [`docs/DESIGN.md`](docs/DESIGN.md) for the module map and the transcript format,
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the invariants above in full.
 
 ## A note on the transcript format
 
@@ -243,6 +315,10 @@ never takes down the session. If a new release of either makes something render 
 please [open an issue](https://github.com/furkankly/zoetrope/issues).
 
 ## Contributing
+
+For work on this fork, start with the [project handoff](docs/HANDOFF.md).
+The [research archive](docs/research/README.md) contains implementation notes,
+review evidence and protocol exports alongside the current project documents.
 
 Pull requests are welcome. Support for another agent is one provider directory
 under `src/provider/`; [`docs/DISCOVERY.md`](https://github.com/furkankly/zoetrope/blob/main/docs/DISCOVERY.md)

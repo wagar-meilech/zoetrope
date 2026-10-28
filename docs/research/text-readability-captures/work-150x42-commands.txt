@@ -1,0 +1,42 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                                             ┌ Commands and public activity ────────────────────────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ? unknown                    │Selected: WG-5 visual fixture                             │
+                             ✓ Plan approv…   × Retire old …                              │Recipient: Coordinator                                    │
+                                                                                          │              Outcomes: 0 of 5 verified · 0%              │
+                                                                                          │Owner: Coordinator                                        │
+                                    ▼                                                     │                                                          │
+                             ✓ Standard ch…   ? External re…                              │── Recorded public message                                │
+                                                                                          │Source: Codex commentary                                  │
+                                                                                          │Recorded: unknown                                         │
+                                    │                                                     │                                                          │
+                                    ▼                                                     │── Delivery plan                                          │
+                             ✓ Choose menus                                               │Read src/parser.rs:42 and keep scope focused.             │
+                                                                                          │                                                          │
+                                                                                          │• [x] Updated README.md                                   │
+                                    │                                                     │• [ ] Check ./tests/parser.rs                             │
+                                    ▼────────────────▼                                    │                                                          │
+                             ✓ Customize o…   ✓ Delivery lo…                              ││ Keep provenance separate from verification.             │
+                                                                                          │                                                          │
+                                                                                          │╭─ rust                                                   │
+                                    ▼                │                                    ││ let parser = read_source("src/parser.rs");              │
+                             ›● Close the …──────────╯                                    ││     validate(parser);                                   │
+                                                                                          │╰─                                                        │
+                                                                                          │                                                          │
+                                    │                                                     │Next: inspect the spec (docs/WORK.md).                    │
+                                    ▼                                                     │                                                          │
+                             ○ Payment con…                                               │── Latest shell command                                   │
+                                                                                          │Recorded: unknown                                         │
+                                                                                          │                                                          │
+                                    │                                                     │╭─ sh                                                     │
+                                    ▼────────────────▼                                    ││ cargo test --locked --test parser                       │
+                             ! Send remind…   ○ Customer co…                              │╰─                                                        │
+                                                                                          │                                                          │
+                                                                                          │Purpose: Check the public parser seam                     │
+                                    ▼                │                                    │                                                          │
+                             ┌────────────┐──────────╯                                    │Esc back · PageUp/PageDown scroll                         │
+                             │Deploy serv…│                                               │                                                          │
+                             │○ planned   │                                               │                                                          │
+                             └────────────┘                                               └──────────────────────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Recorded commands and public messages for the selected owner

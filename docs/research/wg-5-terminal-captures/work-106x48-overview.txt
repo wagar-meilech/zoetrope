@@ -1,0 +1,48 @@
+Zoetrope · Work graph · Current work
+[Back Esc] Fleet / visual-demo / WG-5 visual fixture · Work graph · Search: WG-5 visual fixture
+Work graph · 12 tasks · 11 prerequisite edges                   ┌ Selected work ─────────────────────────┐
+Legend: ○ planned  ● active  ! blocked  ✓ done  × cancelled  ?  │Selected: WG-5 visual fixture           │
+unknown                                                         │Recipient: Coordinator                  │
+              ✓ Plan approved    × Retire old re…               │     Outcomes: 0 of 5 verified · 0%     │
+                                                                │Reported work: 5 of 12 done             │
+                                                                │● 1 active  ! 1 blocked  ○ 3 planned  × │
+                      │                                         │1 cancelled  ? 1 unknown                │
+                      ▼                                         │[Steer f] [Coordinator C]               │
+              ┌──────────────┐   ┌──────────────┐               │[Enable tracking T] [Work w] [Agents a] │
+              │Standard chec…│   │External revi…│               │[Commands x] [Replay R]                 │
+              │✓ reported do…│   │? unknown: pr…│               │Work toward goal                        │
+              └──────────────┘   └──────────────┘               │Selected work: Close the order          │
+                      ▼                                         │Status: in progress                     │
+              ┌──────────────┐                                  │Owner: Coordinator                      │
+              │Choose menus  │                                  │Purpose: Close the sale safely          │
+              │✓ reported do…│                                  │Next: Review callback expiry            │
+              └──────────────┘                                  │Source: coordinator · local report      │
+                      ▼                  ▼                      │Recorded: 2026-10-27 23:08 UTC          │
+              ┌──────────────┐───┌──────────────┐               │Dependencies: Customize order (custom), │
+              │Customize ord…│   │Delivery loca…│               │Delivery locations (locations)          │
+              │✓ reported do…│   │✓ reported do…│               │                                        │
+              └──────────────┘   └──────────────┘               │Codex controls unavailable              │
+                      │                  │                      │Guidance unavailable: Codex disconnected│
+                      ▼──────────────────╯                      │Queue unavailable: Codex disconnected   │
+              ┌› selected────┐                                  │Stop unavailable: Codex disconnected    │
+              │Close the ord…│                                  │                                        │
+              │● in progress │                                  │f feedback · Q saved questions · c      │
+              └──────────────┘                                  │criteria                                │
+                      ▼                                         │d documents · R read-only replay        │
+              ┌──────────────┐                                  │                                        │
+              │Payment confi…│                                  │                                        │
+              │○ planned     │                                  │                                        │
+              └──────────────┘                                  │                                        │
+                      ▼                  ▼                      │                                        │
+              ┌──────────────┐───┌──────────────┐               │                                        │
+              │Send reminders│   │Customer corr…│               │                                        │
+              │! blocked     │   │○ planned     │               │                                        │
+              └──────────────┘   └──────────────┘               │                                        │
+                      │                  │                      │                                        │
+                      ▼──────────────────╯                      │                                        │
+              ┌──────────────┐                                  │                                        │
+              │Deploy service│                                  │                                        │
+              │○ planned     │                                  │                                        │
+              └──────────────┘                                  └────────────────────────────────────────┘
+H history  / search  w work  a agents  f steer  Q questions  c goals  d docs  ? help  q quit
+Work selected · [ / ] or arrows choose · f steer its owner

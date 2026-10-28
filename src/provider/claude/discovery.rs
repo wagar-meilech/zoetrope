@@ -25,18 +25,12 @@ pub fn sanitize_cwd(cwd: &std::path::Path) -> String {
 }
 
 /// The `~/.claude/projects` root, if a home directory can be resolved.
-fn claude_projects_root() -> Option<std::path::PathBuf> {
+pub(crate) fn claude_projects_root() -> Option<std::path::PathBuf> {
     #[allow(deprecated)]
     let home = std::env::home_dir()
         .filter(|h| !h.as_os_str().is_empty())
         .or_else(|| std::env::var_os("HOME").map(std::path::PathBuf::from))?;
     Some(home.join(".claude").join("projects"))
-}
-
-/// Absolute path to the `~/.claude/projects/<sanitized-cwd>` directory for a
-/// given cwd.
-pub fn project_dir(cwd: &std::path::Path) -> Option<std::path::PathBuf> {
-    Some(claude_projects_root()?.join(sanitize_cwd(cwd)))
 }
 
 /// Whether a filename stem is a canonical lowercase UUID (8-4-4-4-12 hex).
@@ -178,10 +172,17 @@ use crate::provider::{FileRole, Provider, ReadMode, Scope, SessionFile};
 /// project directory when the scope names a working directory. Only roots:
 /// a session's other files are found from its root.
 pub fn all_paths(scope: &Scope) -> Vec<PathBuf> {
+    let Some(root) = claude_projects_root() else {
+        return Vec::new();
+    };
+    all_paths_in(&root, scope)
+}
+
+pub fn all_paths_in(root: &Path, scope: &Scope) -> Vec<PathBuf> {
     let dirs: Vec<PathBuf> = match &scope.project {
-        Some(cwd) => project_dir(cwd).into_iter().collect(),
-        None => claude_projects_root()
-            .and_then(|root| std::fs::read_dir(root).ok())
+        Some(cwd) => vec![root.join(sanitize_cwd(cwd))],
+        None => std::fs::read_dir(root)
+            .ok()
             .map(|rd| {
                 rd.flatten()
                     .map(|e| e.path())
