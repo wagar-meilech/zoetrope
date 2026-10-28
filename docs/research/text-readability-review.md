@@ -57,3 +57,27 @@ public rendering regressions for these alongside both confirmed Spec findings.
 
 Pending isolated fix integration and independent rechecks. Original reports above
 remain historical after resolution; final verdicts are recorded separately.
+
+## First fix recheck
+
+Immutable handoff `21139996c14a3bc6cd796ad5685be460612fe11f` / app fix
+`f12885b204da83de1935a57ce837e0823b67d31f`, integrated at `ad04af88`.
+
+### Standards
+
+The independent recheck found one new P2: repeated incomplete `[x](` targets
+caused quadratic rescanning. The public-render benchmark observed 32 KiB taking
+62.6 ms release / 1.77 s debug, versus 2.1 ms / 18 ms punctuation controls.
+The scanner must bound aggregate delimiter work or match in one pass.
+
+### Spec
+
+Both original P2 findings are resolved. One related P2 remains: a multiline work
+field containing an unclosed fence can still absorb subsequent Next, Provenance
+and Controls because those fields share a Markdown fragment. Typed boundaries
+must isolate task fields as well as native activity. The independent reproduction
+uses public work reports and actual terminal rendering.
+
+Both follow-ups remain with the same isolated implementer. Installation is held
+until fixes and independent rechecks are clear. Root's 383-test check at this
+first fix is intermediate evidence, not a claim of final readiness.
