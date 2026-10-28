@@ -3,7 +3,7 @@ use super::*;
 use crate::control::RuntimeStatus;
 use crate::workstate::WorkStatus;
 
-pub(super) const ACCENT: Color = Color::Indexed(178);
+pub(super) const ACCENT: Color = Color::Rgb(137, 180, 250);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Cue {
@@ -119,34 +119,4 @@ impl rataflow::EdgeContent for SemanticEdge {
         };
         ctx.render_path(&rataflow::EdgeStyle::default(), label.as_ref(), buf);
     }
-}
-
-/// Apply the same semantic colors to focused details, retaining field labels.
-pub(super) fn details(text: &str, work_status: Option<WorkStatus>) -> ratatui::text::Text<'_> {
-    use ratatui::text::{Line, Span, Text};
-    Text::from(
-        text.lines()
-            .map(|line| {
-                if line.starts_with("Status: ") || line.starts_with("› [") {
-                    Line::styled(line, Style::default().fg(Cue::work(work_status).color))
-                } else if line.starts_with("Blocker:") {
-                    Line::styled(line, Style::default().fg(Color::LightRed))
-                } else if ["Purpose:", "Next:", "Owner:", "Selected work:"]
-                    .iter()
-                    .any(|label| line.starts_with(label))
-                {
-                    let (label, value) = line.split_once(':').expect("known field label");
-                    Line::from(vec![
-                        Span::styled(
-                            format!("{label}:"),
-                            Style::default().add_modifier(Modifier::BOLD),
-                        ),
-                        Span::raw(value),
-                    ])
-                } else {
-                    Line::raw(line)
-                }
-            })
-            .collect::<Vec<_>>(),
-    )
 }

@@ -161,7 +161,7 @@ pub async fn run(config: FleetConfig) -> anyhow::Result<()> {
                     let area = frame.area();
                     frame.render_widget(
                         Paragraph::new(" Read-only replay · q back to fleet ")
-                            .style(Style::default().fg(Color::Yellow).bg(Color::Black)),
+                            .style(Style::default().fg(super::visual::ACCENT).bg(Color::Black)),
                         Rect::new(area.x, area.y, area.width, area.height.min(1)),
                     );
                 } else {

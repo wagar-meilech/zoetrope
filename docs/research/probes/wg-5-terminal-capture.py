@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 executable = str(pathlib.Path(sys.argv[1]).resolve())
 out = pathlib.Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)
+readability = '--readability' in sys.argv[3:]
 server = f'wg5-qa-{os.getpid()}'
 
 def tmux(*args):
@@ -71,6 +72,14 @@ with tempfile.TemporaryDirectory(prefix='wg5-synthetic-') as raw:
     sessions=fixture/'codex/sessions/2026/10/27';sessions.mkdir(parents=True)
     meta={'type':'session_meta','payload':{'id':'visual-goal','session_id':'visual-goal','cwd':str(project),'thread_source':'user'}}
     (sessions/'rollout-visual.jsonl').write_text(json.dumps(meta)+'\n')
+    if readability:
+        message = '## Delivery plan\nRead src/parser.rs:42 and **keep scope focused**.\n\n- [x] Updated README.md\n- [ ] Check ./tests/parser.rs\n\n> Keep provenance separate from verification.\n\n```rust\nlet parser = read_source("src/parser.rs");\n    validate(parser);\n```\n\nNext: inspect [the spec](docs/WORK.md).'
+        records = [
+            {'type':'response_item','payload':{'type':'message','role':'assistant','channel':'commentary','content':[{'type':'output_text','text':message}]}},
+            {'type':'response_item','payload':{'type':'function_call','name':'exec_command','call_id':'synthetic-command','arguments':json.dumps({'cmd':'cargo test --locked --test parser','justification':'Check the public parser seam'})}},
+        ]
+        with (sessions/'rollout-visual.jsonl').open('a') as recording:
+            for record in records:recording.write(json.dumps(record)+'\n')
     state=fixture/'state'
     def apply(value):
         subprocess.run([executable,'state','--root',str(state),'apply','codex','visual-goal',json.dumps(value)],check=True,stdout=subprocess.DEVNULL)
@@ -79,7 +88,9 @@ with tempfile.TemporaryDirectory(prefix='wg5-synthetic-') as raw:
     tasks=[('plan','Plan approved','done',[]),('standard','Standard checkout','done',['plan']),('menus','Choose menus','done',['standard']),('custom','Customize order','done',['menus']),('locations','Delivery locations','done',['menus']),('closing','Close the order','active',['custom','locations']),('stripe','Payment confirmation','planned',['closing']),('reminders','Send reminders','blocked',['stripe']),('corrections','Customer corrections','planned',['stripe']),('docker','Deploy service','planned',['reminders','corrections']),('legacy','Retire old reminder','cancelled',[])]
     for id,label,status,deps in tasks:
         report={'id':id,'label':label,'status':status,'owner':owner,'source':'coordinator · local report','depends_on':deps}
-        if id=='closing':report.update(purpose='Close the sale safely',next='Review callback expiry')
+        if id=='closing':
+            report.update(purpose='Close the sale safely',next='Review callback expiry')
+            if readability:report.update(purpose='Review src/parser.rs:42 and **keep scope focused**.',next='Run `cargo test --locked`, then read [the spec](docs/WORK.md).',change='Source fields are imported deterministically.\n\nKeep provenance separate from outcome evidence.')
         if id=='reminders':report.update(blocker='Await payment contract',next='Review payment event')
         apply({'op':'upsert_work_item','expected_revision':0,'item':report})
     apply({'op':'import_plan','proposal':{'id':'unknown-plan','producer':dict(owner,agent_id='external-worker'),'steps':[{'step':'External review','status':'provider-pending-review'}],'source':'native plan'}})
@@ -97,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix='wg5-synthetic-') as raw:
             tmux('send-keys','-t',target,'w')
             until(target,'Close the order')
             time.sleep(.15)
-            for mode, key in [('readable','r'),('overview','o')]:
+            for mode, key in [('readable','r'),('overview','o')]+([('commands','x')] if readability else []):
                 tmux('send-keys','-t',target,key);time.sleep(.15)
                 ansi=tmux('capture-pane','-p','-e','-t',target)
                 plain=tmux('capture-pane','-p','-t',target)

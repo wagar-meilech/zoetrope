@@ -4,6 +4,7 @@ mod control_worker;
 mod document_worker;
 mod editor;
 mod presentation;
+mod rich_text;
 pub mod runtime;
 mod state_worker;
 mod visual;
@@ -140,7 +141,7 @@ impl Inventory {
                         _ => None,
                     })
                     .map(|target| {
-                        let activity = console.recorded_activity(&target);
+                        let activity = console.load_recorded_activity(&target);
                         (target, activity)
                     });
                 let view = InventoryView {
@@ -1749,7 +1750,7 @@ impl FleetConsole {
             let mut text = String::new();
             if let Some(narration) = &activity.narration {
                 text.push_str(&format!(
-                    "\nRecorded public message\nSource: {}\nRecorded: {}\n{}\n",
+                    "\n## Recorded public message\nSource: {}\nRecorded: {}\n\n{}\n",
                     activity
                         .narration_source
                         .as_deref()
@@ -1759,10 +1760,17 @@ impl FleetConsole {
                 ));
             }
             if let Some(command) = &activity.command {
+                let width = command
+                    .split(|ch| ch != '`')
+                    .map(str::len)
+                    .max()
+                    .unwrap_or(0)
+                    .saturating_add(1)
+                    .max(3);
+                let fence = "`".repeat(width);
                 text.push_str(&format!(
-                    "\nLatest shell command\nRecorded: {}\n{}\n",
+                    "\n## Latest shell command\nRecorded: {}\n\n{fence}sh\n{command}\n{fence}\n",
                     activity.command_at.as_deref().unwrap_or("unknown"),
-                    command
                 ));
                 if let Some(purpose) = &activity.purpose {
                     text.push_str(&format!("Purpose: {purpose}\n"));

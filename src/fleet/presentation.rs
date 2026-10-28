@@ -404,11 +404,11 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
             }
         };
         frame.render_widget(
-            Paragraph::new(if ui.pane == Pane::Graph {
-                visual::details(&details, ui.selected_work_status())
-            } else {
-                ratatui::text::Text::raw(&details)
-            })
+            Paragraph::new(rich_text::render(
+                &details,
+                ui.selected_work_status(),
+                frame.area().width < 96,
+            ))
             .wrap(Wrap { trim: true })
             .scroll((ui.scroll, 0)),
             content,

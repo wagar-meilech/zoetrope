@@ -84,6 +84,8 @@ pub(crate) struct Indexed {
     len: u64,
     modified: SystemTime,
     #[cfg(feature = "native")]
+    pub message_record: Option<(u64, u64)>,
+    #[cfg(feature = "native")]
     pub work: super::work::WorkStream,
 }
 
@@ -177,6 +179,8 @@ impl Indexed {
             len: stat.len(),
             modified: stat.modified().unwrap_or(SystemTime::UNIX_EPOCH),
             #[cfg(feature = "native")]
+            message_record: None,
+            #[cfg(feature = "native")]
             work,
         };
         indexed.read_from(0, false);
@@ -208,6 +212,32 @@ impl Indexed {
         } else {
             self.read_from(self.offset, false);
         }
+    }
+
+    /// Read only the selected message's indexed record, bounded by the preview
+    /// window. Native inventory calls this off-thread; Fleet keeps its short text.
+    #[cfg(feature = "native")]
+    pub fn message_detail(&self) -> Option<String> {
+        let (offset, length) = self.message_record?;
+        if length > PREVIEW_BYTES || !std::fs::metadata(&self.file.path).ok()?.is_file() {
+            return None;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NONBLOCK);
+        }
+        let mut input = options.open(&self.file.path).ok()?;
+        let stat = input.metadata().ok()?;
+        if !stat.is_file() || stat.len() != self.len || stat.modified().ok()? != self.modified {
+            return None;
+        }
+        input.seek(SeekFrom::Start(offset)).ok()?;
+        let mut text = String::new();
+        input.take(length).read_to_string(&mut text).ok()?;
+        super::activity::PublicActivity::detail(self.file.provider, &text)
     }
 
     fn read_from(&mut self, start: u64, skip_partial: bool) {
@@ -245,13 +275,27 @@ impl Indexed {
         if begin > end {
             return;
         }
+        #[cfg(feature = "native")]
+        let mut record_start = start + begin as u64;
         for line in bytes[begin..=end].split(|b| *b == b'\n') {
+            #[cfg(feature = "native")]
+            let record = (record_start, line.len() as u64);
+            #[cfg(feature = "native")]
+            {
+                record_start += line.len() as u64 + 1;
+            }
             if let Ok(line) = std::str::from_utf8(line) {
                 #[cfg(feature = "native")]
                 self.work.push(line);
                 if let Some(statement) = self.stream.push(line) {
                     self.metadata.apply(statement);
-                    self.metadata.activity.observe(self.file.provider, line);
+                    let message = self.metadata.activity.observe(self.file.provider, line);
+                    #[cfg(feature = "native")]
+                    if message {
+                        self.message_record = Some(record);
+                    }
+                    #[cfg(not(feature = "native"))]
+                    let _ = message;
                 }
             }
         }

@@ -555,7 +555,7 @@ impl FleetConsole {
             }
         }
         format!(
-            "{}\n{}\n{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
+            "{}\n## Controls\n{}\n{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
             self.work_text(),
             self.runtime_word(),
             self.steering_text(),
@@ -572,7 +572,7 @@ impl FleetConsole {
             );
         }
         let entries = self.work_entries();
-        let mut text = String::from("Work toward goal\n");
+        let mut text = String::from("## Work toward goal\n");
         for diagnostic in record.source_diagnostics.iter().take(4) {
             text.push_str(&format!("Source: {diagnostic}\n"));
         }
@@ -620,6 +620,9 @@ impl FleetConsole {
             crate::ui::truncate(&current.owner_label(self), 120)
         ));
         if self.work_canvas {
+            if current.context().iter().any(|(_, value)| value.is_some()) {
+                text.push_str("\n## Context\n");
+            }
             for (label, value) in current.context() {
                 if let Some(value) = value {
                     text.push_str(&format!("{label}: {}\n", crate::ui::truncate(value, 240)));
@@ -638,7 +641,7 @@ impl FleetConsole {
             crate::ui::truncate(current.recorded_at(), 80)
         };
         text.push_str(&format!(
-            "Source: {}\nRecorded: {}\n",
+            "\n## Provenance\nSource: {}\nRecorded: {}\n",
             crate::ui::truncate(current.source(), 160),
             recorded
         ));

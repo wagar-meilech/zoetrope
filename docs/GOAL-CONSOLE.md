@@ -28,7 +28,7 @@ unresolved and cyclic work remains visible. Recorded native plans are available
 immediately; explicit reports replace the same owner's native plan fallback.
 
 The legend uses ○ blue planned, ● cyan active, ! red blocked, ✓ green reported
-done, × gray cancelled and ? magenta unknown. A gold border and **› selected**
+done, × gray cancelled and ? magenta unknown. A soft blue border and **› selected**
 identify selection. `o` fits the overview, retaining status/selection cues at
 small zoom; `r` restores the selected task at readable size. Tall canvases layer
 prerequisites vertically to retain meaningful overview labels; short canvases
@@ -56,6 +56,25 @@ explicitly select **Coordinator** with `C`. The work view and its detail are
 bounded; omission notices and compact context paging expose larger records.
 On narrow terminals, current owner/purpose/next action and control availability
 appear first; PageUp/PageDown scrolls the remaining detail.
+
+## Reading detail text
+
+Headers, borders and selection use soft blue. Read-only panels distinguish
+headings, paragraphs, lists/checklists, quotes, emphasis, inline code and framed
+code blocks. Paths/file references are teal; code is lavender. Links keep their
+target visible. Warning/error prefixes have their own cues; they are recorded
+text, not a new lint run or outcome verification.
+
+Task context, provenance and controls have separate headings. Narrow views keep
+compact priority fields first. Explicit paragraph breaks survive; unknown or
+unmatched markup stays literal. Tabs in recorded code display as four spaces,
+and control characters use visible glyphs. Draft editors keep literal text.
+
+Fleet retains short previews. The selected public message loads lazily on the
+inventory worker, preserving up to 8 KiB of structure with a visible omission
+notice. One selected-message cache avoids rich-message loading for all history.
+Formatting caps a pane's input at 32 KiB / 512 lines. These display limits do not
+modify the native recording. See [readability evidence](TEXT-READABILITY.md).
 
 ## Keyboard controls
 

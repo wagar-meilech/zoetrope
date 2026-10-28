@@ -19,6 +19,17 @@ fn short(text: &str) -> String {
         .take(240)
         .collect()
 }
+fn detail_text(text: &str) -> String {
+    let mut end = text.len().min(8 * 1024);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut value = text[..end].to_owned();
+    if end < text.len() {
+        value.push_str("\n\n… Message display limited to 8 KiB; more remains in the recording.");
+    }
+    value
+}
 fn recorded_at(record: &Value) -> Option<String> {
     record["timestamp"]
         .as_str()
@@ -26,10 +37,21 @@ fn recorded_at(record: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 impl PublicActivity {
-    pub fn observe(&mut self, provider: Provider, line: &str) {
+    /// Returns whether this record supplies a public message.
+    pub fn observe(&mut self, provider: Provider, line: &str) -> bool {
+        self.observe_mode(provider, line, false)
+    }
+    #[cfg(feature = "native")]
+    pub fn detail(provider: Provider, line: &str) -> Option<String> {
+        let mut activity = Self::default();
+        activity.observe_mode(provider, line, true);
+        activity.text
+    }
+    fn observe_mode(&mut self, provider: Provider, line: &str, detailed: bool) -> bool {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
-            return;
+            return false;
         };
+        let mut message = false;
         match provider {
             Provider::Codex => {
                 let p = &record["payload"];
@@ -47,9 +69,14 @@ impl PublicActivity {
                         .filter(|part| part["type"] == "output_text")
                         .filter_map(|part| part["text"].as_str())
                         .collect::<Vec<_>>()
-                        .join(" ");
+                        .join(if detailed { "\n\n" } else { " " });
                     if !text.trim().is_empty() {
-                        self.text = Some(short(&text));
+                        self.text = Some(if detailed {
+                            detail_text(&text)
+                        } else {
+                            short(&text)
+                        });
+                        message = true;
                         self.text_at = recorded_at(&record);
                         self.text_source = Some(
                             if p["channel"] == "commentary" || p["phase"] == "commentary" {
@@ -100,22 +127,31 @@ impl PublicActivity {
                 if record["type"] == "assistant"
                     && let Some(parts) = record["message"]["content"].as_array()
                 {
+                    let text = parts
+                        .iter()
+                        .filter(|part| part["type"] == "text")
+                        .filter_map(|part| part["text"].as_str())
+                        .collect::<Vec<_>>()
+                        .join(if detailed { "\n\n" } else { " " });
+                    if !text.trim().is_empty() {
+                        self.text = Some(if detailed {
+                            detail_text(&text)
+                        } else {
+                            short(&text)
+                        });
+                        self.text_at = recorded_at(&record);
+                        self.text_source = Some("Claude assistant message".into());
+                        message = true;
+                    }
                     for part in parts {
-                        if part["type"] == "text" {
-                            if let Some(text) =
-                                part["text"].as_str().filter(|s| !s.trim().is_empty())
-                            {
-                                self.text = Some(short(text));
-                                self.text_at = recorded_at(&record);
-                                self.text_source = Some("Claude assistant message".into());
-                            }
-                        } else if part["type"] == "tool_use" && part["name"] == "Bash" {
+                        if part["type"] == "tool_use" && part["name"] == "Bash" {
                             self.shell(&part["input"], recorded_at(&record));
                         }
                     }
                 }
             }
         }
+        message
     }
     fn shell(&mut self, input: &Value, recorded_at: Option<String>) {
         if let Some(command) = input["cmd"].as_str().or_else(|| input["command"].as_str()) {

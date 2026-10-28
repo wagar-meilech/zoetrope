@@ -3771,3 +3771,252 @@ fn tall_work_overview_retains_meaningful_labels_across_a_twelve_task_branching_p
     }
     ui.shutdown();
 }
+
+#[test]
+fn fleet_and_work_headers_use_a_readable_cool_accent() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Readable presentation");
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Readable presentation");
+    for work in [false, true] {
+        if work {
+            key(&mut ui, KeyCode::Char('w'));
+        }
+        let mut terminal = Terminal::new(TestBackend::new(150, 42)).unwrap();
+        terminal.draw(|f| ui.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(0, 0)].symbol(), "Z");
+        assert_eq!(buffer[(0, 0)].fg, Color::Rgb(137, 180, 250));
+        let panel = buffer
+            .content()
+            .chunks(150)
+            .find(|row| {
+                row.iter()
+                    .map(|cell| cell.symbol())
+                    .collect::<String>()
+                    .contains("Selected work")
+            })
+            .unwrap();
+        assert_eq!(panel[90].fg, Color::Rgb(137, 180, 250));
+    }
+    ui.shutdown();
+}
+
+fn rendered_cells<'a>(
+    buffer: &'a ratatui::buffer::Buffer,
+    value: &str,
+) -> &'a [ratatui::buffer::Cell] {
+    let symbols: Vec<_> = value.chars().map(|ch| ch.to_string()).collect();
+    buffer
+        .content()
+        .windows(symbols.len())
+        .find(|cells| {
+            cells
+                .iter()
+                .map(|cell| cell.symbol())
+                .eq(symbols.iter().map(String::as_str))
+        })
+        .unwrap_or_else(|| panic!("missing visible text {value:?}"))
+}
+
+#[test]
+fn work_context_separates_sections_and_highlights_paths_code_and_emphasis() {
+    use ratatui::style::{Color, Modifier};
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Readable context");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"parser","label":"Inspect parser","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Inspect src/parser.rs:42 and `parse_input()` before **shipping**.",
+            "next":"Read [the spec](docs/plan.md)."
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect parser");
+    key(&mut ui, KeyCode::Char('w'));
+    let mut terminal = Terminal::new(TestBackend::new(220, 70)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    for path in ["src/parser.rs:42", "docs/plan.md"] {
+        assert!(
+            rendered_cells(buffer, path)
+                .iter()
+                .all(|cell| cell.fg == Color::Rgb(148, 226, 213)),
+            "path {path} needs its own readable color"
+        );
+    }
+    assert!(
+        rendered_cells(buffer, "parse_input()")
+            .iter()
+            .all(|cell| cell.fg == Color::Rgb(203, 166, 247))
+    );
+    assert!(
+        rendered_cells(buffer, "shipping")
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::BOLD))
+    );
+    for heading in ["Context", "Provenance", "Controls"] {
+        assert!(
+            rendered_cells(buffer, heading)
+                .iter()
+                .all(|cell| cell.modifier.contains(Modifier::BOLD)),
+            "section {heading} needs a visible heading"
+        );
+    }
+    let shown = text(&mut ui, 220, 70);
+    assert!(!shown.contains("**shipping**"), "{shown}");
+    assert!(
+        shown.contains("the spec (docs/plan.md)"),
+        "links must retain their target: {shown}"
+    );
+    key(&mut ui, KeyCode::Char('f'));
+    type_text(&mut ui, "Keep **literal** `code` in src/parser.rs");
+    let editor = text(&mut ui, 220, 70);
+    assert!(
+        editor.contains("Keep **literal** `code` in src/parser.rs"),
+        "formatting must leave editable drafts literal: {editor}"
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn recorded_messages_render_paragraphs_lists_and_code_without_rewriting_commands() {
+    use ratatui::style::{Color, Modifier};
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Readable activity");
+    let recording = home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl");
+    let message = "## Delivery plan\nRead src/parser.rs:42, then `cargo test`.\n\n- [x] Updated README.md\n- [ ] Check ./tests/parser.rs\n\n> Keep changes small.\n\n```rust\nlet pattern = \"**literal**\";\n    // src/parser.rs\n```\n\nwarning: inspect C:\\repo\\src\\main.rs:8\nUnmatched `literal stays visible.";
+    let command = "printf '%s\\n' '**literal**' && cargo test --offline";
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&recording)
+        .unwrap();
+    for payload in [
+        serde_json::json!({"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":message}]}),
+        serde_json::json!({"type":"function_call","name":"exec_command","call_id":"recorded-command","arguments":serde_json::json!({"cmd":command}).to_string()}),
+    ] {
+        writeln!(file,"{}",serde_json::json!({"timestamp":"2026-10-28T00:15:00Z","type":"response_item","payload":payload})).unwrap();
+    }
+    drop(file);
+    let original = std::fs::read(&recording).unwrap();
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Readable activity");
+    key(&mut ui, KeyCode::Char('x'));
+    wait_text(&mut ui, "Latest shell command");
+    let mut terminal = Terminal::new(TestBackend::new(240, 90)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    assert!(
+        rendered_cells(buffer, "Delivery plan")
+            .iter()
+            .all(|cell| cell.fg == Color::Rgb(137, 180, 250)
+                && cell.modifier.contains(Modifier::BOLD))
+    );
+    for path in [
+        "src/parser.rs:42",
+        "README.md",
+        "./tests/parser.rs",
+        "C:\\repo\\src\\main.rs:8",
+    ] {
+        assert!(
+            rendered_cells(buffer, path)
+                .iter()
+                .all(|cell| cell.fg == Color::Rgb(148, 226, 213)),
+            "path {path}"
+        );
+    }
+    let shown = text(&mut ui, 240, 90);
+    for content in [
+        "[x] Updated README.md",
+        "[ ] Check ./tests/parser.rs",
+        "│ Keep changes small.",
+        "╭─ rust",
+        "│ let pattern = \"**literal**\";",
+        "│     // src/parser.rs",
+        command,
+        "Unmatched `literal stays visible.",
+    ] {
+        assert!(
+            shown.contains(content),
+            "missing readable/literal content {content:?}: {shown}"
+        );
+    }
+    assert!(
+        rendered_cells(buffer, "warning:")
+            .iter()
+            .all(|cell| cell.fg == Color::Rgb(250, 179, 135))
+    );
+    let rows: Vec<_> = shown.lines().collect();
+    let paragraph = rows
+        .iter()
+        .position(|row| row.contains("Read src/parser.rs:42"))
+        .unwrap();
+    assert!(
+        !rows[paragraph + 1].contains("Updated README.md"),
+        "paragraph/list blocks need breathing room: {shown}"
+    );
+    ui.shutdown();
+    assert_eq!(
+        std::fs::read(&recording).unwrap(),
+        original,
+        "display formatting must leave recorded text unchanged"
+    );
+}
+
+#[test]
+fn recorded_control_characters_are_visible_without_changing_literal_code() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Readable control characters");
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+        .unwrap();
+    let message =
+        "## Trace\n```text\n\t\u{1b}[31m src/naïve.rs\n```\nLiteral **unfinished stays visible.";
+    let command = "printf '%s' '```' src/naïve.rs";
+    for payload in [
+        serde_json::json!({"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":message}]}),
+        serde_json::json!({"type":"function_call","name":"exec_command","call_id":"literal-fence","arguments":serde_json::json!({"cmd":command}).to_string()}),
+    ] {
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"type":"response_item","payload":payload})
+        )
+        .unwrap();
+    }
+    drop(file);
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Readable control characters");
+    key(&mut ui, KeyCode::Char('x'));
+    wait_text(&mut ui, "Latest shell command");
+    let shown = text(&mut ui, 220, 70);
+    assert!(
+        shown.contains("│     ␛[31m src/naïve.rs"),
+        "tabs/controls need readable glyphs: {shown}"
+    );
+    assert!(
+        !shown.contains('\u{1b}'),
+        "recorded escape characters must not enter terminal cells"
+    );
+    assert!(
+        shown.contains(command),
+        "literal command fences must remain visible: {shown}"
+    );
+    assert!(
+        shown.contains("Literal **unfinished stays visible."),
+        "unknown markup must retain its text: {shown}"
+    );
+    ui.shutdown();
+}

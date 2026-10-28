@@ -41,7 +41,11 @@ questions and delivery history and makes truncation/omission visible.
 
 Providers alone extract recorded plan/public-message/command facts and their
 timestamps. The inventory worker supplies only selected-owner cached activity;
-drawing performs no IO. Work selection determines ordinary steering ownership,
+drawing performs no IO. Fleet retains compact narration previews. Explicit native
+`Console::load_recorded_activity` lazily reads the selected owner's exact indexed
+public-message record on that worker, with bounded IO and one structured-message
+cache; rendering formats cached text without a model or source edits.
+Work selection determines ordinary steering ownership,
 and an open editor pins its recipient. Capability observations and delivery
 receipts remain separate from progress claims. The bounded work list adds no
 model, background summarizer or alteration to native transcript history.

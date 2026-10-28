@@ -596,3 +596,120 @@ fn native_owner_identity_requires_exact_public_root_ancestry() {
     assert!(!owners.contains_key(&key("first", "missing-parent")));
     assert!(!owners.contains_key(&key("first", "internal")));
 }
+
+#[cfg(feature = "native")]
+#[test]
+fn selected_public_messages_preserve_bounded_structure_and_refresh_without_private_content() {
+    use std::io::Write;
+    let home = Home::new();
+    let target = AgentKey {
+        session: SessionKey {
+            provider: Provider::Codex,
+            session_id: "structured".into(),
+        },
+        agent_id: "main".into(),
+    };
+    let first = format!(
+        "## Kept paragraphs\n\nRead src/naïve.rs.\n\n{}",
+        "é".repeat(6000)
+    );
+    let message = |channel: &str, text: &str| {
+        serde_json::json!({"type":"response_item","payload":{"type":"message","role":"assistant","channel":channel,"content":[{"type":"output_text","text":text}]}}).to_string()
+    };
+    let path = home.write(
+        "codex/sessions/2026/10/28/rollout-structured.jsonl",
+        &format!(
+            "{}{}\n",
+            codex_meta("structured", "/projects/readability"),
+            message("commentary", &first)
+        ),
+    );
+    let mut console = home.console();
+    console.refresh(SystemTime::now());
+    let preview = console
+        .recorded_activity(&target)
+        .unwrap()
+        .narration
+        .unwrap();
+    assert!(!preview.contains('\n'));
+    assert!(preview.chars().count() <= 240);
+    let detail = console
+        .load_recorded_activity(&target)
+        .unwrap()
+        .narration
+        .unwrap();
+    assert!(detail.starts_with("## Kept paragraphs\n\nRead src/naïve.rs.\n\n"));
+    assert!(detail.contains("Message display limited to 8 KiB"));
+    assert!(detail.len() <= 8 * 1024 + 100);
+    let moved = path.with_extension("temporarily-unavailable");
+    std::fs::rename(&path, &moved).unwrap();
+    assert_eq!(
+        console
+            .load_recorded_activity(&target)
+            .unwrap()
+            .narration
+            .as_deref(),
+        Some(detail.as_str()),
+        "unchanged selected details remain cached without reopening the recording"
+    );
+    std::fs::rename(&moved, &path).unwrap();
+    let second = "## Next\n\nCheck tests/parser.rs after the UTF-8 record.";
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    for line in [
+        message("final", second),
+        message("analysis", "PRIVATE_DETAIL"),
+        message("unknown", "PRIVATE_UNKNOWN"),
+    ] {
+        writeln!(file, "{line}").unwrap();
+    }
+    drop(file);
+    console.refresh(SystemTime::now());
+    assert_eq!(
+        console
+            .load_recorded_activity(&target)
+            .unwrap()
+            .narration
+            .as_deref(),
+        Some(second)
+    );
+    let wrong = AgentKey {
+        session: SessionKey {
+            provider: Provider::Codex,
+            session_id: "another-goal".into(),
+        },
+        agent_id: "main".into(),
+    };
+    assert!(console.load_recorded_activity(&wrong).is_none());
+
+    let claude_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    home.write(
+        &format!("claude/projects/-projects-readability/{claude_id}.jsonl"),
+        &format!(
+            "{{\"type\":\"ai-title\",\"aiTitle\":\"Structured Claude\"}}\n{}\n",
+            serde_json::json!({"type":"assistant","message":{"content":[
+                {"type":"text","text":"## First paragraph"},
+                {"type":"thinking","thinking":"PRIVATE_THINKING"},
+                {"type":"text","text":"Second paragraph in src/renderer.rs."}
+            ]}})
+        ),
+    );
+    console.refresh(SystemTime::now());
+    let claude = AgentKey {
+        session: SessionKey {
+            provider: Provider::Claude,
+            session_id: claude_id.into(),
+        },
+        agent_id: "main".into(),
+    };
+    assert_eq!(
+        console
+            .load_recorded_activity(&claude)
+            .unwrap()
+            .narration
+            .as_deref(),
+        Some("## First paragraph\n\nSecond paragraph in src/renderer.rs.")
+    );
+}

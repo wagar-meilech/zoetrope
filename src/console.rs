@@ -205,6 +205,15 @@ fn owner_ancestry<'a>(
     false
 }
 
+#[cfg(feature = "native")]
+struct SelectedNarration {
+    target: AgentKey,
+    path: PathBuf,
+    modified: SystemTime,
+    record: (u64, u64),
+    text: Option<String>,
+}
+
 /// A local fleet console. Discovery is explicit, so construction performs no IO.
 pub struct Console {
     roots: DiscoveryRoots,
@@ -235,6 +244,8 @@ pub struct Console {
     work_sizes: BTreeMap<SessionKey, u64>,
     #[cfg(feature = "native")]
     work_search_matches: BTreeSet<SessionKey>,
+    #[cfg(feature = "native")]
+    selected_narration: Option<SelectedNarration>,
 }
 
 impl Console {
@@ -268,6 +279,8 @@ impl Console {
             work_sizes: Default::default(),
             #[cfg(feature = "native")]
             work_search_matches: Default::default(),
+            #[cfg(feature = "native")]
+            selected_narration: None,
         }
     }
 
@@ -536,14 +549,7 @@ impl Console {
 
     /// Read one owner's already-indexed public activity; no transcript IO.
     pub fn recorded_activity(&self, target: &AgentKey) -> Option<RecordedActivity> {
-        let session = self.sessions.iter().find(|session| {
-            session.provider == target.session.provider && session.id == target.session.session_id
-        })?;
-        let metadata = session
-            .every_file()
-            .filter(|file| file.role != FileRole::Sidecar)
-            .filter_map(|file| self.metadata.get(&file.path))
-            .find(|indexed| indexed.metadata.agent == target.agent_id)?;
+        let metadata = self.activity_index(target)?;
         let activity = &metadata.metadata.activity;
         Some(RecordedActivity {
             narration: activity.text.clone(),
@@ -553,6 +559,55 @@ impl Console {
             command_at: activity.command_at.clone(),
             purpose: activity.purpose.clone(),
         })
+    }
+
+    fn activity_index(&self, target: &AgentKey) -> Option<&provider::metadata::Indexed> {
+        let session = self.sessions.iter().find(|session| {
+            session.provider == target.session.provider && session.id == target.session.session_id
+        })?;
+        let metadata = session
+            .every_file()
+            .filter(|file| file.role != FileRole::Sidecar)
+            .filter_map(|file| self.metadata.get(&file.path))
+            .find(|indexed| indexed.metadata.agent == target.agent_id)?;
+        Some(metadata)
+    }
+
+    /// Load a selected owner's structured public message. Performs bounded IO
+    /// only when its indexed record changes; retains one detail cache per console.
+    /// Call on the inventory worker, never during rendering. Previews remain cached.
+    #[cfg(feature = "native")]
+    pub fn load_recorded_activity(&mut self, target: &AgentKey) -> Option<RecordedActivity> {
+        let mut activity = self.recorded_activity(target)?;
+        let indexed = self.activity_index(target)?;
+        let Some(record) = indexed.message_record else {
+            return Some(activity);
+        };
+        if !self.selected_narration.as_ref().is_some_and(|cached| {
+            cached.target == *target
+                && cached.path == indexed.file.path
+                && cached.modified == indexed.file.modified
+                && cached.record == record
+        }) {
+            let detail = SelectedNarration {
+                target: target.clone(),
+                path: indexed.file.path.clone(),
+                modified: indexed.file.modified,
+                record,
+                text: indexed.message_detail(),
+            };
+            self.selected_narration = Some(detail);
+        }
+        if let Some(text) = self
+            .selected_narration
+            .as_ref()
+            .and_then(|cached| cached.text.as_ref())
+        {
+            activity.narration = Some(text.clone());
+        } else if let Some(text) = activity.narration.as_mut() {
+            text.push_str("\n\nSelected message detail unavailable; showing indexed preview.");
+        }
+        Some(activity)
     }
 
     /// Exact provider/root-qualified collaboration aliases and proven native
