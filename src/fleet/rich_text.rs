@@ -2,137 +2,236 @@
 use super::{Color, Modifier, Style, visual};
 use crate::workstate::WorkStatus;
 use ratatui::text::{Line, Span, Text};
+use std::borrow::Cow;
 
 const PATH: Color = Color::Rgb(148, 226, 213);
 const CODE: Color = Color::Rgb(203, 166, 247);
 const MAX_BYTES: usize = 32 * 1024;
 const MAX_LINES: usize = 512;
 
-pub(super) fn render(text: &str, status: Option<WorkStatus>, compact: bool) -> Text<'_> {
-    let mut end = text.len().min(MAX_BYTES);
-    while !text.is_char_boundary(end) {
-        end -= 1;
+/// Source formatting state ends at each typed fragment, before later UI text.
+pub(super) enum Fragment<'a> {
+    Markdown(Cow<'a, str>),
+    Shell(&'a str),
+    Compact { text: Cow<'a, str>, width: u16 },
+}
+impl<'a> From<String> for Fragment<'a> {
+    fn from(text: String) -> Self {
+        Self::Markdown(Cow::Owned(text))
     }
+}
+impl<'a> From<&'a str> for Fragment<'a> {
+    fn from(text: &'a str) -> Self {
+        Self::Markdown(Cow::Borrowed(text))
+    }
+}
+
+pub(super) fn render<'a>(
+    fragments: &'a [Fragment<'_>],
+    status: Option<WorkStatus>,
+    compact: bool,
+) -> Text<'a> {
     let mut output = Vec::new();
-    let mut lines = text[..end].lines();
-    let mut code_fence = None;
-    for line in lines.by_ref().take(MAX_LINES) {
-        if let Some((marker, count)) = code_fence {
-            if fence(line).is_some_and(|(next, width, tail)| {
-                next == marker && width >= count && tail.is_empty()
-            }) {
-                output.push(Line::styled("╰─", Style::default().fg(CODE)));
-                code_fence = None;
-            } else {
-                let mut spans = vec![Span::styled("│ ", Style::default().fg(CODE))];
-                tokens(line, Style::default().fg(CODE), &mut spans);
-                output.push(Line::from(spans).style(Style::default().bg(Color::Rgb(30, 32, 46))));
-            }
+    let mut remaining_bytes = MAX_BYTES;
+    let mut remaining_lines = MAX_LINES;
+    for (at, fragment) in fragments.iter().enumerate() {
+        let (text, shell, clipped_width) = match fragment {
+            Fragment::Markdown(text) => (text.as_ref(), false, None),
+            Fragment::Shell(text) => (*text, true, None),
+            Fragment::Compact { text, width } => (text.as_ref(), false, Some(*width)),
+        };
+        let text = if clipped_width.is_some() {
+            text.lines().next().unwrap_or("")
+        } else {
+            text
+        };
+        if text.is_empty() {
             continue;
         }
-        if let Some((marker, count, language)) = fence(line) {
-            if !compact {
-                gap(&mut output);
-            }
-            output.push(Line::from(vec![
-                Span::styled("╭─ ", Style::default().fg(CODE)),
-                literal(
-                    if language.is_empty() {
-                        "code"
-                    } else {
-                        language
-                    },
-                    Style::default().fg(CODE),
-                ),
-            ]));
-            code_fence = Some((marker, count));
-            continue;
-        }
-        if line.trim().is_empty() {
+        if clipped_width.is_none() {
             gap(&mut output);
-            continue;
         }
-        let heading = line.trim_start_matches('#');
-        if (1..=6).contains(&(line.len() - heading.len())) && heading.starts_with(' ') {
-            if !compact {
+        let mut end = text.len().min(remaining_bytes);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        remaining_bytes -= end;
+        let mut lines = text[..end].lines();
+        let mut code_fence = None;
+        if shell {
+            output.push(Line::styled("╭─ sh", Style::default().fg(CODE)));
+        }
+        let allowed_lines = remaining_lines;
+        for line in lines.by_ref().take(allowed_lines) {
+            remaining_lines -= 1;
+            if let Some(width) = clipped_width {
+                output.push(clip_line(prose_line(line, status), width));
+                continue;
+            }
+            if shell {
+                output.push(code_line(line));
+                continue;
+            }
+            if let Some((marker, count)) = code_fence {
+                if fence(line).is_some_and(|(next, width, tail)| {
+                    next == marker && width >= count && tail.is_empty()
+                }) {
+                    output.push(Line::styled("╰─", Style::default().fg(CODE)));
+                    code_fence = None;
+                } else {
+                    output.push(code_line(line));
+                }
+                continue;
+            }
+            if let Some((marker, count, language)) = fence(line) {
+                if !compact {
+                    gap(&mut output);
+                }
+                output.push(Line::from(vec![
+                    Span::styled("╭─ ", Style::default().fg(CODE)),
+                    literal(
+                        if language.is_empty() {
+                            "code"
+                        } else {
+                            language
+                        },
+                        Style::default().fg(CODE),
+                    ),
+                ]));
+                code_fence = Some((marker, count));
+                continue;
+            }
+            if line.trim().is_empty() {
                 gap(&mut output);
+                continue;
             }
-            let style = Style::default()
-                .fg(visual::ACCENT)
-                .add_modifier(Modifier::BOLD);
-            let mut spans = vec![Span::styled("── ", style)];
-            inline(heading.trim(), style, &mut spans);
-            output.push(Line::from(spans));
-            continue;
-        }
-        if matches!(line.trim(), "---" | "***" | "___") {
-            output.push(Line::styled(
-                "──────────────────",
-                Style::default().fg(Color::DarkGray),
-            ));
-            continue;
-        }
-        let style = if line.starts_with("Status: ") || line.starts_with("› [") {
-            Style::default().fg(visual::Cue::work(status).color)
-        } else if line.starts_with("Blocker:")
-            || line.starts_with("error:")
-            || line.starts_with("error[")
-        {
-            Style::default().fg(Color::LightRed)
-        } else if line.starts_with("warning:") || line.starts_with("warning[") {
-            Style::default().fg(Color::Rgb(250, 179, 135))
-        } else if line.starts_with("Source:") || line.starts_with("Recorded:") {
-            Style::default().fg(Color::Gray)
-        } else {
-            Style::default()
-        };
-        let mut spans = Vec::new();
-        let value = if let Some(value) = line.strip_prefix("> ") {
-            spans.push(Span::styled("│ ", Style::default().fg(visual::ACCENT)));
-            value
-        } else if let Some(value) = list_item(line, &mut spans) {
-            value
-        } else if let Some((label, value)) = line.split_once(':') {
-            if label.len() <= 32
-                && !label.is_empty()
-                && (value.is_empty() || value.starts_with(char::is_whitespace))
-                && label
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphabetic() || ch == ' ')
-            {
-                spans.push(Span::styled(
-                    format!("{label}:"),
-                    style.add_modifier(Modifier::BOLD),
+            let heading = line.trim_start_matches('#');
+            if (1..=6).contains(&(line.len() - heading.len())) && heading.starts_with(' ') {
+                if !compact {
+                    gap(&mut output);
+                }
+                let style = Style::default()
+                    .fg(visual::ACCENT)
+                    .add_modifier(Modifier::BOLD);
+                let mut spans = vec![Span::styled("── ", style)];
+                inline(heading.trim(), style, &mut spans);
+                output.push(Line::from(spans));
+                continue;
+            }
+            if matches!(line.trim(), "---" | "***" | "___") {
+                output.push(Line::styled(
+                    "──────────────────",
+                    Style::default().fg(Color::DarkGray),
                 ));
-                value
-            } else {
-                line
+                continue;
             }
-        } else {
-            line
-        };
-        inline(value, style, &mut spans);
-        output.push(Line::from(spans));
-    }
-    let limited = end < text.len() || lines.next().is_some();
-    if code_fence.is_some() {
-        output.push(Line::styled(
-            if limited {
-                "╰─ code continues in omitted text"
-            } else {
-                "╰─ unclosed fence · recorded text retained"
-            },
-            Style::default().fg(Color::Rgb(250, 179, 135)),
-        ));
-    }
-    if limited {
-        gap(&mut output);
-        output.push(Line::styled(
-            "… Display limited; more text remains in the recorded source.",
-            Style::default().fg(Color::Gray),
-        ));
+            output.push(prose_line(line, status));
+        }
+        let limited = end < text.len() || lines.next().is_some();
+        if shell {
+            output.push(Line::styled("╰─", Style::default().fg(CODE)));
+        } else if code_fence.is_some() {
+            output.push(Line::styled(
+                if limited {
+                    "╰─ code continues in omitted text"
+                } else {
+                    "╰─ unclosed fence · recorded text retained"
+                },
+                Style::default().fg(Color::Rgb(250, 179, 135)),
+            ));
+        }
+        if limited || ((remaining_bytes == 0 || remaining_lines == 0) && at + 1 < fragments.len()) {
+            gap(&mut output);
+            output.push(Line::styled(
+                "… Display limited; more text remains in the recorded source.",
+                Style::default().fg(Color::Gray),
+            ));
+            break;
+        }
     }
     Text::from(output)
+}
+
+fn prose_line(line: &str, status: Option<WorkStatus>) -> Line<'_> {
+    let style = if line.starts_with("Status: ") || line.starts_with("› [") {
+        Style::default().fg(visual::Cue::work(status).color)
+    } else if line.starts_with("Blocker:")
+        || line.starts_with("error:")
+        || line.starts_with("error[")
+    {
+        Style::default().fg(Color::LightRed)
+    } else if line.starts_with("warning:") || line.starts_with("warning[") {
+        Style::default().fg(Color::Rgb(250, 179, 135))
+    } else if line.starts_with("Source:") || line.starts_with("Recorded:") {
+        Style::default().fg(Color::Gray)
+    } else {
+        Style::default()
+    };
+    let mut spans = Vec::new();
+    let value = if let Some(value) = line.strip_prefix("> ") {
+        spans.push(Span::styled("│ ", Style::default().fg(visual::ACCENT)));
+        value
+    } else if let Some(value) = list_item(line, &mut spans) {
+        value
+    } else if let Some((label, value)) = line.split_once(':') {
+        if label.len() <= 32
+            && !label.is_empty()
+            && (value.is_empty() || value.starts_with(char::is_whitespace))
+            && label
+                .chars()
+                .all(|ch| ch.is_ascii_alphabetic() || ch == ' ')
+        {
+            spans.push(Span::styled(
+                format!("{label}:"),
+                style.add_modifier(Modifier::BOLD),
+            ));
+            value
+        } else {
+            line
+        }
+    } else {
+        line
+    };
+    inline(value, style, &mut spans);
+    Line::from(spans)
+}
+
+fn clip_line(line: Line<'_>, width: u16) -> Line<'_> {
+    use unicode_width::UnicodeWidthStr;
+    if line.width() <= width as usize {
+        return line;
+    }
+    if width == 0 {
+        return Line::default();
+    }
+    let mut remaining = width.saturating_sub(1) as usize;
+    let mut clipped = Vec::new();
+    for span in line.spans {
+        if span.width() <= remaining {
+            remaining -= span.width();
+            clipped.push(span);
+        } else {
+            let mut value = String::new();
+            for grapheme in span.styled_graphemes(Style::default()) {
+                let width = UnicodeWidthStr::width(grapheme.symbol);
+                if width > remaining {
+                    break;
+                }
+                remaining -= width;
+                value.push_str(grapheme.symbol);
+            }
+            clipped.push(Span::styled(value, span.style));
+            break;
+        }
+    }
+    clipped.push(Span::styled("…", Style::default().fg(Color::Gray)));
+    Line::from(clipped)
+}
+
+fn code_line(line: &str) -> Line<'_> {
+    let mut spans = vec![Span::styled("│ ", Style::default().fg(CODE))];
+    tokens(line, Style::default().fg(CODE), &mut spans);
+    Line::from(spans).style(Style::default().bg(Color::Rgb(30, 32, 46)))
 }
 
 fn fence(line: &str) -> Option<(char, usize, &str)> {
@@ -204,24 +303,21 @@ fn inline<'a>(mut text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
             "["
         };
         if marker == "[" {
-            if let Some(mid) = text.find("](")
-                && let Some(end) = text[mid + 2..].find(')')
-            {
-                tokens(
-                    &text[1..mid],
-                    style.add_modifier(Modifier::UNDERLINED),
-                    spans,
-                );
+            if let Some((label, target, tail)) = link(text) {
+                tokens(label, style.add_modifier(Modifier::UNDERLINED), spans);
                 spans.push(Span::styled(" (", style));
-                spans.push(literal(&text[mid + 2..mid + 2 + end], style.fg(PATH)));
+                spans.push(literal(target, style.fg(PATH)));
                 spans.push(Span::styled(")", style));
-                text = &text[mid + 3 + end..];
-                continue;
+                text = tail;
+            } else {
+                spans.push(literal("[", style));
+                text = &text[1..];
             }
+            continue;
         } else if let Some(end) = text[marker.len()..].find(marker) {
             let value = &text[marker.len()..marker.len() + end];
             let content_style = match marker {
-                "`" => style.fg(if is_path(value) { PATH } else { CODE }),
+                "`" => style.fg(CODE),
                 "**" => style.add_modifier(Modifier::BOLD),
                 _ => style.add_modifier(Modifier::ITALIC),
             };
@@ -235,24 +331,60 @@ fn inline<'a>(mut text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
     }
 }
 
-fn tokens<'a>(text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
-    for token in text.split_inclusive(char::is_whitespace) {
-        let content = token.trim_end_matches(char::is_whitespace);
-        let (value, whitespace) = token.split_at(content.len());
-        if !value.is_empty() {
-            spans.push(literal(
-                value,
-                if is_path(value) {
-                    style.fg(PATH)
-                } else {
-                    style
-                },
-            ));
-        }
-        if !whitespace.is_empty() {
-            spans.push(literal(whitespace, style));
+fn link(text: &str) -> Option<(&str, &str, &str)> {
+    // Nested labels are outside this subset. Match the immediate closing label,
+    // never a later unrelated bracket pair.
+    let close = text[1..].find(['[', ']'])? + 1;
+    if text.as_bytes()[close] != b']' {
+        return None;
+    }
+    let target = text[close + 1..].strip_prefix('(')?;
+    let mut depth = 1usize;
+    for (at, ch) in target.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&text[1..close], &target[..at], &target[at + 1..]));
+                }
+            }
+            _ => {}
         }
     }
+    None
+}
+
+fn tokens<'a>(text: &'a str, style: Style, spans: &mut Vec<Span<'a>>) {
+    let mut start = 0;
+    let mut candidate = None;
+    for (at, ch) in text.char_indices() {
+        let next = path_character(ch);
+        if candidate.is_some_and(|current| current != next) {
+            token(&text[start..at], candidate == Some(true), style, spans);
+            start = at;
+        }
+        candidate = Some(next);
+    }
+    if start < text.len() {
+        token(&text[start..], candidate == Some(true), style, spans);
+    }
+}
+
+fn token<'a>(value: &'a str, candidate: bool, style: Style, spans: &mut Vec<Span<'a>>) {
+    let path = value.trim_end_matches(['.', ':']);
+    if candidate && is_path(path) {
+        spans.push(literal(path, style.fg(PATH)));
+        if path.len() < value.len() {
+            spans.push(literal(&value[path.len()..], style));
+        }
+    } else {
+        spans.push(literal(value, style));
+    }
+}
+
+fn path_character(ch: char) -> bool {
+    ch.is_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | '\\' | ':' | '~' | '@')
 }
 
 fn literal(value: &str, style: Style) -> Span<'_> {
@@ -276,22 +408,30 @@ fn literal(value: &str, style: Style) -> Span<'_> {
 }
 
 fn is_path(value: &str) -> bool {
-    let value = value.trim_matches([
-        '"', '\'', '(', ')', '[', ']', '{', '}', '<', '>', ',', '.', ';', '!', '?',
-    ]);
-    if value.starts_with(['/', '\\'])
+    if value.starts_with('/')
+        || value.starts_with("\\\\")
         || value.starts_with("~/")
         || value.starts_with("./")
         || value.starts_with("../")
         || value.contains("://")
+        || (value.as_bytes().get(1) == Some(&b':')
+            && matches!(value.as_bytes().get(2), Some(b'/' | b'\\')))
     {
         return value.len() > 1;
     }
-    if value.contains('/') || value.contains('\\') {
-        return value.chars().any(char::is_alphabetic);
-    }
-    let file = value.split(':').next().unwrap_or(value);
-    file.rsplit_once('.').is_some_and(|(_, extension)| {
+    // An unanchored slash alone is ambiguous (e.g. PageUp/PageDown). Require a
+    // recognizable file suffix; explicit relative/absolute paths remain above.
+    let file = value
+        .split(':')
+        .next()
+        .unwrap_or(value)
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(value);
+    matches!(
+        file,
+        "Dockerfile" | "Makefile" | ".gitignore" | ".dockerignore" | ".env"
+    ) || file.rsplit_once('.').is_some_and(|(_, extension)| {
         matches!(
             extension,
             "rs" | "md"
