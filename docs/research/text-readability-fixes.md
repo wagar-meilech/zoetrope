@@ -157,3 +157,12 @@ The combined public suites pass 15 Console, 8 PTY/runtime and 81 UI tests; one
 manual resource probe remains ignored in the ordinary UI run. New regressions
 and measurements use owned temporary state only. Root owns final release/native
 resource evidence, independent rechecks and installation/publication.
+
+## Second fix integration
+
+Immutable source `8a9e82a2adecdbd08f7a086d05b1b4e06354a831` was merged conflict-free
+into `feat/goal-console` as `465604f897cf61de7d06c1a2c8bbb963f10fb93f`. Application,
+public tests and package inputs exactly match that independently rechecked source.
+Only completion documentation changes follow this merge; the coordinator-owned
+untracked preview index was preserved unchanged. TXT-4 is done and TXT-5 remains
+active. This merger ran no tests, installation, publication or native input.
