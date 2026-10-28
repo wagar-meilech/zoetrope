@@ -11,13 +11,18 @@ into main still requires a user request.
 
 ## Current iteration
 
+The current [text-readability continuation](TEXT-READABILITY.md), issue #22,
+replaces gold accents, formats structured detail text and preserves selected
+public-message paragraphs through a bounded lazy cache. Its working-status table
+records review fixes and final checks/installation. Earlier work below is complete.
+
 The approved [visual work graph and persistent tracking specification](WORK-GRAPH-SPEC.md)
 is complete. All six tickets in the [frontier](WORK-GRAPH-PLAN.md) are integrated,
 checked, reviewed and installed. Native sub-issues #16–21 belong to spec #15;
 issues close through PR #8 when merged, independently of local working status.
 [Final validation](WORK-GRAPH-VALIDATION.md) records source identity, practical
-limits and the read-only live demonstration. Continue from a new user request;
-WG-6's earlier pending handoff notes are historical.
+limits and the read-only live demonstration. WG-6's earlier pending handoff notes are historical; the new readability request
+continues on the same integration branch.
 
 ## Read first
 

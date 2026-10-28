@@ -27,7 +27,7 @@ formatting state resets do not reset resource limits. It remains cached/pure.
 - Compact priority fields parse/style their bounded first line before clipping
   to terminal width. Clipping retains styles and whole graphemes, marks omissions
   with an ellipsis, and keeps later field paragraphs out of the compact area.
-  Full recorded context remains below. Availability rows remain visible at60×28.
+  Full recorded context remains below. Availability rows remain visible at 60×28.
 - Path tokens separate punctuation/code from recognizable paths. Explicit absolute/
   relative paths and recognizable file suffixes receive teal. Ambiguous ordinary
   slash-separated phrases such as `PageUp/PageDown` remain ordinary text. In
@@ -61,11 +61,11 @@ Raw local logs are under `/tmp/zoetrope-text-build/` (`link-*`, `fragments-*`,
 
 ## Checks
 
-- Combined public Console/UI/runtime suites passed:15 Console,8 PTY/runtime and77
+- Combined public Console/UI/runtime suites passed: 15 Console, 8 PTY/runtime and 77
   UI tests, with the ordinary manual resource probe ignored. The subsequently
   added shared-budget test passed separately.
-- Strict all-target/all-feature Clippy passed on Rust1.99 and the declared1.88
-  minimum. The1.88 run reused `/tmp/zoetrope-wg-build/sources-msrv`; Rust1.99 used
+- Strict all-target/all-feature Clippy passed on Rust 1.99 and the declared 1.88
+  minimum. The 1.88 run reused `/tmp/zoetrope-wg-build/sources-msrv`; Rust 1.99 used
   the isolated fixes target directory.
 - Formatting and `git diff --check` passed.
 

@@ -8,6 +8,13 @@ validation and final review resolutions take precedence.
 Source links retain the original research's line numbers; use code search if
 subsequent changes have moved a definition.
 
+## Text readability continuation
+
+[Requested behavior, working status and TDD evidence](../TEXT-READABILITY.md)
+track issue #22. The [separate review reports](text-readability-review.md) preserve
+original findings and final resolutions. The preceding work graph evidence below
+remains dated to that earlier release.
+
 ## Visual work graph and persistent tracking
 
 The [approved specification](../WORK-GRAPH-SPEC.md),
