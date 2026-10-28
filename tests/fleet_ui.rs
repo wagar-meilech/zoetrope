@@ -4020,3 +4020,292 @@ fn recorded_control_characters_are_visible_without_changing_literal_code() {
     );
     ui.shutdown();
 }
+
+#[test]
+fn literal_brackets_do_not_consume_later_links_or_balanced_path_parentheses() {
+    use ratatui::style::{Color, Modifier};
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Literal brackets and links");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"links", "label":"Read source links", "status":"active", "source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Keep [raw] and read [the spec](docs/SPEC.md).",
+            "next":"Keep [unfinished before [the draft](docs/(draft)/SPEC.md)."
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Read source links");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 240, 80);
+    assert!(
+        shown.contains("Keep [raw] and read the spec (docs/SPEC.md)."),
+        "literal brackets must survive a later link: {shown}"
+    );
+    assert!(
+        shown.contains("Keep [unfinished before the draft (docs/(draft)/SPEC.md)."),
+        "an unmatched bracket must not hide a later valid link: {shown}"
+    );
+    let mut terminal = Terminal::new(TestBackend::new(240, 80)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    assert!(
+        rendered_cells(buffer, "[raw]")
+            .iter()
+            .all(|cell| !cell.modifier.contains(Modifier::UNDERLINED))
+    );
+    assert!(
+        rendered_cells(buffer, "the spec")
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::UNDERLINED))
+    );
+    assert!(
+        rendered_cells(buffer, "docs/(draft)/SPEC.md")
+            .iter()
+            .all(|cell| cell.fg == Color::Rgb(148, 226, 213))
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn recorded_message_fences_cannot_absorb_commands_or_pane_footers() {
+    use ratatui::style::{Color, Modifier};
+    use std::io::Write;
+    for closed in [false, true] {
+        let home = Home::new();
+        home.session("goal", "/projects/readability", false);
+        home.goal("goal", "Independent activity sections");
+        let path = home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl");
+        let message = format!(
+            "## Inspection\n```text\n## Latest shell command\nInside recorded code{}",
+            if closed { "\n```" } else { "" }
+        );
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        for payload in [
+            serde_json::json!({"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":message}]}),
+            serde_json::json!({"type":"function_call","name":"exec_command","call_id":"independent-command","arguments":serde_json::json!({"cmd":"cargo test --offline","justification":"Recorded command purpose"}).to_string()}),
+        ] {
+            writeln!(
+                file,
+                "{}",
+                serde_json::json!({"type":"response_item","payload":payload})
+            )
+            .unwrap();
+        }
+        drop(file);
+        let original = std::fs::read(&path).unwrap();
+        let mut ui = home.ui();
+        wait_text(&mut ui, "Inside recorded code");
+        for view in [None, Some('a'), Some('x')] {
+            if let Some(view) = view {
+                key(&mut ui, KeyCode::Char(view));
+            }
+            let shown = text(&mut ui, 240, 90);
+            assert!(
+                shown.contains("│ ## Latest shell command"),
+                "a trusted-looking heading inside recorded code must remain code: {shown}"
+            );
+            assert!(
+                shown.contains("── Latest shell command"),
+                "generated command section must remain independent: {shown}"
+            );
+            assert_eq!(
+                shown.contains("unclosed fence"),
+                !closed,
+                "unfinished source formatting must be reported at its own end: {shown}"
+            );
+            assert!(
+                shown.contains("│ cargo test --offline"),
+                "the separate command must remain literal code: {shown}"
+            );
+            let mut terminal = Terminal::new(TestBackend::new(240, 90)).unwrap();
+            terminal.draw(|f| ui.draw(f)).unwrap();
+            let heading = rendered_cells(terminal.backend().buffer(), "── Latest shell command");
+            assert!(
+                heading
+                    .iter()
+                    .all(|cell| cell.fg == Color::Rgb(137, 180, 250)
+                        && cell.modifier.contains(Modifier::BOLD))
+            );
+            if view == Some('x') {
+                let footer = rendered_cells(terminal.backend().buffer(), "Esc back");
+                assert!(
+                    footer
+                        .iter()
+                        .all(|cell| cell.fg != Color::Rgb(203, 166, 247)),
+                    "pane footer must not inherit source code formatting"
+                );
+            }
+        }
+        ui.shutdown();
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
+}
+
+#[test]
+fn narrow_context_formats_before_clipping_and_keeps_multiline_detail_below() {
+    use ratatui::style::Modifier;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Compact formatted context");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"compact","label":"Read compact context","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Review src/parser.rs:42 and **keep scope focused throughout this important follow-up**.",
+            "next":"Run `cargo test --locked`, then read [the spec](docs/WORK.md) to review scope.",
+            "change":"Source fields are imported deterministically.\n\nSecond paragraph retained in recorded detail."
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Read compact context");
+    key(&mut ui, KeyCode::Char('w'));
+    let shown = text(&mut ui, 60, 28);
+    for literal_markup in ["**", "`cargo", "[the spec]"] {
+        assert!(
+            !shown.contains(literal_markup),
+            "compact text must clip styled output rather than Markdown syntax: {shown}"
+        );
+    }
+    assert!(
+        shown.contains("the spec ("),
+        "compact link should remain understandable: {shown}"
+    );
+    assert!(
+        shown.contains('…'),
+        "long compact fields need visible omission: {shown}"
+    );
+    assert!(
+        !shown.contains("Second paragraph"),
+        "a multi-line field must not displace compact controls: {shown}"
+    );
+    for cue in [
+        "Guidance unavailable",
+        "Queue unavailable",
+        "Stop unavailable",
+    ] {
+        assert!(
+            shown.contains(cue),
+            "compact control availability must remain visible: {shown}"
+        );
+    }
+    let mut terminal = Terminal::new(TestBackend::new(60, 28)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    assert!(
+        rendered_cells(terminal.backend().buffer(), "keep scope")
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::BOLD))
+    );
+    let full = text(&mut ui, 240, 80);
+    assert!(
+        full.contains("Second paragraph retained in recorded detail."),
+        "full context must remain available: {full}"
+    );
+    ui.shutdown();
+}
+
+#[test]
+fn path_highlighting_keeps_navigation_words_and_surrounding_code_distinct() {
+    use ratatui::style::Color;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Conservative path highlights");
+    save_work_report(
+        &home,
+        "goal",
+        0,
+        serde_json::json!({
+            "id":"paths","label":"Inspect path cues","status":"active","source":"coordinator",
+            "owner":{"session":{"provider":"codex","session_id":"goal"},"agent_id":"main"},
+            "purpose":"Use PageUp/PageDown and guidance/queue/stop to inspect docs/plan.md.",
+            "next":"Call `read_source(\"src/parser.rs\");` then inspect ./generated and /project/src."
+        }),
+    );
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Inspect path cues");
+    key(&mut ui, KeyCode::Char('w'));
+    let mut terminal = Terminal::new(TestBackend::new(240, 80)).unwrap();
+    terminal.draw(|f| ui.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    for words in ["PageUp/PageDown", "guidance/queue/stop"] {
+        assert!(
+            rendered_cells(buffer, words)
+                .iter()
+                .all(|cell| cell.fg != Color::Rgb(148, 226, 213)),
+            "ordinary slash-separated words must not look like paths: {words}"
+        );
+    }
+    for path in [
+        "docs/plan.md",
+        "src/parser.rs",
+        "./generated",
+        "/project/src",
+    ] {
+        assert!(
+            rendered_cells(buffer, path)
+                .iter()
+                .all(|cell| cell.fg == Color::Rgb(148, 226, 213)),
+            "recognizable path needs a focused cue: {path}"
+        );
+    }
+    for syntax in ["read_source(\"", "\");"] {
+        assert!(
+            rendered_cells(buffer, syntax)
+                .iter()
+                .all(|cell| cell.fg == Color::Rgb(203, 166, 247)),
+            "surrounding code must keep its code style: {syntax}"
+        );
+    }
+    ui.shutdown();
+}
+
+#[test]
+fn independently_formatted_activity_sections_share_the_pane_display_limit() {
+    use std::io::Write;
+    let home = Home::new();
+    home.session("goal", "/projects/readability", false);
+    home.goal("goal", "Bounded activity sections");
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(home.0.join("codex/sessions/2026/10/23/rollout-goal.jsonl"))
+        .unwrap();
+    for payload in [
+        serde_json::json!({"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":"Recorded row\n".repeat(512)}]}),
+        serde_json::json!({"type":"function_call","name":"exec_command","call_id":"bounded-command","arguments":serde_json::json!({"cmd":"cargo test --must-be-omitted"}).to_string()}),
+    ] {
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"type":"response_item","payload":payload})
+        )
+        .unwrap();
+    }
+    drop(file);
+    let mut ui = home.ui();
+    wait_text(&mut ui, "Bounded activity sections");
+    key(&mut ui, KeyCode::Char('x'));
+    let shown = text(&mut ui, 240, 600);
+    assert!(
+        shown.contains("Recorded row"),
+        "selected source should be present"
+    );
+    assert!(
+        shown.contains("Display limited; more text remains in the recorded source."),
+        "the pane must disclose its shared source-line limit"
+    );
+    assert!(
+        !shown.contains("cargo test --must-be-omitted"),
+        "later fragments must not reset the pane budget"
+    );
+    ui.shutdown();
+}

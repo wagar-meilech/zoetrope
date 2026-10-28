@@ -482,19 +482,27 @@ impl FleetConsole {
         let entries = self.work_entries();
         current_entry(&entries, self.work_selection.as_ref()).and_then(|at| entries[at].status())
     }
-    pub(super) fn inspection_text(&self, compact: bool, width: u16) -> String {
+    pub(super) fn inspection_text(
+        &self,
+        compact: bool,
+        width: u16,
+    ) -> Vec<rich_text::Fragment<'_>> {
         let activity = if self.work_canvas {
-            String::new()
+            Vec::new()
         } else {
             self.activity_text()
         };
         if !self.work_mode {
-            return format!(
-                "Agent inspection · arrows select · w work\n{}\n{}{}",
-                self.runtime_word(),
-                self.steering_text(),
-                activity
-            );
+            let mut fragments = vec![
+                format!(
+                    "Agent inspection · arrows select · w work\n{}\n{}",
+                    self.runtime_word(),
+                    self.steering_text()
+                )
+                .into(),
+            ];
+            fragments.extend(activity);
+            return fragments;
         }
         if compact {
             let entries = self.work_entries();
@@ -541,26 +549,39 @@ impl FleetConsole {
                     .collect::<Vec<_>>()
                     .join("  "),
                 );
-                let compact = lines
-                    .iter()
-                    .map(|line| crate::ui::truncate(line, width as usize))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                return format!(
-                    "{compact}\n\nRecorded detail · PageDown scroll\n{}\n{}{}",
-                    self.work_text(),
-                    self.steering_text(),
-                    activity
+                let mut fragments: Vec<_> = lines
+                    .into_iter()
+                    .map(|line| rich_text::Fragment::Compact {
+                        text: line.into(),
+                        width,
+                    })
+                    .collect();
+                fragments.push(
+                    format!(
+                        "Recorded detail · PageDown scroll\n{}\n{}",
+                        self.work_text(),
+                        self.steering_text()
+                    )
+                    .into(),
                 );
+                fragments.extend(activity);
+                return fragments;
             }
         }
-        format!(
-            "{}\n## Controls\n{}\n{}{}\n\nf feedback · Q saved questions · c criteria\nd documents · R read-only replay",
-            self.work_text(),
-            self.runtime_word(),
-            self.steering_text(),
-            activity
-        )
+        let mut fragments = vec![
+            format!(
+                "{}\n## Controls\n{}\n{}",
+                self.work_text(),
+                self.runtime_word(),
+                self.steering_text()
+            )
+            .into(),
+        ];
+        fragments.extend(activity);
+        fragments.push(
+            "f feedback · Q saved questions · c criteria\nd documents · R read-only replay".into(),
+        );
+        fragments
     }
     pub(super) fn work_text(&self) -> String {
         let Some(record) = &self.selected_work else {

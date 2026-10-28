@@ -381,25 +381,25 @@ pub(super) fn draw(ui: &mut FleetConsole, frame: &mut Frame) {
         draw_editor(ui, frame, content);
     } else {
         let details = match ui.pane {
-            Pane::Deliveries => ui.deliveries_text(),
-            Pane::Documents => ui.documents_text(),
-            Pane::Questions => ui.questions_text(),
-            Pane::Criteria => ui.criteria_text(),
-            Pane::Commands => format!(
-                "Owner: {}\n{}\nEsc back · PageUp/PageDown scroll",
-                ui.recipient_label(),
-                ui.activity_text()
-            ),
-            Pane::Feedback => format!(
+            Pane::Deliveries => vec![ui.deliveries_text().into()],
+            Pane::Documents => vec![ui.documents_text().into()],
+            Pane::Questions => vec![ui.questions_text().into()],
+            Pane::Criteria => vec![ui.criteria_text().into()],
+            Pane::Commands => {
+                let mut fragments = vec![format!("Owner: {}",ui.recipient_label()).into()];
+                fragments.extend(ui.activity_text());
+                fragments.push("Esc back · PageUp/PageDown scroll".into());
+                fragments
+            }
+            Pane::Feedback => vec![format!(
                 "{}\n{}\n\nf edit feedback · F2 Send guidance · F3 Queue · F4 Stop\nCtrl-S Send · Ctrl-Q Queue · Ctrl-X Stop",
-                ui.runtime_word(),
-                ui.steering_text()
-            ),
+                ui.runtime_word(), ui.steering_text()
+            ).into()],
             Pane::Graph => {
                 if ui.selected_work.is_some() {
                     ui.inspection_text(frame.area().width < 96, content.width)
                 } else {
-                    "Select a goal or agent to inspect its work".into()
+                    vec!["Select a goal or agent to inspect its work".into()]
                 }
             }
         };

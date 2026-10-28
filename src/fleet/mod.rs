@@ -1731,9 +1731,9 @@ impl FleetConsole {
         }
     }
 
-    fn activity_text(&self) -> String {
+    fn activity_text(&self) -> Vec<rich_text::Fragment<'_>> {
         let Some(target) = self.control_target() else {
-            return String::new();
+            return Vec::new();
         };
         if let Some((owner, activity)) = self
             .view
@@ -1742,46 +1742,49 @@ impl FleetConsole {
             .filter(|(owner, _)| owner == &target)
         {
             let Some(activity) = activity else {
-                return format!(
-                    "\nNo indexed public activity for {}",
-                    self.producer_label(owner)
-                );
+                return vec![
+                    format!(
+                        "No indexed public activity for {}",
+                        self.producer_label(owner)
+                    )
+                    .into(),
+                ];
             };
-            let mut text = String::new();
+            let mut fragments = Vec::new();
             if let Some(narration) = &activity.narration {
-                text.push_str(&format!(
-                    "\n## Recorded public message\nSource: {}\nRecorded: {}\n\n{}\n",
-                    activity
-                        .narration_source
-                        .as_deref()
-                        .unwrap_or("public transcript"),
-                    activity.narration_at.as_deref().unwrap_or("unknown"),
-                    narration
-                ));
+                fragments.push(
+                    format!(
+                        "## Recorded public message\nSource: {}\nRecorded: {}",
+                        activity
+                            .narration_source
+                            .as_deref()
+                            .unwrap_or("public transcript"),
+                        activity.narration_at.as_deref().unwrap_or("unknown"),
+                    )
+                    .into(),
+                );
+                fragments.push(narration.as_str().into());
             }
             if let Some(command) = &activity.command {
-                let width = command
-                    .split(|ch| ch != '`')
-                    .map(str::len)
-                    .max()
-                    .unwrap_or(0)
-                    .saturating_add(1)
-                    .max(3);
-                let fence = "`".repeat(width);
-                text.push_str(&format!(
-                    "\n## Latest shell command\nRecorded: {}\n\n{fence}sh\n{command}\n{fence}\n",
-                    activity.command_at.as_deref().unwrap_or("unknown"),
-                ));
+                fragments.push(
+                    format!(
+                        "## Latest shell command\nRecorded: {}",
+                        activity.command_at.as_deref().unwrap_or("unknown")
+                    )
+                    .into(),
+                );
+                fragments.push(rich_text::Fragment::Shell(command));
                 if let Some(purpose) = &activity.purpose {
-                    text.push_str(&format!("Purpose: {purpose}\n"));
+                    fragments.push(format!("Purpose: {purpose}").into());
                 }
             }
-            if text.is_empty() {
-                text.push_str("\nNo recorded public message or shell command for this owner.");
+            if fragments.is_empty() {
+                fragments
+                    .push("No recorded public message or shell command for this owner.".into());
             }
-            return text;
+            return fragments;
         }
-        "\nLoading indexed activity for the selected owner…".into()
+        vec!["Loading indexed activity for the selected owner…".into()]
     }
 
     fn toggle_checkpoints(&mut self) {
