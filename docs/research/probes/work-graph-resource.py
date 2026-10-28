@@ -18,7 +18,11 @@ import unicodedata
 
 program = str(pathlib.Path(sys.argv[1]).resolve())
 count = int(sys.argv[2]) if len(sys.argv) > 2 else 12
-dense = len(sys.argv) > 3 and sys.argv[3] == "dense"
+dense = "dense" in sys.argv[3:]
+rich = "rich" in sys.argv[3:]
+commands = "commands" in sys.argv[3:]
+if commands and not rich:
+    raise SystemExit("commands sample requires rich source fixture")
 if not 1 <= count <= 512:
     raise SystemExit("task count must be 1..512")
 with tempfile.TemporaryDirectory(prefix="zoe-work-resource-") as temporary:
@@ -38,6 +42,10 @@ with tempfile.TemporaryDirectory(prefix="zoe-work-resource-") as temporary:
          "type": "message", "role": "user", "content": [{"type": "input_text",
          "text": f"Work graph resource fixture with {count} tasks"}]}},
     ]
+    message = ""
+    if rich:
+        message = "## Source context\nRead src/parser.rs:42 and **keep scope focused**.\n\n" + ("- [x] Updated README.md\n- [ ] Check ./tests/parser.rs\n\n```rust\nlet parser = read_source(\"src/parser.rs\");\n    validate(parser);\n```\n\n" * 50)
+        records.append({"timestamp":now.isoformat(),"type":"response_item","payload":{"type":"message","role":"assistant","channel":"commentary","content":[{"type":"output_text","text":message}]}})
     (sessions / "rollout-resource.jsonl").write_text("".join(json.dumps(r)+"\n" for r in records))
     sources = []
     edge_count = 0
@@ -155,6 +163,13 @@ with tempfile.TemporaryDirectory(prefix="zoe-work-resource-") as temporary:
         if "Work graph" not in screen_text().splitlines()[0]:
             raise RuntimeError("work graph did not open")
         open_seconds = time.monotonic()-opened
+        if commands:
+            os.write(terminal, b"x")
+            until = time.monotonic()+10
+            while "Commands and public activity" not in screen_text() and time.monotonic() < until:
+                drain(0.05)
+            if "Commands and public activity" not in screen_text():
+                raise RuntimeError("commands view did not open")
         drain(3)
         before = sample()
         start_bytes = len(captured)
@@ -163,6 +178,7 @@ with tempfile.TemporaryDirectory(prefix="zoe-work-resource-") as temporary:
         elapsed = after[0]-before[0]
         result = {"fixture": "isolated structured local source and real release executable",
                   "tasks": count, "sources": len(sources), "dense_within_sources": dense,
+                  "structured_message_bytes": len(message.encode()), "commands_view": commands,
                   "declared_edges": edge_count,
                   "source_bytes": sum(path.stat().st_size for path in sources),
                   "open_seconds_observed": round(open_seconds, 3),
